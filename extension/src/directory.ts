@@ -251,8 +251,8 @@ export class GitHubAwesomeProvider extends CatalogProvider {
     let inRelevantSection = false;
     let currentSection = '';
 
-    // Match markdown links: [text](url) - description
-    const linkPattern = /^\s*[-*]\s*\[([^\]]+)\]\(([^)]+)\)\s*[-–—:]?\s*(.*)/;
+    // Match markdown links: [text](url) or **[text](url)** - description
+    const linkPattern = /^\s*[-*]\s*\*{0,2}\[([^\]]+)\]\(([^)]+)\)\*{0,2}\s*[-–—:]?\s*(.*)/;
     
     for (const line of lines) {
       // Track section headers
