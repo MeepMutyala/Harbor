@@ -50,7 +50,7 @@ function renderProviderStatus(): void {
   const providerNames: Record<string, string> = {
     official_registry: 'Official Registry',
     github_awesome: 'GitHub Awesome',
-    mcpservers_org: 'mcpservers.org',
+    featured_curated: 'Featured & Popular',
   };
 
   providerStatusEl.innerHTML = providerStatus
@@ -168,7 +168,12 @@ function renderServers(): void {
 function renderServerCard(server: CatalogServer): string {
   const cardClass = server.installableOnly ? 'installable' : 'remote';
   const sourceClass = server.source;
-  const sourceLabel = server.source === 'official_registry' ? 'Registry' : 'Awesome';
+  const sourceLabels: Record<string, string> = {
+    official_registry: 'Registry',
+    github_awesome: 'Awesome',
+    featured_curated: 'Featured',
+  };
+  const sourceLabel = sourceLabels[server.source] || server.source;
   
   const tagsHtml = server.tags
     .filter(t => !['remote', 'installable_only'].includes(t))

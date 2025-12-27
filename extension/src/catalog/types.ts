@@ -3,7 +3,7 @@
 export type CatalogSourceId = 
   | 'official_registry' 
   | 'github_awesome' 
-  | 'mcpservers_org';
+  | 'featured_curated';
 
 export interface CatalogServer {
   id: string;                    // stable hash of (source + canonicalUrl or homepageUrl + name)
@@ -40,7 +40,7 @@ export interface CacheEntry {
 export const CACHE_KEYS: Record<CatalogSourceId, string> = {
   official_registry: 'catalog.cache.official_registry.v1',
   github_awesome: 'catalog.cache.github_awesome.v1',
-  mcpservers_org: 'catalog.cache.mcpservers_org.v1',
+  featured_curated: 'catalog.cache.featured_curated.v1',
 };
 
 // Cache TTL: 10 minutes
