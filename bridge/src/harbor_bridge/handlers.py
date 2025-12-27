@@ -3,31 +3,29 @@
 Each handler processes a specific message type and returns a response.
 """
 
-from __future__ import annotations
-
 import logging
+from collections.abc import Callable, Coroutine
 from dataclasses import asdict
-from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, Optional
+from typing import Any
 
 from harbor_bridge import __version__
 from harbor_bridge.mcp_client import get_mcp_client
-from harbor_bridge.server_store import MCPServer, ServerStatus, ServerStore
+from harbor_bridge.server_store import ServerStatus, ServerStore
 
 logger = logging.getLogger(__name__)
 
 # Type alias for message handlers
-MessageHandler = Callable[[Dict[str, Any], ServerStore], Coroutine[Any, Any, Dict[str, Any]]]
+MessageHandler = Callable[[dict[str, Any], ServerStore], Coroutine[Any, Any, dict[str, Any]]]
 
 
 def make_error_response(
     request_id: str,
     code: str,
     message: str,
-    details: Optional[Any] = None,
-) -> Dict[str, Any]:
+    details: Any | None = None,
+) -> dict[str, Any]:
     """Create a standardized error response."""
-    error: Dict[str, Any] = {"code": code, "message": message}
+    error: dict[str, Any] = {"code": code, "message": message}
     if details is not None:
         error["details"] = details
     return {
@@ -41,7 +39,7 @@ def make_result_response(
     request_type: str,
     request_id: str,
     **kwargs: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a standardized result response."""
     return {
         "type": f"{request_type}_result",
@@ -50,7 +48,7 @@ def make_result_response(
     }
 
 
-async def handle_hello(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_hello(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle hello message - returns pong with bridge version."""
     return {
         "type": "pong",
@@ -59,7 +57,7 @@ async def handle_hello(message: Dict[str, Any], store: ServerStore) -> Dict[str,
     }
 
 
-async def handle_add_server(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_add_server(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle add_server message - adds a new MCP server configuration."""
     request_id = message.get("request_id", "")
     label = message.get("label")
@@ -95,7 +93,7 @@ async def handle_add_server(message: Dict[str, Any], store: ServerStore) -> Dict
         )
 
 
-async def handle_remove_server(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_remove_server(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle remove_server message - removes an MCP server configuration."""
     request_id = message.get("request_id", "")
     server_id = message.get("server_id")
@@ -125,7 +123,7 @@ async def handle_remove_server(message: Dict[str, Any], store: ServerStore) -> D
         )
 
 
-async def handle_list_servers(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_list_servers(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle list_servers message - returns all configured servers."""
     request_id = message.get("request_id", "")
 
@@ -145,7 +143,7 @@ async def handle_list_servers(message: Dict[str, Any], store: ServerStore) -> Di
         )
 
 
-async def handle_connect_server(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_connect_server(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle connect_server message - attempts to connect to an MCP server."""
     request_id = message.get("request_id", "")
     server_id = message.get("server_id")
@@ -197,7 +195,7 @@ async def handle_connect_server(message: Dict[str, Any], store: ServerStore) -> 
         )
 
 
-async def handle_disconnect_server(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_disconnect_server(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle disconnect_server message - disconnects from an MCP server."""
     request_id = message.get("request_id", "")
     server_id = message.get("server_id")
@@ -238,7 +236,7 @@ async def handle_disconnect_server(message: Dict[str, Any], store: ServerStore) 
         )
 
 
-async def handle_list_tools(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_list_tools(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle list_tools message - lists tools from a connected MCP server."""
     request_id = message.get("request_id", "")
     server_id = message.get("server_id")
@@ -283,7 +281,7 @@ async def handle_list_tools(message: Dict[str, Any], store: ServerStore) -> Dict
         )
 
 
-async def handle_list_resources(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_list_resources(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle list_resources message - lists resources from a connected MCP server."""
     request_id = message.get("request_id", "")
     server_id = message.get("server_id")
@@ -328,7 +326,7 @@ async def handle_list_resources(message: Dict[str, Any], store: ServerStore) -> 
         )
 
 
-async def handle_list_prompts(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_list_prompts(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle list_prompts message - lists prompts from a connected MCP server."""
     request_id = message.get("request_id", "")
     server_id = message.get("server_id")
@@ -373,7 +371,7 @@ async def handle_list_prompts(message: Dict[str, Any], store: ServerStore) -> Di
         )
 
 
-async def handle_call_tool(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def handle_call_tool(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Handle call_tool message - invokes a tool on a connected MCP server."""
     request_id = message.get("request_id", "")
     server_id = message.get("server_id")
@@ -435,7 +433,7 @@ async def handle_call_tool(message: Dict[str, Any], store: ServerStore) -> Dict[
 
 
 # Handler registry
-HANDLERS: Dict[str, MessageHandler] = {
+HANDLERS: dict[str, MessageHandler] = {
     "hello": handle_hello,
     "add_server": handle_add_server,
     "remove_server": handle_remove_server,
@@ -449,7 +447,7 @@ HANDLERS: Dict[str, MessageHandler] = {
 }
 
 
-async def dispatch_message(message: Dict[str, Any], store: ServerStore) -> Dict[str, Any]:
+async def dispatch_message(message: dict[str, Any], store: ServerStore) -> dict[str, Any]:
     """Dispatch a message to the appropriate handler."""
     message_type = message.get("type")
     request_id = message.get("request_id", "")

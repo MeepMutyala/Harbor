@@ -1,10 +1,7 @@
 """Tests for native messaging protocol implementation."""
 
-from __future__ import annotations
-
 import json
 import struct
-from typing import Dict
 
 import pytest
 
@@ -35,13 +32,11 @@ class TestEncodeMessage:
 
     def test_encode_empty_object(self):
         """Test encoding an empty object."""
-        message: Dict[str, object] = {}
+        message: dict[str, object] = {}
         encoded = encode_message(message)
 
-        length = struct.unpack("<I", encoded[:4])[0]
         payload = encoded[4:]
-
-        assert length == 2  # "{}"
+        assert len(payload) == 2  # "{}"
         assert payload == b"{}"
 
     def test_encode_nested_message(self):
@@ -53,7 +48,6 @@ class TestEncodeMessage:
         }
         encoded = encode_message(message)
 
-        length = struct.unpack("<I", encoded[:4])[0]
         payload = encoded[4:]
 
         decoded = json.loads(payload.decode("utf-8"))

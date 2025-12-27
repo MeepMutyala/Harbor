@@ -2,6 +2,12 @@
 
 A Firefox extension with a native Python bridge for MCP (Model Context Protocol) server communication.
 
+## Prerequisites
+
+- **Node.js** 18+ and npm
+- **uv** — Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Firefox** 109+
+
 ## Project Structure
 
 ```
@@ -52,31 +58,25 @@ npm run dev
 ```bash
 cd bridge
 
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Upgrade pip (required for editable installs)
-pip install --upgrade pip
-
-# Install with dev dependencies
-pip install -e ".[dev]"
+# Sync dependencies (creates venv automatically)
+uv sync
 ```
 
 #### Run Tests, Linting, and Type Checking
 
 ```bash
-# Format code
-black .
+# Format and lint
+uv run ruff format .
+uv run ruff check --fix .
 
 # Type check (strict mode)
-mypy .
+uv run mypy .
 
 # Run tests
-pytest
+uv run pytest
 
 # All together
-black . && mypy . && pytest
+uv run ruff format . && uv run ruff check --fix . && uv run mypy . && uv run pytest
 ```
 
 ### 3. Install Native Messaging Host Manifest
@@ -135,15 +135,15 @@ After loading:
 If you see "Disconnected":
 - Check the Firefox Browser Console (`Ctrl+Shift+J`) for errors
 - Verify the native manifest is installed correctly
-- Ensure the Python venv is set up in `bridge/`
+- Ensure dependencies are synced: `cd bridge && uv sync`
 
 ### 6. Test with Demo MCP Server (Optional)
 
 Start the demo server to test server connectivity:
 
 ```bash
-cd bridge/scripts
-python run_demo_server.py --port 8765
+cd bridge
+uv run python scripts/run_demo_server.py --port 8765
 ```
 
 Then in the Harbor sidebar:

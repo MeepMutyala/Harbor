@@ -3,15 +3,13 @@
 Stores MCP server configurations in a JSON file with in-memory caching.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class ServerStatus(str, Enum):
@@ -31,9 +29,9 @@ class MCPServer:
     label: str
     base_url: str
     status: ServerStatus = ServerStatus.DISCONNECTED
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "server_id": self.server_id,
@@ -44,7 +42,7 @@ class MCPServer:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MCPServer":
+    def from_dict(cls, data: dict[str, Any]) -> "MCPServer":
         """Create from dictionary."""
         return cls(
             server_id=data["server_id"],
@@ -60,7 +58,7 @@ class ServerStore:
     """Manages MCP server configurations with file persistence."""
 
     data_dir: Path
-    servers: Dict[str, MCPServer] = field(default_factory=dict)
+    servers: dict[str, MCPServer] = field(default_factory=dict)
     _loaded: bool = field(default=False, repr=False)
 
     @property
@@ -77,11 +75,11 @@ class ServerStore:
     async def load(self) -> None:
         """Load servers from the JSON file."""
 
-        def _read() -> Dict[str, MCPServer]:
+        def _read() -> dict[str, MCPServer]:
             if not self.servers_file.exists():
                 return {}
             try:
-                with open(self.servers_file, "r", encoding="utf-8") as f:
+                with open(self.servers_file, encoding="utf-8") as f:
                     data = json.load(f)
                 return {
                     sid: MCPServer.from_dict(server)
@@ -126,12 +124,12 @@ class ServerStore:
             return True
         return False
 
-    async def get_server(self, server_id: str) -> Optional[MCPServer]:
+    async def get_server(self, server_id: str) -> MCPServer | None:
         """Get a server by ID."""
         await self.ensure_loaded()
         return self.servers.get(server_id)
 
-    async def list_servers(self) -> List[MCPServer]:
+    async def list_servers(self) -> list[MCPServer]:
         """List all servers."""
         await self.ensure_loaded()
         return list(self.servers.values())
@@ -140,8 +138,8 @@ class ServerStore:
         self,
         server_id: str,
         status: ServerStatus,
-        error_message: Optional[str] = None,
-    ) -> Optional[MCPServer]:
+        error_message: str | None = None,
+    ) -> MCPServer | None:
         """Update a server's connection status."""
         await self.ensure_loaded()
         server = self.servers.get(server_id)

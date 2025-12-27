@@ -1,8 +1,7 @@
 """Tests for server store."""
 
-from __future__ import annotations
-
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -11,7 +10,7 @@ from harbor_bridge.server_store import MCPServer, ServerStatus, ServerStore
 
 
 @pytest.fixture
-def temp_store() -> ServerStore:
+def temp_store() -> Iterator[ServerStore]:
     """Create a temporary server store for testing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield ServerStore(data_dir=Path(tmpdir))
@@ -121,7 +120,7 @@ class TestServerStore:
 
             # Create store and add server
             store1 = ServerStore(data_dir=data_dir)
-            server = await store1.add_server("Test", "http://localhost:8000")
+            await store1.add_server("Test", "http://localhost:8000")
 
             # Create new store instance
             store2 = ServerStore(data_dir=data_dir)

@@ -4,13 +4,11 @@ This module runs the native messaging bridge that communicates with
 the Harbor Firefox extension.
 """
 
-from __future__ import annotations
-
 import asyncio
+import contextlib
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict
 
 from harbor_bridge import __version__
 from harbor_bridge.handlers import dispatch_message
@@ -22,7 +20,6 @@ from harbor_bridge.native_messaging import (
     write_message,
 )
 from harbor_bridge.server_store import ServerStore
-
 
 # Configure logging to stderr (stdout is used for native messaging)
 logging.basicConfig(
@@ -68,7 +65,7 @@ async def run_bridge() -> None:
 
         except MessageTooLargeError as e:
             logger.error(f"Message too large: {e}")
-            try:
+            with contextlib.suppress(Exception):
                 await write_message(
                     {
                         "type": "error",
@@ -79,12 +76,10 @@ async def run_bridge() -> None:
                         },
                     }
                 )
-            except Exception:
-                pass
 
         except InvalidMessageError as e:
             logger.error(f"Invalid message: {e}")
-            try:
+            with contextlib.suppress(Exception):
                 await write_message(
                     {
                         "type": "error",
@@ -95,8 +90,6 @@ async def run_bridge() -> None:
                         },
                     }
                 )
-            except Exception:
-                pass
 
         except NativeMessagingError as e:
             logger.error(f"Native messaging error: {e}")

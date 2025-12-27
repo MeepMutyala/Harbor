@@ -17,8 +17,8 @@ import argparse
 import json
 import logging
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Any, Dict
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class DemoMCPHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the demo MCP server."""
 
-    def _send_json(self, status: int, data: Dict[str, Any]) -> None:
+    def _send_json(self, status: int, data: dict[str, Any]) -> None:
         """Send a JSON response."""
         body = json.dumps(data, indent=2).encode("utf-8")
         self.send_response(status)

@@ -1,17 +1,15 @@
 """Tests for message handlers."""
 
-from __future__ import annotations
-
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 
 from harbor_bridge.handlers import (
     dispatch_message,
-    handle_hello,
     handle_add_server,
+    handle_hello,
     handle_list_servers,
     make_error_response,
     make_result_response,
@@ -20,7 +18,7 @@ from harbor_bridge.server_store import ServerStore
 
 
 @pytest.fixture
-def temp_store() -> ServerStore:
+def temp_store() -> Iterator[ServerStore]:
     """Create a temporary server store for testing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield ServerStore(data_dir=Path(tmpdir))

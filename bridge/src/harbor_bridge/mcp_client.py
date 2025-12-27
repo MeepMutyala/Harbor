@@ -7,13 +7,13 @@ full MCP protocol support.
 The interface is designed to be swappable with a full MCP library implementation.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
+import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class MCPTool:
 
     name: str
     description: str
-    input_schema: Dict[str, Any]
+    input_schema: dict[str, Any]
 
 
 @dataclass
@@ -34,8 +34,8 @@ class MCPResource:
 
     uri: str
     name: str
-    description: Optional[str] = None
-    mime_type: Optional[str] = None
+    description: str | None = None
+    mime_type: str | None = None
 
 
 @dataclass
@@ -43,8 +43,8 @@ class MCPPrompt:
     """Represents an MCP prompt."""
 
     name: str
-    description: Optional[str] = None
-    arguments: Optional[List[Dict[str, Any]]] = None
+    description: str | None = None
+    arguments: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -53,7 +53,7 @@ class ConnectionResult:
 
     success: bool
     message: str
-    server_info: Optional[Dict[str, Any]] = None
+    server_info: dict[str, Any] | None = None
 
 
 @dataclass
@@ -62,7 +62,7 @@ class ToolCallResult:
 
     success: bool
     content: Any
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class MCPClientInterface(ABC):
@@ -95,7 +95,7 @@ class MCPClientInterface(ABC):
         ...
 
     @abstractmethod
-    async def list_tools(self, base_url: str) -> List[MCPTool]:
+    async def list_tools(self, base_url: str) -> list[MCPTool]:
         """List available tools from a connected server.
 
         Args:
@@ -107,7 +107,7 @@ class MCPClientInterface(ABC):
         ...
 
     @abstractmethod
-    async def list_resources(self, base_url: str) -> List[MCPResource]:
+    async def list_resources(self, base_url: str) -> list[MCPResource]:
         """List available resources from a connected server.
 
         Args:
@@ -119,7 +119,7 @@ class MCPClientInterface(ABC):
         ...
 
     @abstractmethod
-    async def list_prompts(self, base_url: str) -> List[MCPPrompt]:
+    async def list_prompts(self, base_url: str) -> list[MCPPrompt]:
         """List available prompts from a connected server.
 
         Args:
@@ -135,7 +135,7 @@ class MCPClientInterface(ABC):
         self,
         base_url: str,
         tool_name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
     ) -> ToolCallResult:
         """Invoke a tool on a connected server.
 
@@ -178,27 +178,25 @@ class StubMCPClient(MCPClientInterface):
 
         # Try to reach the server
         try:
-            # Use urllib since we want to keep dependencies minimal
-            import urllib.request
-            import urllib.error
-
             # Try /health first, then base URL
             urls_to_try = [
                 base_url.rstrip("/") + "/health",
                 base_url,
             ]
 
-            last_error: Optional[str] = None
+            last_error: str | None = None
             for url in urls_to_try:
                 try:
+                    # Capture url in closure
+                    current_url = url
 
-                    def _fetch() -> Dict[str, Any]:
-                        req = urllib.request.Request(url, method="GET")
+                    def _fetch(fetch_url: str = current_url) -> dict[str, Any]:
+                        req = urllib.request.Request(fetch_url, method="GET")
                         req.add_header("Accept", "application/json")
                         with urllib.request.urlopen(req, timeout=timeout) as resp:
                             return {
                                 "status_code": resp.status,
-                                "url": url,
+                                "url": fetch_url,
                             }
 
                     result = await asyncio.to_thread(_fetch)
@@ -230,19 +228,19 @@ class StubMCPClient(MCPClientInterface):
         """Mark server as disconnected."""
         self._connected.discard(base_url)
 
-    async def list_tools(self, base_url: str) -> List[MCPTool]:
+    async def list_tools(self, base_url: str) -> list[MCPTool]:
         """Return empty list - placeholder for MCP tools/list."""
         # TODO: Implement MCP tools/list protocol
         logger.debug(f"list_tools called for {base_url} - returning placeholder")
         return []
 
-    async def list_resources(self, base_url: str) -> List[MCPResource]:
+    async def list_resources(self, base_url: str) -> list[MCPResource]:
         """Return empty list - placeholder for MCP resources/list."""
         # TODO: Implement MCP resources/list protocol
         logger.debug(f"list_resources called for {base_url} - returning placeholder")
         return []
 
-    async def list_prompts(self, base_url: str) -> List[MCPPrompt]:
+    async def list_prompts(self, base_url: str) -> list[MCPPrompt]:
         """Return empty list - placeholder for MCP prompts/list."""
         # TODO: Implement MCP prompts/list protocol
         logger.debug(f"list_prompts called for {base_url} - returning placeholder")
@@ -252,7 +250,7 @@ class StubMCPClient(MCPClientInterface):
         self,
         base_url: str,
         tool_name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
     ) -> ToolCallResult:
         """Placeholder for tool invocation."""
         # TODO: Implement MCP tools/call protocol
@@ -265,7 +263,7 @@ class StubMCPClient(MCPClientInterface):
 
 
 # Default client instance
-_default_client: Optional[MCPClientInterface] = None
+_default_client: MCPClientInterface | None = None
 
 
 def get_mcp_client() -> MCPClientInterface:

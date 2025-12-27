@@ -50,15 +50,23 @@ echo ""
 echo "Installation complete!"
 echo ""
 
-# Check if Python environment is set up
-if [ ! -d "$BRIDGE_DIR/.venv" ]; then
-    echo "⚠  Python environment not found. Set it up with:"
+# Check if uv is available
+if ! command -v uv &> /dev/null; then
+    echo "⚠  uv not found. Install it with:"
     echo ""
-    echo "   cd $BRIDGE_DIR"
-    echo "   python3 -m venv .venv"
-    echo "   source .venv/bin/activate"
-    echo "   pip install --upgrade pip && pip install -e ."
+    echo "   curl -LsSf https://astral.sh/uv/install.sh | sh"
     echo ""
+    echo "Then sync dependencies:"
+    echo "   cd $BRIDGE_DIR && uv sync"
+    echo ""
+else
+    # Check if dependencies are synced
+    if [ ! -d "$BRIDGE_DIR/.venv" ]; then
+        echo "⚠  Dependencies not synced. Run:"
+        echo ""
+        echo "   cd $BRIDGE_DIR && uv sync"
+        echo ""
+    fi
 fi
 
 echo "Next steps:"

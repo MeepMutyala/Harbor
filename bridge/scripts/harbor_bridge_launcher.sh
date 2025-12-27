@@ -5,11 +5,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BRIDGE_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Activate virtual environment if it exists
-if [ -d "$BRIDGE_DIR/.venv" ]; then
-    source "$BRIDGE_DIR/.venv/bin/activate"
-fi
+cd "$BRIDGE_DIR"
 
-# Run the bridge
-exec python -m harbor_bridge.main
-
+# Use uv run which handles venv automatically
+exec uv run python -m harbor_bridge.main

@@ -5,14 +5,11 @@ This module handles the native messaging framing protocol:
 - The payload is JSON-encoded UTF-8 text
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import struct
 import sys
-from typing import Any, Dict, Optional, Tuple
-
+from typing import Any
 
 # Maximum message size (1 MB, Firefox's limit)
 MAX_MESSAGE_SIZE = 1024 * 1024
@@ -36,7 +33,7 @@ class InvalidMessageError(NativeMessagingError):
     pass
 
 
-def encode_message(message: Dict[str, Any]) -> bytes:
+def encode_message(message: dict[str, Any]) -> bytes:
     """Encode a message for native messaging.
 
     Args:
@@ -71,11 +68,11 @@ def decode_length_prefix(data: bytes) -> int:
     """
     if len(data) != 4:
         raise InvalidMessageError(f"Expected 4 bytes for length prefix, got {len(data)}")
-    result: Tuple[int, ...] = struct.unpack("<I", data)
+    result: tuple[int, ...] = struct.unpack("<I", data)
     return result[0]
 
 
-def decode_payload(data: bytes) -> Dict[str, Any]:
+def decode_payload(data: bytes) -> dict[str, Any]:
     """Decode a JSON payload.
 
     Args:
@@ -98,7 +95,7 @@ def decode_payload(data: bytes) -> Dict[str, Any]:
     return message
 
 
-def _read_stdin_sync() -> Optional[bytes]:
+def _read_stdin_sync() -> bytes | None:
     """Read a single message from stdin synchronously.
 
     Returns:
@@ -123,8 +120,8 @@ def _read_stdin_sync() -> Optional[bytes]:
 
 
 async def read_message(
-    reader: Optional[asyncio.StreamReader] = None,
-) -> Optional[Dict[str, Any]]:
+    reader: asyncio.StreamReader | None = None,
+) -> dict[str, Any] | None:
     """Read a single message from stdin using native messaging framing.
 
     Args:
@@ -151,7 +148,7 @@ async def read_message(
         return decode_payload(payload_bytes)
 
     # Read from stdin in a thread (stdin is blocking)
-    result: Optional[bytes] = await asyncio.to_thread(_read_stdin_sync)
+    result: bytes | None = await asyncio.to_thread(_read_stdin_sync)
     if result is None:
         return None
     return decode_payload(result)
@@ -164,8 +161,8 @@ def _write_stdout_sync(data: bytes) -> None:
 
 
 async def write_message(
-    message: Dict[str, Any],
-    writer: Optional[asyncio.StreamWriter] = None,
+    message: dict[str, Any],
+    writer: asyncio.StreamWriter | None = None,
 ) -> None:
     """Write a message to stdout using native messaging framing.
 
