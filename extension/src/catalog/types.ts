@@ -11,9 +11,14 @@ export interface CatalogServer {
   installableOnly: boolean;
   description?: string;
   homepageUrl?: string;
+  repositoryUrl?: string;
   tags: string[];
   source: CatalogSourceId;
   fetchedAt: number;
+  // New fields from database
+  isRemoved?: boolean;
+  isFeatured?: boolean;
+  priorityScore?: number;
 }
 
 export interface ProviderStatus {
@@ -24,10 +29,28 @@ export interface ProviderStatus {
   count?: number;
 }
 
+export interface ServerChange {
+  serverId: string;
+  type: 'added' | 'updated' | 'removed' | 'restored';
+  source: CatalogSourceId;
+  fieldChanges?: Record<string, unknown>;
+}
+
+export interface CatalogStats {
+  total: number;
+  remote: number;
+  removed: number;
+  featured: number;
+}
+
 export interface CatalogResponse {
   servers: CatalogServer[];
   providerStatus: ProviderStatus[];
   fetchedAt: number;
+  // New fields
+  isStale?: boolean;
+  stats?: CatalogStats;
+  changes?: ServerChange[];
 }
 
 export interface CacheEntry {
