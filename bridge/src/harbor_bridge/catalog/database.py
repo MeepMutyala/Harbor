@@ -24,7 +24,9 @@ DB_PATH = DB_DIR / "catalog.db"
 
 # Priority scoring weights
 SCORE_REMOTE_ENDPOINT = 1000  # Has a live remote endpoint
+SCORE_REMOTE_CAPABLE = 400    # Supports remote but no URL known
 SCORE_FEATURED = 500          # Marked as featured
+SCORE_OFFICIAL_TAG = 300      # Has "official" tag
 SCORE_OFFICIAL_SOURCE = 200   # From official registry
 SCORE_HAS_DESCRIPTION = 50    # Has a description
 SCORE_HAS_REPO = 25           # Has a repository link
@@ -108,6 +110,7 @@ def compute_priority_score(
     is_featured: bool,
     description: str,
     repository_url: str,
+    tags: list[str],
     popularity_score: int = 0,
     last_updated_at: Optional[float] = None,
 ) -> int:
@@ -117,10 +120,16 @@ def compute_priority_score(
     # Remote endpoint is most important
     if endpoint_url:
         score += SCORE_REMOTE_ENDPOINT
+    elif "remote_capable" in tags:
+        score += SCORE_REMOTE_CAPABLE
     
     # Featured servers
-    if is_featured:
+    if is_featured or "featured" in tags:
         score += SCORE_FEATURED
+    
+    # Official tag (from registry metadata)
+    if "official" in tags:
+        score += SCORE_OFFICIAL_TAG
     
     # Official registry gets priority
     if source == "official_registry":
@@ -239,6 +248,9 @@ class CatalogDatabase:
             )
             existing = cursor.fetchone()
             
+            tags = server.get("tags", [])
+            tags_json = json.dumps(tags)
+            
             # Compute priority score
             priority = compute_priority_score(
                 endpoint_url=server.get("endpoint_url", ""),
@@ -246,11 +258,10 @@ class CatalogDatabase:
                 is_featured=server.get("is_featured", False),
                 description=server.get("description", ""),
                 repository_url=server.get("repository_url", ""),
+                tags=tags,
                 popularity_score=server.get("popularity_score", 0),
                 last_updated_at=now,
             )
-            
-            tags_json = json.dumps(server.get("tags", []))
             
             if existing is None:
                 # New server

@@ -151,12 +151,27 @@ class OfficialRegistryProvider(CatalogProvider):
                     if endpoint_url:
                         break
             
+            # Determine if this server supports remote transport
+            supports_remote = any(
+                t in ("sse", "http", "streamable-http")
+                for pkg in packages
+                for t in self._get_transports(pkg)
+            )
+            
             # Build tags
             tags: list[str] = []
             if endpoint_url:
                 tags.append("remote")
+            elif supports_remote:
+                tags.append("remote_capable")  # Supports remote but no URL known
             else:
                 tags.append("installable_only")
+            
+            # Check for featured/official status
+            meta = entry.get("_meta", {})
+            registry_meta = meta.get("io.modelcontextprotocol.registry/official", {})
+            if registry_meta.get("status") == "active":
+                tags.append("official")
             
             # Add any existing tags from the entry (filter out non-strings)
             if "tags" in server_data:
@@ -179,4 +194,26 @@ class OfficialRegistryProvider(CatalogProvider):
         except Exception as e:
             logger.warning(f"[{self.name}] Failed to parse entry: {e}")
             return None
+    
+    def _get_transports(self, pkg: dict) -> list[str]:
+        """Extract transport types from a package definition."""
+        transport_data = pkg.get("transport", [])
+        transports: list[str] = []
+        
+        if isinstance(transport_data, str):
+            transports = [transport_data]
+        elif isinstance(transport_data, dict):
+            transport_type = transport_data.get("type", "")
+            if transport_type:
+                transports = [transport_type]
+        elif isinstance(transport_data, list):
+            for t in transport_data:
+                if isinstance(t, str):
+                    transports.append(t)
+                elif isinstance(t, dict):
+                    tt = t.get("type", "")
+                    if tt:
+                        transports.append(tt)
+        
+        return transports
 
