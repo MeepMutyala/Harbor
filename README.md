@@ -1,14 +1,14 @@
 # Harbor
 
-A Firefox extension with a native Python bridge for MCP (Model Context Protocol) server communication.
+A Firefox extension with a native TypeScript/Node.js bridge for MCP (Model Context Protocol) server communication.
 
 ## How It Works
 
-Harbor uses Firefox's [Native Messaging](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_messaging) to communicate with a local Python process:
+Harbor uses Firefox's [Native Messaging](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_messaging) to communicate with a local Node.js process:
 
 ```
 ┌──────────────────┐                              ┌──────────────────┐
-│ Firefox Extension│  ◄── stdin/stdout JSON ──►  │  Python Bridge   │
+│ Firefox Extension│  ◄── stdin/stdout JSON ──►  │ Node.js Bridge   │
 │   (sidebar UI)   │                              │  (auto-started)  │
 └──────────────────┘                              └──────────────────┘
 ```
@@ -16,16 +16,15 @@ Harbor uses Firefox's [Native Messaging](https://developer.mozilla.org/en-US/doc
 **Key point: You don't manually start the bridge.** Firefox automatically launches it when the extension connects. Here's what happens:
 
 1. You install a "native messaging manifest" that tells Firefox where the bridge launcher script is
-2. When the extension loads, it calls `browser.runtime.connectNative("com.harbor.bridge")`
-3. Firefox reads the manifest, finds the launcher script, and spawns the Python process
+2. When the extension loads, it calls `browser.runtime.connectNative("harbor_bridge_host")`
+3. Firefox reads the manifest, finds the launcher script, and spawns the Node.js process
 4. The extension and bridge communicate via JSON messages over stdin/stdout
 
-So setup is: build extension → sync Python deps → install manifest → load extension in Firefox. That's it!
+So setup is: build extension → build bridge → install manifest → load extension in Firefox. That's it!
 
 ## Prerequisites
 
 - **Node.js** 18+ and npm
-- **uv** — Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **Firefox** 109+
 
 ## Project Structure
@@ -38,19 +37,20 @@ harbor/
 │   │   ├── sidebar.ts           # Sidebar UI logic
 │   │   └── sidebar.html         # Sidebar UI
 │   └── dist/                    # Built output
-└── bridge/                      # Python Native Messaging Bridge
-    ├── src/harbor_bridge/
-    │   ├── main.py              # Bridge entry point
-    │   ├── native_messaging.py  # Length-prefixed framing
-    │   ├── handlers.py          # Message handlers
-    │   ├── server_store.py      # Server persistence
-    │   └── mcp_client.py        # MCP client interface
-    ├── scripts/
-    │   ├── harbor_bridge_launcher.sh
-    │   ├── install_native_manifest_macos.sh
-    │   ├── install_native_manifest_linux.sh
-    │   └── run_demo_server.py   # Demo MCP server for testing
-    └── .data/                   # Persistent data (servers.json)
+├── bridge-ts/                   # TypeScript/Node.js Native Messaging Bridge
+│   ├── src/
+│   │   ├── main.ts              # Bridge entry point
+│   │   ├── native-messaging.ts  # Length-prefixed framing
+│   │   ├── handlers.ts          # Message handlers
+│   │   ├── server-store.ts      # Server persistence (SQLite)
+│   │   ├── mcp-client.ts        # MCP client interface
+│   │   ├── catalog/             # Directory/catalog system
+│   │   └── installer/           # MCP server installer (app store)
+│   ├── scripts/
+│   │   ├── install_native_manifest_macos.sh
+│   │   └── install_native_manifest_linux.sh
+│   └── dist/                    # Built output
+└── bridge/                      # (Legacy) Python Native Messaging Bridge
 ```
 
 ## Local Development
@@ -73,38 +73,20 @@ For development with watch mode:
 npm run dev
 ```
 
-### 2. Set Up the Python Bridge
-
-The bridge is automatically started by Firefox — you just need to install dependencies:
+### 2. Build the TypeScript Bridge
 
 ```bash
-cd bridge
-
-# Sync dependencies (creates venv automatically)
-uv sync
+cd bridge-ts
+npm install
+npm run build
 ```
 
-#### Run Tests, Linting, and Type Checking (optional)
-
-```bash
-# Format and lint
-uv run ruff format .
-uv run ruff check --fix .
-
-# Type check (strict mode)
-uv run mypy .
-
-# Run tests
-uv run pytest
-
-# All together
-uv run ruff format . && uv run ruff check --fix . && uv run mypy . && uv run pytest
-```
+This produces `dist/main.js` which is the bridge entry point.
 
 ### 3. Install Native Messaging Host Manifest
 
 The native messaging manifest is a JSON file that tells Firefox:
-- The name of the native app (`com.harbor.bridge`)
+- The name of the native app (`harbor_bridge_host`)
 - The path to the launcher script
 - Which extension IDs are allowed to connect
 
@@ -113,29 +95,29 @@ The native messaging manifest is a JSON file that tells Firefox:
 #### macOS
 
 ```bash
-cd bridge/scripts
-chmod +x harbor_bridge_launcher.sh install_native_manifest_macos.sh
-./install_native_manifest_macos.sh harbor@example.com
+cd bridge-ts/scripts
+chmod +x install_native_manifest_macos.sh
+./install_native_manifest_macos.sh
 ```
 
-This installs to: `~/Library/Application Support/Mozilla/NativeMessagingHosts/com.harbor.bridge.json`
+This installs to: `~/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge_host.json`
 
 #### Linux
 
 ```bash
-cd bridge/scripts
-chmod +x harbor_bridge_launcher.sh install_native_manifest_linux.sh
-./install_native_manifest_linux.sh harbor@example.com
+cd bridge-ts/scripts
+chmod +x install_native_manifest_linux.sh
+./install_native_manifest_linux.sh
 ```
 
-This installs to: `~/.mozilla/native-messaging-hosts/com.harbor.bridge.json`
+This installs to: `~/.mozilla/native-messaging-hosts/harbor_bridge_host.json`
 
 #### Notes on Extension ID
 
 - For temporary extensions (loaded via `about:debugging`), Firefox assigns a temporary ID
 - Use `harbor@example.com` (the ID in manifest.json) for development
 - The install scripts are idempotent — safe to run multiple times
-- If you change the extension ID, re-run the install script with the new ID
+- If you change the extension ID, re-run the install script
 
 ### 4. Load the Extension in Firefox
 
@@ -157,32 +139,12 @@ After loading:
 2. Click **"Send Hello"**
 3. You should see:
    - "Bridge Connection: Connected" (green indicator)
-   - A `pong` response with `bridge_version: "0.0.1"`
+   - A `pong` response with `bridge_version: "0.1.0"`
 
 If you see "Disconnected":
 - Check the Firefox Browser Console (`Ctrl+Shift+J`) for errors
 - Verify the native manifest is installed correctly
-- Ensure dependencies are synced: `cd bridge && uv sync`
-
-### 6. Test with Demo MCP Server (Optional)
-
-The demo server is a simple HTTP server for testing the "Add Server" / "Connect" flow without needing a real MCP server.
-
-In one terminal, start the demo server:
-
-```bash
-cd bridge
-uv run python scripts/run_demo_server.py --port 8765
-```
-
-Then in the Harbor sidebar:
-1. Enter label: `Demo Server`
-2. Enter URL: `http://localhost:8765`
-3. Click **"Add Server"**
-4. Click **"Connect"** on the server card
-5. Should show "Connected" status
-
-> **Note:** This demo server is just for testing connectivity. It doesn't implement the full MCP protocol yet.
+- Ensure the bridge is built: `cd bridge-ts && npm run build`
 
 ## Protocol Reference
 
@@ -190,62 +152,37 @@ Then in the Harbor sidebar:
 
 All messages use JSON with a `type` field and `request_id` for correlation.
 
-#### hello → pong
-```json
-// Request
-{ "type": "hello", "request_id": "..." }
+#### Server Management
 
-// Response
-{ "type": "pong", "request_id": "...", "bridge_version": "0.0.1" }
-```
+- `add_server` - Add a new remote MCP server
+- `remove_server` - Remove a server
+- `list_servers` - List all servers
+- `connect_server` - Connect to a server
+- `disconnect_server` - Disconnect from a server
 
-#### add_server → add_server_result
-```json
-// Request
-{ "type": "add_server", "request_id": "...", "label": "My Server", "base_url": "https://..." }
+#### MCP Protocol
 
-// Response
-{ "type": "add_server_result", "request_id": "...", "server": { ... } }
-```
+- `list_tools` - List tools from connected server
+- `list_resources` - List resources
+- `list_prompts` - List prompts
+- `call_tool` - Invoke a tool
 
-#### list_servers → list_servers_result
-```json
-// Request
-{ "type": "list_servers", "request_id": "..." }
+#### Catalog (Directory)
 
-// Response
-{ "type": "list_servers_result", "request_id": "...", "servers": [...] }
-```
+- `catalog_get` - Get catalog (from cache or refresh)
+- `catalog_refresh` - Force refresh catalog
+- `catalog_search` - Search catalog
 
-#### connect_server → connect_server_result
-```json
-// Request
-{ "type": "connect_server", "request_id": "...", "server_id": "..." }
+#### Installer (App Store)
 
-// Response (success)
-{ "type": "connect_server_result", "request_id": "...", "server": { ... } }
-
-// Response (error)
-{ "type": "error", "request_id": "...", "error": { "code": "...", "message": "..." } }
-```
-
-#### disconnect_server → disconnect_server_result
-```json
-// Request
-{ "type": "disconnect_server", "request_id": "...", "server_id": "..." }
-
-// Response
-{ "type": "disconnect_server_result", "request_id": "...", "server": { ... } }
-```
-
-#### list_tools → list_tools_result
-```json
-// Request
-{ "type": "list_tools", "request_id": "...", "server_id": "..." }
-
-// Response
-{ "type": "list_tools_result", "request_id": "...", "tools": [], "_todo": "..." }
-```
+- `check_runtimes` - Check available runtimes (Node.js, Python, Docker)
+- `install_server` - Install a server from catalog
+- `uninstall_server` - Uninstall a server
+- `list_installed` - List installed servers
+- `start_installed` - Start an installed server
+- `stop_installed` - Stop a running server
+- `set_server_secrets` - Set API keys for a server
+- `get_server_status` - Get server status
 
 ### Error Responses
 
@@ -257,7 +194,7 @@ All errors follow this format:
   "error": {
     "code": "error_code",
     "message": "Human readable message",
-    "details": { ... }  // optional
+    "details": { ... }
   }
 }
 ```
@@ -273,21 +210,31 @@ Error codes:
 
 ```
 ┌─────────────────────┐     Native Messaging     ┌─────────────────────┐
-│  Firefox Extension  │ ◄──── (stdio JSON) ────► │   Python Bridge     │
+│  Firefox Extension  │ ◄──── (stdio JSON) ────► │   Node.js Bridge    │
 │                     │                          │                     │
-│  - background.ts    │                          │  - native_messaging │
+│  - background.ts    │                          │  - native-messaging │
 │  - sidebar UI       │                          │  - handlers         │
-│                     │                          │  - server_store     │
-└─────────────────────┘                          │  - mcp_client       │
+│                     │                          │  - server-store     │
+└─────────────────────┘                          │  - mcp-client       │
+                                                 │  - catalog          │
+                                                 │  - installer        │
                                                  └─────────────────────┘
                                                            │
-                                                           │ HTTP
+                                                           │ HTTP / stdio
                                                            ▼
                                                  ┌─────────────────────┐
                                                  │   MCP Servers       │
-                                                 │   (remote HTTP)     │
+                                                 │ (remote or local)   │
                                                  └─────────────────────┘
 ```
+
+## Data Storage
+
+All data is stored in `~/.harbor/`:
+- `harbor.db` - Server configurations (SQLite)
+- `catalog.db` - Catalog cache (SQLite)
+- `installed_servers.json` - Installed server configs
+- `secrets/credentials.json` - API keys (restricted permissions)
 
 ## Directory (Catalog) Dev Notes
 
@@ -303,45 +250,29 @@ The Harbor Directory provides a browsable catalog of MCP servers from multiple s
    - Source: `https://raw.githubusercontent.com/wong2/awesome-mcp-servers/main/README.md`
    - Best-effort markdown parsing
 
-3. **mcpservers.org** - Not implemented (no stable API)
-
 ### Caching
 
-- **TTL**: 10 minutes
-- **Storage keys**:
-  - `catalog.cache.official_registry.v1`
-  - `catalog.cache.github_awesome.v1`
+- **TTL**: 1 hour
+- **Storage**: SQLite database (`~/.harbor/catalog.db`)
 - **Force refresh**: Click the ↻ button or use `catalog_refresh` message
 
-### Background Messages
+### App Store (Installer)
 
-```typescript
-// Get catalog (uses cache if fresh)
-{ type: 'catalog_get', force?: boolean }
+The bridge can install and run local MCP servers:
 
-// Force refresh all providers
-{ type: 'catalog_refresh' }
-
-// Search with query
-{ type: 'catalog_search', query: string, force?: boolean }
-```
-
-### Quick Smoke Test
-
-1. Load the extension
-2. Click "Open Directory" in the sidebar
-3. Verify provider status shows counts (e.g., "Registry: 55")
-4. Toggle "Remote Only" to filter connectable servers
-5. Click "Add to Harbor" on a remote server
-6. Verify it appears in the sidebar server list
+1. **Runtime Detection** - Checks for Node.js (npx), Python (uvx), Docker
+2. **Package Installation** - Uses `npx -y package` or `uvx package`
+3. **Process Management** - Start/stop servers, capture logs
+4. **Secret Management** - Store API keys securely
 
 ## Roadmap
 
 - [x] v0: Native messaging hello/pong
 - [x] v0.1: Server management (add/remove/connect/disconnect)
 - [x] v0.2: Directory with catalog providers
-- [ ] v0.3: Full MCP protocol implementation
-- [ ] v0.4: Tool invocation UI
+- [x] v0.3: TypeScript bridge with SQLite caching
+- [x] v0.4: App Store for local MCP servers
+- [ ] v0.5: Full MCP protocol implementation
 - [ ] v1.0: Production-ready release
 
 ## License
