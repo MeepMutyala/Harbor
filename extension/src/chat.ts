@@ -102,7 +102,7 @@ function initTheme(): void {
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const theme = savedTheme || (prefersDark ? 'dark' : 'light');
   document.documentElement.setAttribute('data-theme', theme);
-  themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+  themeToggle.textContent = theme === 'dark' ? '○' : '●';
 }
 
 function toggleTheme(): void {
@@ -110,7 +110,7 @@ function toggleTheme(): void {
   const next = current === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('harbor-theme', next);
-  themeToggle.textContent = next === 'dark' ? '☀️' : '🌙';
+  themeToggle.textContent = next === 'dark' ? '○' : '●';
 }
 
 // =============================================================================
@@ -128,18 +128,18 @@ async function checkLLMStatus(): Promise<void> {
       if (active) {
         llmStatus = active;
         llmStatusEl.textContent = `${active.name} connected`;
-        llmStatusEl.style.color = 'var(--accent-success)';
+        llmStatusEl.style.color = 'var(--color-success)';
         sendBtn.disabled = false;
       } else {
         llmStatusEl.textContent = 'No LLM available';
-        llmStatusEl.style.color = 'var(--accent-warning)';
+        llmStatusEl.style.color = 'var(--color-warning)';
         sendBtn.disabled = true;
       }
     }
   } catch (err) {
     console.error('Failed to check LLM status:', err);
     llmStatusEl.textContent = 'Error connecting to bridge';
-    llmStatusEl.style.color = 'var(--accent-danger)';
+    llmStatusEl.style.color = 'var(--color-error)';
   }
 }
 
@@ -165,8 +165,8 @@ async function loadConnectedServers(): Promise<void> {
 function renderServerSelector(): void {
   if (connectedServers.length === 0) {
     serverSelector.innerHTML = `
-      <span style="color: var(--text-muted); font-size: 12px; padding: 6px 0;">
-        No MCP servers connected. <a href="#" id="open-sidebar" style="color: var(--accent-primary);">Open sidebar</a> to connect.
+      <span class="text-xs text-muted" style="padding: var(--space-1) 0;">
+        No MCP servers connected. <a href="#" id="open-sidebar" class="text-accent">Open sidebar</a> to connect.
       </span>
     `;
     document.getElementById('open-sidebar')?.addEventListener('click', (e) => {
@@ -251,12 +251,12 @@ function formatMessageContent(content: string): string {
 
 function formatJsonForDisplay(obj: unknown): string {
   const json = JSON.stringify(obj, null, 2);
-  // Add syntax highlighting
+  // Add syntax highlighting using CSS variables
   return escapeHtml(json)
-    .replace(/"([^"]+)":/g, '<span style="color: #8b5cf6;">"$1"</span>:')
-    .replace(/: "([^"]*)"/g, ': <span style="color: #22c55e;">"$1"</span>')
-    .replace(/: (\d+\.?\d*)/g, ': <span style="color: #f59e0b;">$1</span>')
-    .replace(/: (true|false|null)/g, ': <span style="color: #3b82f6;">$1</span>');
+    .replace(/"([^"]+)":/g, '<span style="color: var(--color-code-keyword);">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span style="color: var(--color-code-string);">"$1"</span>')
+    .replace(/: (\d+\.?\d*)/g, ': <span style="color: var(--color-code-number);">$1</span>')
+    .replace(/: (true|false|null)/g, ': <span style="color: var(--color-accent-primary);">$1</span>');
 }
 
 function addMessage(
@@ -279,7 +279,7 @@ function addMessage(
   const messageEl = document.createElement('div');
   messageEl.className = `message ${role}`;
 
-  const avatar = role === 'user' ? '👤' : role === 'assistant' ? '✨' : '🔧';
+  const avatar = role === 'user' ? 'U' : role === 'assistant' ? 'A' : 'T';
   const roleName = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : extra?.toolName || 'Tool';
 
   let bodyContent = formatMessageContent(content);
@@ -289,7 +289,7 @@ function addMessage(
     bodyContent += extra.toolCalls.map(tc => `
       <div class="tool-call">
         <div class="tool-call-header">
-          🔧 <span class="tool-call-name">${escapeHtml(tc.name)}</span>
+          → <span class="tool-call-name">${escapeHtml(tc.name)}</span>
         </div>
         <pre class="tool-call-args"><code>${formatJsonForDisplay(tc.arguments)}</code></pre>
       </div>
@@ -306,7 +306,7 @@ function addMessage(
         <span class="message-time">${new Date().toLocaleTimeString()}</span>
       </div>
       <div class="message-body ${extra?.isError ? 'error' : ''}" data-message-id="${messageId}">
-        <button class="copy-btn" data-copy-target="${messageId}">📋 Copy</button>
+        <button class="copy-btn" data-copy-target="${messageId}">Copy</button>
         ${bodyContent}
       </div>
     </div>
@@ -324,10 +324,10 @@ function addMessage(
       e.stopPropagation();
       try {
         await navigator.clipboard.writeText(content);
-        copyBtn.textContent = '✓ Copied!';
+        copyBtn.textContent = '✓ Copied';
         copyBtn.classList.add('copied');
         setTimeout(() => {
-          copyBtn.textContent = '📋 Copy';
+          copyBtn.textContent = 'Copy';
           copyBtn.classList.remove('copied');
         }, 2000);
       } catch (err) {
@@ -359,7 +359,7 @@ function addSystemMessage(content: string, target?: HTMLElement): void {
   messageEl.className = 'message system';
   messageEl.innerHTML = `
     <div class="system-message">
-      <span class="system-icon">ℹ️</span>
+      <span class="system-icon">i</span>
       <span class="system-content">${escapeHtml(content)}</span>
     </div>
   `;
@@ -375,9 +375,9 @@ function addToolResult(toolName: string, content: string, isError: boolean, targ
   resultEl.className = `tool-result ${isError ? 'error' : ''}`;
   resultEl.innerHTML = `
     <div class="tool-result-header">
-      ${isError ? '❌' : '✓'} ${escapeHtml(toolName)} result
+      ${isError ? '✕' : '✓'} ${escapeHtml(toolName)}
     </div>
-    <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; white-space: pre-wrap;">${escapeHtml(content.slice(0, 500))}${content.length > 500 ? '...' : ''}</div>
+    <div style="font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap;">${escapeHtml(content.slice(0, 500))}${content.length > 500 ? '...' : ''}</div>
   `;
 
   targetContainer.appendChild(resultEl);
@@ -394,7 +394,7 @@ function addThinkingIndicator(target?: HTMLElement): HTMLDivElement {
   thinkingEl.className = 'message assistant';
   thinkingEl.id = target ? '' : 'thinking-indicator'; // Only set ID for main container
   thinkingEl.innerHTML = `
-    <div class="message-avatar">✨</div>
+    <div class="message-avatar">A</div>
     <div class="message-content">
       <div class="thinking">
         <div class="thinking-dots">
@@ -503,7 +503,7 @@ async function sendNormalMessage(content: string): Promise<void> {
       // Show routing info if router was used
       if (response.routing?.wasRouted) {
         const serverNames = response.routing.selectedServers.map(s => s.replace(/_/g, ' ')).join(', ');
-        addSystemMessage(`🎯 Smart Router: Using ${serverNames} (keywords: ${response.routing.matchedKeywords.join(', ')})`);
+        addSystemMessage(`Router: ${serverNames} (${response.routing.matchedKeywords.join(', ')})`);
       }
       // Process steps to show tool usage
       if (response.steps) {
@@ -650,7 +650,7 @@ async function sendToolsRequest(content: string, thinkingEl: HTMLDivElement): Pr
       // Show routing info if router was used
       if (response.routing?.wasRouted) {
         const serverNames = response.routing.selectedServers.map(s => s.replace(/_/g, ' ')).join(', ');
-        addSystemMessage(`🎯 Router: ${serverNames}`, messagesTools);
+        addSystemMessage(`Router: ${serverNames}`, messagesTools);
       }
       // Process steps to show tool usage
       if (response.steps) {

@@ -30,6 +30,13 @@ export default defineConfig({
     {
       name: 'copy-html-and-manifest',
       writeBundle() {
+        // Copy design-tokens.css
+        const designTokens = readFileSync(
+          resolve(__dirname, 'src/design-tokens.css'),
+          'utf-8'
+        );
+        writeFileSync(resolve(__dirname, 'dist/design-tokens.css'), designTokens);
+
         // Copy sidebar.html
         const sidebarHtml = readFileSync(
           resolve(__dirname, 'src/sidebar.html'),

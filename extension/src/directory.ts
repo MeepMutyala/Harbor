@@ -22,7 +22,7 @@ function toggleTheme(): void {
 function updateThemeIcon(theme: string): void {
   const icon = document.getElementById('theme-icon');
   if (icon) {
-    icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    icon.textContent = theme === 'dark' ? '○' : '●';
   }
 }
 
@@ -138,7 +138,7 @@ function renderServers(): void {
   if (isLoading) {
     mainContent.innerHTML = `
       <div class="loading-state">
-        <div class="loading-spinner">⏳</div>
+        <div class="loading-spinner">↻</div>
         <p>Loading directory...</p>
       </div>
     `;
@@ -151,7 +151,7 @@ function renderServers(): void {
   if (filtered.length === 0) {
     mainContent.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">📭</div>
+        <div class="empty-icon">—</div>
         <p class="empty-title">${query ? 'No servers match your search' : 'No servers found'}</p>
         <p class="empty-description">Try adjusting your filters or refreshing the catalog.</p>
       </div>
@@ -256,10 +256,10 @@ function renderServerCard(server: CatalogServer): string {
     ? `
       <div class="server-endpoint">
         <span class="server-endpoint-url">${escapeHtml(server.endpointUrl)}</span>
-        <button class="btn btn-copy" data-url="${escapeHtml(server.endpointUrl)}" title="Copy URL">📋</button>
+        <button class="btn btn-sm btn-ghost btn-copy" data-url="${escapeHtml(server.endpointUrl)}" title="Copy URL">⎘</button>
       </div>
     `
-    : `<p class="server-no-endpoint">No remote endpoint available</p>`;
+    : `<p class="server-no-endpoint">Local install only</p>`;
 
   // Action buttons
   let actionsHtml = '';
@@ -267,22 +267,22 @@ function renderServerCard(server: CatalogServer): string {
   if (server.endpointUrl) {
     // Remote server - can add directly
     actionsHtml += `
-      <button class="btn btn-small btn-success btn-add" data-name="${escapeHtml(server.name)}" data-url="${escapeHtml(server.endpointUrl)}">
-        + Add to Harbor
+      <button class="btn btn-sm btn-success btn-add" data-name="${escapeHtml(server.name)}" data-url="${escapeHtml(server.endpointUrl)}">
+        Add
       </button>
     `;
   } else {
     // Installable server - show install button
     actionsHtml += `
-      <button class="btn btn-small btn-primary btn-install" data-server='${JSON.stringify(server).replace(/'/g, "\\'")}'>
-        📦 Install
+      <button class="btn btn-sm btn-primary btn-install" data-server='${JSON.stringify(server).replace(/'/g, "\\'")}'>
+        Install
       </button>
     `;
   }
 
   const linkHtml = server.homepageUrl
     ? `<a href="${escapeHtml(server.homepageUrl)}" target="_blank" class="server-link" onclick="event.stopPropagation()">
-        ${server.homepageUrl.includes('github.com') ? 'GitHub ↗' : 'Homepage ↗'}
+        ${server.homepageUrl.includes('github.com') ? 'GitHub →' : 'Home →'}
       </a>`
     : '';
 
@@ -380,9 +380,9 @@ async function installServer(server: CatalogServer): Promise<void> {
 
 // Update filter pills UI
 function updateFilterPillsUI(): void {
-  filterPillsContainer.querySelectorAll('.filter-pill').forEach(pill => {
-    const filter = (pill as HTMLElement).dataset.filter;
-    pill.classList.toggle('active', filter === activeFilter);
+  filterPillsContainer.querySelectorAll('.filter-tab').forEach(tab => {
+    const filter = (tab as HTMLElement).dataset.filter;
+    tab.classList.toggle('active', filter === activeFilter);
   });
 }
 
@@ -397,9 +397,9 @@ searchInput.addEventListener('input', () => {
 // Filter pills click handler
 filterPillsContainer.addEventListener('click', (e) => {
   const target = e.target as HTMLElement;
-  const pill = target.closest('.filter-pill') as HTMLElement;
-  if (pill && pill.dataset.filter) {
-    activeFilter = pill.dataset.filter;
+  const tab = target.closest('.filter-tab') as HTMLElement;
+  if (tab && tab.dataset.filter) {
+    activeFilter = tab.dataset.filter;
     updateFilterPillsUI();
     renderServers();
   }

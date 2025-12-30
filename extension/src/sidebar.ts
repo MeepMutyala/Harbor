@@ -102,7 +102,7 @@ function toggleTheme(): void {
 function updateThemeIcon(theme: string): void {
   const icon = document.getElementById('theme-icon');
   if (icon) {
-    icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    icon.textContent = theme === 'dark' ? '○' : '●';
   }
 }
 
@@ -243,16 +243,16 @@ function renderServerList(): void {
         ${
           server.status === 'connected'
             ? `
-          <button class="btn-small btn-danger disconnect-btn" data-server-id="${server.server_id}">Disconnect</button>
-          <button class="btn-small btn-secondary list-tools-btn" data-server-id="${server.server_id}">List Tools</button>
+          <button class="btn btn-sm btn-danger disconnect-btn" data-server-id="${server.server_id}">Disconnect</button>
+          <button class="btn btn-sm btn-secondary list-tools-btn" data-server-id="${server.server_id}">Tools</button>
         `
             : `
-          <button class="btn-small btn-success connect-btn" data-server-id="${server.server_id}" ${server.status === 'connecting' ? 'disabled' : ''}>
+          <button class="btn btn-sm btn-success connect-btn" data-server-id="${server.server_id}" ${server.status === 'connecting' ? 'disabled' : ''}>
             ${server.status === 'connecting' ? 'Connecting...' : 'Connect'}
           </button>
         `
         }
-        <button class="btn-small btn-danger remove-btn" data-server-id="${server.server_id}">Remove</button>
+        <button class="btn btn-sm btn-danger remove-btn" data-server-id="${server.server_id}">Remove</button>
       </div>
     </div>
   `
@@ -473,26 +473,26 @@ function renderInstalledServers(): void {
             <span class="server-label">${escapeHtml(server.name)}</span>
             <span class="server-status-badge ${statusInfo.class}">${statusInfo.text}</span>
           </div>
-          ${server.description ? `<div class="server-description" style="font-size: 11px; color: var(--text-muted); margin: 4px 0;">${escapeHtml(server.description)}</div>` : ''}
+          ${server.description ? `<div class="text-xs text-muted mt-1">${escapeHtml(server.description)}</div>` : ''}
           <div class="server-package-info">${escapeHtml(server.packageType)}:${escapeHtml(server.packageId)}</div>
           ${needsAuth ? `
-            <div class="error-message" style="margin-bottom: 10px;">
-              Missing credentials: ${status.missingSecrets!.join(', ')}
+            <div class="error-message mb-2">
+              Missing: ${status.missingSecrets!.join(', ')}
             </div>
           ` : ''}
           <div class="server-actions">
             ${needsAuth ? `
-              <button class="btn-small btn-primary configure-btn" data-server-id="${escapeHtml(server.id)}">🔑 Configure</button>
+              <button class="btn btn-sm btn-primary configure-btn" data-server-id="${escapeHtml(server.id)}">Configure</button>
             ` : ''}
             ${!needsAuth && !isRunning ? `
-              <button class="btn-small btn-success start-btn" data-server-id="${escapeHtml(server.id)}">▶ Start</button>
+              <button class="btn btn-sm btn-success start-btn" data-server-id="${escapeHtml(server.id)}">Start</button>
             ` : ''}
             ${isRunning ? `
-              <button class="btn-small btn-danger stop-btn" data-server-id="${escapeHtml(server.id)}">⏹ Stop</button>
-              <button class="btn-small btn-secondary mcp-tools-btn" data-server-id="${escapeHtml(server.id)}">Tools</button>
+              <button class="btn btn-sm btn-danger stop-btn" data-server-id="${escapeHtml(server.id)}">Stop</button>
+              <button class="btn btn-sm btn-secondary mcp-tools-btn" data-server-id="${escapeHtml(server.id)}">Tools</button>
             ` : ''}
-            <button class="btn-small btn-secondary configure-btn" data-server-id="${escapeHtml(server.id)}" ${needsAuth ? 'style="display:none;"' : ''}>⚙️</button>
-            <button class="btn-small btn-danger uninstall-btn" data-server-id="${escapeHtml(server.id)}">🗑️</button>
+            <button class="btn btn-sm btn-ghost configure-btn" data-server-id="${escapeHtml(server.id)}" ${needsAuth ? 'style="display:none;"' : ''}>⚙</button>
+            <button class="btn btn-sm btn-danger uninstall-btn" data-server-id="${escapeHtml(server.id)}">✕</button>
           </div>
         </div>
       `;
@@ -582,12 +582,12 @@ async function openCredentialModal(serverId: string): Promise<void> {
               type="password" 
               class="credential-input ${isSet ? 'is-set' : ''}" 
               data-key="${escapeHtml(envVar.name)}"
-              placeholder="${isSet ? '••••••••••••••••' : 'Enter value...'}"
+              placeholder="${isSet ? '••••••••' : 'Enter value...'}"
             >
-            <button class="password-toggle" type="button" data-showing="false">👁️</button>
+            <button class="password-toggle" type="button" data-showing="false">◉</button>
           </div>
           <div class="credential-status ${isSet ? 'set' : 'missing'}">
-            ${isSet ? '✓ Configured' : '⚠ Not set'}
+            ${isSet ? '✓ Set' : '! Missing'}
           </div>
         </div>
       `;
@@ -601,7 +601,7 @@ async function openCredentialModal(serverId: string): Promise<void> {
         const showing = btn.getAttribute('data-showing') === 'true';
         
         input.type = showing ? 'password' : 'text';
-        btn.textContent = showing ? '👁️' : '🙈';
+        btn.textContent = showing ? '◉' : '○';
         btn.setAttribute('data-showing', (!showing).toString());
       });
     });
@@ -773,27 +773,27 @@ function renderLLMStatus(): void {
     if (provider === 'ollama' && llmStatus.ollamaInfo) {
       const ollama = llmStatus.ollamaInfo;
       if (ollama.version) {
-        detailsHtml += ` <span style="color: var(--text-muted);">v${ollama.version}</span>`;
+        detailsHtml += ` <span class="text-muted">v${ollama.version}</span>`;
       }
       
       // Tool support badge
       if (ollama.supportsTools) {
-        detailsHtml += ` <span class="badge badge-success" style="margin-left: 4px; font-size: 9px;">Tools ✓</span>`;
+        detailsHtml += ` <span class="badge badge-success">Tools ✓</span>`;
       } else {
-        detailsHtml += ` <span class="badge badge-warning" style="margin-left: 4px; font-size: 9px;">No Tools</span>`;
+        detailsHtml += ` <span class="badge badge-warning">No Tools</span>`;
       }
     }
     
-    detailsHtml += `<br><span style="font-size: 11px; color: var(--text-muted);">${llmStatus.runningUrl}</span>`;
+    detailsHtml += `<br><span class="text-xs text-muted mono">${llmStatus.runningUrl}</span>`;
     
     if (llmStatus.activeModel) {
-      detailsHtml += `<br>Model: ${llmStatus.activeModel}`;
+      detailsHtml += `<br><span class="text-xs">Model: ${llmStatus.activeModel}</span>`;
     }
     
     // Add Ollama warning if present
     if (llmStatus.ollamaInfo?.warning) {
-      detailsHtml += `<div style="margin-top: 8px; padding: 8px; background: var(--accent-warning-bg); border-radius: 6px; font-size: 11px; color: var(--accent-warning);">
-        ⚠️ ${llmStatus.ollamaInfo.warning}
+      detailsHtml += `<div class="error-message mt-2" style="background: var(--color-warning-subtle); color: var(--color-warning);">
+        ${llmStatus.ollamaInfo.warning}
       </div>`;
     }
     
