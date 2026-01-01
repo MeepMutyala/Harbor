@@ -223,6 +223,24 @@
       border-radius: var(--radius-sm);
       padding: var(--space-3);
       border: 1px solid var(--color-border-subtle);
+      transition: all var(--transition-fast);
+      position: relative;
+    }
+
+    .installed-server-item:hover {
+      border-color: var(--color-border-default);
+    }
+
+    .installed-server-item.running {
+      border-left: 3px solid var(--color-success);
+    }
+
+    .installed-server-item.needs-auth {
+      border-left: 3px solid var(--color-warning);
+    }
+
+    .installed-server-item.error {
+      border-left: 3px solid var(--color-error);
     }
 
     .server-status-badge {
@@ -241,9 +259,31 @@
       color: var(--color-success);
     }
 
+    .server-status-badge.running::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--color-success);
+      border-radius: 50%;
+      animation: pulse-dot 2s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
     .server-status-badge.stopped {
       background: var(--color-bg-subtle);
       color: var(--color-text-muted);
+    }
+
+    .server-status-badge.stopped::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--color-text-muted);
+      border-radius: 50%;
     }
 
     .server-status-badge.needs-auth {
@@ -251,9 +291,42 @@
       color: var(--color-warning);
     }
 
+    .server-status-badge.needs-auth::before {
+      content: '!';
+      font-weight: bold;
+      font-size: 9px;
+    }
+
     .server-status-badge.error {
       background: var(--color-error-subtle);
       color: var(--color-error);
+    }
+
+    .server-status-badge.error::before {
+      content: '✕';
+      font-size: 8px;
+    }
+
+    /* Running server highlight */
+    .running-servers-summary {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-success-subtle);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-3);
+      font-size: var(--text-xs);
+      color: var(--color-success);
+      font-weight: var(--weight-medium);
+    }
+
+    .running-servers-summary .dot {
+      width: 8px;
+      height: 8px;
+      background: var(--color-success);
+      border-radius: 50%;
+      animation: pulse-dot 2s infinite;
     }
 
     .server-package-info {
@@ -271,6 +344,107 @@
       overflow-x: auto;
       max-height: 120px;
       overflow-y: auto;
+    }
+
+    /* Catalog Status */
+    .catalog-status-body {
+      padding: var(--space-2) var(--space-3);
+    }
+
+    .catalog-status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-1) 0;
+      font-size: var(--text-xs);
+    }
+
+    .catalog-status-label {
+      color: var(--color-text-muted);
+    }
+
+    .catalog-status-value {
+      color: var(--color-text-primary);
+      font-weight: var(--weight-medium);
+    }
+
+    .catalog-status-value.loading {
+      color: var(--color-warning);
+    }
+
+    .catalog-status-value.success {
+      color: var(--color-success);
+    }
+
+    .catalog-status-value.error {
+      color: var(--color-error);
+    }
+
+    .catalog-activity {
+      margin-top: var(--space-2);
+      padding-top: var(--space-2);
+      border-top: 1px solid var(--color-border-subtle);
+      font-size: var(--text-xs);
+      max-height: 80px;
+      overflow-y: auto;
+    }
+
+    .catalog-activity-item {
+      display: flex;
+      gap: var(--space-2);
+      padding: 2px 0;
+      color: var(--color-text-secondary);
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .catalog-activity-item.new {
+      background: var(--color-accent-primary-alpha);
+      animation: highlight 1s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes highlight {
+      0% { background: var(--color-accent-primary); color: white; }
+      100% { background: transparent; color: var(--color-text-secondary); }
+    }
+
+    .catalog-activity-time {
+      color: var(--color-text-muted);
+      white-space: nowrap;
+    }
+
+    .catalog-activity-msg {
+      flex: 1;
+    }
+
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .catalog-controls {
+      display: flex;
+      gap: var(--space-1);
     }
 
     pre {
@@ -676,6 +850,149 @@
     .empty-state a {
       color: var(--color-accent-primary);
     }
+
+    /* Bridge Activity Panel */
+    .panel-title-with-indicator {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .bridge-indicator {
+      font-size: 8px;
+      color: var(--color-success);
+      animation: pulse 2s infinite;
+    }
+
+    .bridge-indicator.error {
+      color: var(--color-error);
+    }
+
+    .bridge-indicator.idle {
+      color: var(--color-text-muted);
+      animation: none;
+    }
+
+    .bridge-activity-tabs {
+      display: flex;
+      gap: var(--space-1);
+      padding: var(--space-2);
+      border-bottom: 1px solid var(--color-border-subtle);
+      background: var(--color-bg-subtle);
+    }
+
+    .bridge-tab {
+      padding: var(--space-1) var(--space-2);
+      background: transparent;
+      border: none;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-family: var(--font-sans);
+    }
+
+    .bridge-tab:hover {
+      background: var(--color-surface-primary);
+    }
+
+    .bridge-tab.active {
+      background: var(--color-accent-primary);
+      color: white;
+    }
+
+    .bridge-activity-log {
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: var(--text-xs);
+      padding: var(--space-2);
+    }
+
+    .bridge-entry {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-2);
+      padding: var(--space-1) 0;
+      border-bottom: 1px solid var(--color-border-subtle);
+      cursor: pointer;
+    }
+
+    .bridge-entry:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .bridge-entry:last-child {
+      border-bottom: none;
+    }
+
+    .bridge-time {
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      font-size: var(--text-2xs);
+    }
+
+    .bridge-dir {
+      font-weight: var(--weight-bold);
+      width: 12px;
+      text-align: center;
+    }
+
+    .bridge-dir.send {
+      color: var(--color-accent-primary);
+    }
+
+    .bridge-dir.recv {
+      color: var(--color-success);
+    }
+
+    .bridge-type {
+      font-family: var(--font-mono);
+      color: var(--color-text-primary);
+      font-weight: var(--weight-medium);
+    }
+
+    .bridge-summary {
+      color: var(--color-text-muted);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .bridge-json-view {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .bridge-json-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-2);
+      background: var(--color-bg-subtle);
+      border-bottom: 1px solid var(--color-border-subtle);
+      position: sticky;
+      top: 0;
+    }
+
+    .bridge-json-title {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-medium);
+      color: var(--color-text-muted);
+    }
+
+    .bridge-json-view pre {
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--color-text-secondary);
+      background: var(--color-bg-subtle);
+      padding: var(--space-2);
+      border-radius: var(--radius-sm);
+    }
   </style>
 </head>
 <body>
@@ -789,14 +1106,18 @@
       </div>
     </div>
 
-    <!-- Installed Servers Section -->
+    <!-- Installed Servers Section - Now Primary -->
     <div class="panel" id="installed-servers-card">
       <div class="panel-header">
-        <span class="panel-title">Installed Servers</span>
+        <span class="panel-title">My Servers</span>
+        <button class="btn btn-sm btn-ghost" id="refresh-installed" title="Refresh">↻</button>
       </div>
       <div class="panel-body">
         <div id="installed-server-list" class="server-list">
-          <div class="empty-state">No servers installed</div>
+          <div class="empty-state">
+            No servers installed. 
+            <a href="#" id="go-to-directory-link" style="color: var(--color-accent-primary);">Browse directory</a>
+          </div>
         </div>
       </div>
     </div>
@@ -819,25 +1140,41 @@
       </div>
     </div>
 
-    <!-- Last Response -->
-    <div class="panel">
+    <!-- Catalog Status -->
+    <div class="panel" id="catalog-status-panel">
       <div class="panel-header">
-        <div class="collapsible-header" id="response-header">
-          <span class="panel-title" style="margin-bottom: 0;">Last Response</span>
-          <div class="flex items-center gap-2">
-            <button class="btn btn-sm btn-ghost" id="copy-response-btn">Copy</button>
-            <span class="collapse-icon">▼</span>
-          </div>
+        <span class="panel-title">Server Directory</span>
+        <div class="catalog-controls">
+          <span class="live-indicator" id="live-indicator" title="Listening for updates">
+            <span class="live-dot"></span>
+            <span>Live</span>
+          </span>
+          <button class="btn btn-sm btn-ghost" id="ping-bridge-btn" title="Test bridge connection">⚡</button>
+          <button class="btn btn-sm btn-ghost" id="refresh-catalog-btn" title="Refresh catalog">↻</button>
         </div>
       </div>
-      <div id="response-content" class="collapsible-content panel-body" style="padding-top: 0;">
-        <div class="message-content">
-          <pre id="last-message" class="no-message">No messages received</pre>
+      <div class="panel-body catalog-status-body">
+        <div class="catalog-status" id="catalog-status">
+          <div class="catalog-status-row">
+            <span class="catalog-status-label">Status</span>
+            <span class="catalog-status-value" id="catalog-status-text">Loading...</span>
+          </div>
+          <div class="catalog-status-row">
+            <span class="catalog-status-label">Servers</span>
+            <span class="catalog-status-value" id="catalog-server-count">—</span>
+          </div>
+          <div class="catalog-status-row">
+            <span class="catalog-status-label">Last Updated</span>
+            <span class="catalog-status-value" id="catalog-last-updated">—</span>
+          </div>
+        </div>
+        <div class="catalog-activity" id="catalog-activity">
+          <!-- Activity messages will appear here -->
         </div>
       </div>
     </div>
 
-    <!-- Tools Response -->
+    <!-- Tools Response (shown when listing tools) -->
     <div class="panel" id="tools-card" style="display: none;">
       <div class="panel-header">
         <span class="panel-title">Tools Response</span>
@@ -856,6 +1193,16 @@
       </div>
       <div class="panel-body">
         <!-- Toggles -->
+        <div class="toggle-row">
+          <label class="toggle-label">
+            <span class="toggle-label-text">Auto-Sync Catalog</span>
+            <span class="toggle-label-hint">Refresh server list hourly</span>
+          </label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="auto-sync-toggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
         <div class="toggle-row">
           <label class="toggle-label">
             <span class="toggle-label-text">Compare Mode</span>
@@ -887,6 +1234,33 @@
             <span class="quick-link-icon">📂</span>
             <span>Directory</span>
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bridge Activity Panel (collapsible) -->
+    <div class="panel" id="bridge-activity-panel">
+      <div class="panel-header collapsible-header" id="bridge-activity-header">
+        <div class="panel-title-with-indicator">
+          <span class="panel-title">Bridge Activity</span>
+          <span class="bridge-indicator" id="bridge-indicator">●</span>
+        </div>
+        <span class="collapse-icon" id="bridge-activity-collapse-icon">▼</span>
+      </div>
+      <div id="bridge-activity-content" class="collapsible-content panel-body" style="padding: 0;">
+        <div class="bridge-activity-tabs">
+          <button class="bridge-tab active" data-tab="activity">Activity</button>
+          <button class="bridge-tab" data-tab="json">Raw JSON</button>
+        </div>
+        <div class="bridge-activity-log" id="bridge-activity-log">
+          <!-- Activity entries will appear here -->
+        </div>
+        <div class="bridge-json-view" id="bridge-json-view" style="display: none;">
+          <div class="bridge-json-header">
+            <span class="bridge-json-title">Selected Message</span>
+            <button class="btn btn-sm btn-ghost" id="copy-bridge-json-btn">Copy</button>
+          </div>
+          <pre id="bridge-json-content">Select a message to view</pre>
         </div>
       </div>
     </div>

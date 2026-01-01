@@ -90,6 +90,82 @@ const pendingRequests = new Map<string, PendingRequest>();
 const REQUEST_TIMEOUT_MS = 30000; // Default timeout for most requests
 const CHAT_TIMEOUT_MS = 180000; // 3 minutes for chat (LLM + tools can be slow)
 
+// Message log for debugging
+interface LogEntry {
+  id: number;
+  timestamp: number;
+  direction: 'send' | 'recv';
+  type: string;
+  summary: string;
+  data: unknown;
+}
+
+const MAX_LOG_ENTRIES = 100;
+let logIdCounter = 0;
+const messageLog: LogEntry[] = [];
+
+function addLogEntry(direction: 'send' | 'recv', type: string, data: unknown): void {
+  const summary = getMessageSummary(direction, type, data);
+  
+  const entry: LogEntry = {
+    id: ++logIdCounter,
+    timestamp: Date.now(),
+    direction,
+    type,
+    summary,
+    data,
+  };
+  
+  messageLog.push(entry);
+  
+  // Keep only the last MAX_LOG_ENTRIES
+  while (messageLog.length > MAX_LOG_ENTRIES) {
+    messageLog.shift();
+  }
+  
+  // Broadcast the new log entry to any listeners
+  browser.runtime
+    .sendMessage({ type: 'log_entry', entry })
+    .catch(() => {});
+}
+
+function getMessageSummary(direction: 'send' | 'recv', type: string, data: unknown): string {
+  const arrow = direction === 'send' ? '→' : '←';
+  const d = data as Record<string, unknown>;
+  
+  switch (type) {
+    case 'catalog_get':
+    case 'catalog_refresh':
+      return `${arrow} Fetching catalog...`;
+    case 'catalog_get_result':
+    case 'catalog_refresh_result':
+      const servers = (d.servers as unknown[])?.length || 0;
+      return `${arrow} Received ${servers} servers`;
+    case 'catalog_enrich':
+      return `${arrow} Starting popularity enrichment...`;
+    case 'catalog_enrich_result':
+      return `${arrow} Enriched ${d.enriched || 0} servers`;
+    case 'install_server':
+      const name = (d.catalog_entry as Record<string, unknown>)?.name || 'server';
+      return `${arrow} Installing ${name}...`;
+    case 'install_server_result':
+      return `${arrow} Installation complete`;
+    case 'mcp_connect':
+      return `${arrow} Connecting to ${d.server_id}...`;
+    case 'mcp_connect_result':
+      return d.connected ? `${arrow} Connected!` : `${arrow} Connection failed`;
+    case 'error':
+      const errMsg = (d.error as Record<string, unknown>)?.message || 'Unknown error';
+      return `${arrow} Error: ${errMsg}`;
+    case 'hello':
+      return `${arrow} Handshake`;
+    case 'pong':
+      return `${arrow} Bridge v${d.bridge_version}`;
+    default:
+      return `${arrow} ${type}`;
+  }
+}
+
 function generateRequestId(): string {
   return crypto.randomUUID();
 }
@@ -120,12 +196,31 @@ function updateState(updates: Partial<ConnectionState>): void {
 function handleNativeMessage(message: unknown): void {
   console.log('Received from native:', message);
   const response = message as BridgeResponse;
+  
+  // Log the received message
+  addLogEntry('recv', response.type, response);
 
   updateState({
     connected: true,
     lastMessage: response,
     error: null,
   });
+
+  // Handle status updates (pushed from bridge, not in response to a request)
+  if (response.type === 'status_update') {
+    console.log('[Background] Status update:', response);
+    // Broadcast status updates to all extension pages
+    browser.runtime
+      .sendMessage({ 
+        type: 'catalog_status', 
+        category: (response as { category?: string }).category,
+        status: (response as { status?: string }).status,
+        message: (response as { message?: string }).message,
+        ...response,
+      })
+      .catch(() => {});
+    return;
+  }
 
   // Resolve pending request if this is a response
   const requestId = response.request_id;
@@ -197,6 +292,9 @@ async function sendToBridge(message: HarborMessage, timeoutMs?: number): Promise
 
     pendingRequests.set(message.request_id, { resolve, reject, timeout });
 
+    // Log the sent message
+    addLogEntry('send', message.type, message);
+    
     console.log('Sending to native:', message);
     port!.postMessage(message);
   });
@@ -220,6 +318,10 @@ browser.runtime.onMessage.addListener(
     if (msg.type === 'get_state') {
       return Promise.resolve(connectionState);
     }
+    
+    if (msg.type === 'get_message_log') {
+      return Promise.resolve({ log: messageLog });
+    }
 
     if (msg.type === 'send_hello') {
       if (!port) {
@@ -227,6 +329,18 @@ browser.runtime.onMessage.addListener(
       }
       sendHello();
       return Promise.resolve({ sent: true });
+    }
+
+    // Diagnostic ping - tests the full pipeline including push status updates
+    if (msg.type === 'send_ping') {
+      if (!port) {
+        connectToNative();
+      }
+      return sendToBridge({
+        type: 'ping',
+        request_id: generateRequestId(),
+        echo: msg.echo || 'test',
+      });
     }
 
     if (msg.type === 'reconnect') {
@@ -331,6 +445,14 @@ browser.runtime.onMessage.addListener(
         }
         throw new Error(response?.error?.message || 'Failed to search catalog');
       });
+    }
+
+    if (msg.type === 'catalog_enrich') {
+      console.log('[catalog] Starting enrichment via bridge');
+      return sendToBridge({
+        type: 'catalog_enrich',
+        request_id: generateRequestId(),
+      }, 120000); // 2 minute timeout for enrichment
     }
 
     // Installer messages - forward to native bridge

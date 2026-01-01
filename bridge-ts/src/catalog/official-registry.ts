@@ -13,6 +13,7 @@ const REGISTRY_BASE_URL = 'https://registry.modelcontextprotocol.io';
 const SERVERS_ENDPOINT = '/v0/servers';
 const DEFAULT_LIMIT = 100;
 const MAX_PAGES = 10;
+const FETCH_TIMEOUT_MS = 10000; // 10 second timeout per request
 
 interface RegistryEntry {
   server?: Record<string, unknown>;
@@ -48,7 +49,11 @@ export class OfficialRegistryProvider extends CatalogProvider {
         const url = `${REGISTRY_BASE_URL}${SERVERS_ENDPOINT}?${params}`;
         log(`[${this.name}] Fetching: ${url} (page ${pagesFetched + 1})`);
 
-        const response = await fetch(url);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);

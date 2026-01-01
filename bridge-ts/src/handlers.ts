@@ -1,12 +1,16 @@
 /**
  * Message handlers for the native messaging bridge.
+ * 
+ * Supports two modes:
+ * - Single process: Uses CatalogManager directly
+ * - Worker process: Uses CatalogClient to talk to worker
  */
 
-import { log } from './native-messaging.js';
+import { log, pushStatus } from './native-messaging.js';
 import { getServerStore, ServerStore } from './server-store.js';
 import { getMcpClient, McpClient } from './mcp-client.js';
-import { getCatalogManager, CatalogManager } from './catalog/index.js';
-import { getInstalledServerManager, InstalledServerManager } from './installer/index.js';
+import { getCatalogManager, CatalogManager, CatalogClient } from './catalog/index.js';
+import { getInstalledServerManager, InstalledServerManager, resolveGitHubPackage } from './installer/index.js';
 import { getSecretStore } from './installer/secrets.js';
 import { getMcpClientManager, McpClientManager } from './mcp/index.js';
 import { 
@@ -30,6 +34,18 @@ import {
 } from './chat/index.js';
 
 const VERSION = '0.1.0';
+
+// Optional CatalogClient for worker architecture
+let _catalogClient: CatalogClient | null = null;
+
+export function setCatalogClient(client: CatalogClient): void {
+  _catalogClient = client;
+  log('[Handlers] Using catalog worker architecture');
+}
+
+export function getCatalogClient(): CatalogClient | null {
+  return _catalogClient;
+}
 
 type MessageHandler = (
   message: Message,
@@ -75,6 +91,28 @@ const handleHello: MessageHandler = async (message) => {
     type: 'pong',
     request_id: message.request_id || '',
     bridge_version: VERSION,
+  };
+};
+
+// Diagnostic ping - sends a status update back to verify the push channel works
+const handlePing: MessageHandler = async (message) => {
+  const requestId = message.request_id || '';
+  const echo = message.echo as string || 'pong';
+  
+  // Send a push status update (unsolicited message)
+  pushStatus('diagnostic', 'ping_received', { 
+    message: `Ping received: ${echo}`,
+    echo,
+    timestamp: Date.now(),
+  });
+  
+  // Also return a regular response
+  return {
+    type: 'ping_result',
+    request_id: requestId,
+    echo,
+    timestamp: Date.now(),
+    message: 'Ping successful - check for status_update message',
   };
 };
 
@@ -314,6 +352,19 @@ const handleCatalogGet: MessageHandler = async (message, _store, _client, catalo
   const query = message.query as string | undefined;
 
   try {
+    // Use worker client if available
+    if (_catalogClient) {
+      if (force) {
+        await _catalogClient.refresh(true);
+      }
+      const result = _catalogClient.getCatalog();
+      if (query) {
+        result.servers = _catalogClient.searchServers(query);
+      }
+      return makeResult('catalog_get', requestId, result);
+    }
+    
+    // Fall back to single-process CatalogManager
     const result = await catalog.fetchAll({ forceRefresh: force, query });
     return makeResult('catalog_get', requestId, result);
   } catch (e) {
@@ -327,11 +378,46 @@ const handleCatalogRefresh: MessageHandler = async (message, _store, _client, ca
   const query = message.query as string | undefined;
 
   try {
+    // Use worker client if available
+    if (_catalogClient) {
+      await _catalogClient.refresh(true);
+      const result = _catalogClient.getCatalog();
+      if (query) {
+        result.servers = _catalogClient.searchServers(query);
+      }
+      return makeResult('catalog_refresh', requestId, result);
+    }
+    
+    // Fall back to single-process CatalogManager
     const result = await catalog.fetchAll({ forceRefresh: true, query });
     return makeResult('catalog_refresh', requestId, result);
   } catch (e) {
     log(`Failed to refresh catalog: ${e}`);
     return makeError(requestId, 'catalog_error', `Failed to refresh catalog: ${e}`);
+  }
+};
+
+const handleCatalogEnrich: MessageHandler = async (message, _store, _client, catalog) => {
+  const requestId = message.request_id || '';
+
+  try {
+    log('[handleCatalogEnrich] Starting full enrichment...');
+    
+    // Use worker client if available
+    if (_catalogClient) {
+      const result = await _catalogClient.enrich();
+      return makeResult('catalog_enrich', requestId, result);
+    }
+    
+    // Fall back to single-process CatalogManager
+    const result = await catalog.enrichAll();
+    return makeResult('catalog_enrich', requestId, {
+      enriched: result.enriched,
+      failed: result.failed,
+    });
+  } catch (e) {
+    log(`Failed to enrich catalog: ${e}`);
+    return makeError(requestId, 'enrich_error', `Failed to enrich catalog: ${e}`);
   }
 };
 
@@ -378,11 +464,65 @@ const handleInstallServer: MessageHandler = async (message, _store, _client, _ca
   }
 
   try {
-    const server = await installer.install(catalogEntry, packageIndex);
+    // If no package info, try to resolve from GitHub
+    let entryWithPackage = catalogEntry;
+    const hasPackageInfo = catalogEntry.packages && 
+                           catalogEntry.packages.length > 0 && 
+                           catalogEntry.packages[0].identifier;
+    
+    if (!hasPackageInfo && catalogEntry.homepageUrl?.includes('github.com')) {
+      log(`[handleInstallServer] Resolving package info from GitHub: ${catalogEntry.homepageUrl}`);
+      const resolved = await resolveGitHubPackage(catalogEntry.homepageUrl);
+      
+      if (resolved && resolved.name) {
+        // Create a copy with resolved package info
+        entryWithPackage = {
+          ...catalogEntry,
+          packages: [{
+            registryType: resolved.type === 'python' ? 'pypi' : 'npm',
+            identifier: resolved.name,
+            environmentVariables: [],
+          }],
+        };
+        log(`[handleInstallServer] Resolved: ${resolved.name} (${resolved.type})`);
+      } else {
+        return makeError(requestId, 'resolve_error', 
+          'Could not find package.json or pyproject.toml in the GitHub repository. ' +
+          'This server may need manual installation.');
+      }
+    }
+
+    const server = await installer.install(entryWithPackage, packageIndex);
     return makeResult('install_server', requestId, { server });
   } catch (e) {
     log(`Failed to install server: ${e}`);
     return makeError(requestId, 'install_error', String(e));
+  }
+};
+
+// Resolve package info from a GitHub URL
+const handleResolveGitHub: MessageHandler = async (message) => {
+  const requestId = message.request_id || '';
+  const githubUrl = message.github_url as string || '';
+
+  if (!githubUrl) {
+    return makeError(requestId, 'invalid_request', 'Missing github_url');
+  }
+
+  try {
+    const resolved = await resolveGitHubPackage(githubUrl);
+    
+    if (!resolved) {
+      return makeError(requestId, 'resolve_error', 'Could not resolve package info from GitHub URL');
+    }
+
+    return makeResult('resolve_github', requestId, { 
+      package: resolved,
+      canInstall: !!resolved.name,
+    });
+  } catch (e) {
+    log(`Failed to resolve GitHub package: ${e}`);
+    return makeError(requestId, 'resolve_error', String(e));
   }
 };
 
@@ -1539,6 +1679,7 @@ const handleChatClearMessages: MessageHandler = async (message, _store, _client,
 
 const HANDLERS: Record<string, MessageHandler> = {
   hello: handleHello,
+  ping: handlePing,
   add_server: handleAddServer,
   remove_server: handleRemoveServer,
   list_servers: handleListServers,
@@ -1552,9 +1693,11 @@ const HANDLERS: Record<string, MessageHandler> = {
   catalog_get: handleCatalogGet,
   catalog_refresh: handleCatalogRefresh,
   catalog_search: handleCatalogSearch,
+  catalog_enrich: handleCatalogEnrich,
   // Installer handlers
   check_runtimes: handleCheckRuntimes,
   install_server: handleInstallServer,
+  resolve_github: handleResolveGitHub,
   uninstall_server: handleUninstallServer,
   list_installed: handleListInstalled,
   start_installed: handleStartInstalled,

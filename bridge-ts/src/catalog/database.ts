@@ -117,7 +117,11 @@ export class CatalogDatabase {
         removed_at REAL,
         is_featured INTEGER DEFAULT 0,
         popularity_score INTEGER DEFAULT 0,
-        priority_score INTEGER DEFAULT 0
+        priority_score INTEGER DEFAULT 0,
+        github_stars INTEGER,
+        npm_downloads INTEGER,
+        last_commit_at REAL,
+        enriched_at REAL
       );
 
       CREATE INDEX IF NOT EXISTS idx_servers_source ON servers(source);
@@ -139,6 +143,29 @@ export class CatalogDatabase {
         value TEXT
       );
     `);
+    
+    // Migrate: Add new columns if they don't exist (for existing databases)
+    this.migrateDatabase();
+  }
+  
+  private migrateDatabase(): void {
+    // Check if columns exist and add them if not
+    const tableInfo = this.sqlite.prepare('PRAGMA table_info(servers)').all() as Array<{ name: string }>;
+    const columnNames = new Set(tableInfo.map(c => c.name));
+    
+    const migrations: Array<{ column: string; definition: string }> = [
+      { column: 'github_stars', definition: 'INTEGER' },
+      { column: 'npm_downloads', definition: 'INTEGER' },
+      { column: 'last_commit_at', definition: 'REAL' },
+      { column: 'enriched_at', definition: 'REAL' },
+    ];
+    
+    for (const { column, definition } of migrations) {
+      if (!columnNames.has(column)) {
+        log(`[CatalogDatabase] Adding column: ${column}`);
+        this.sqlite.exec(`ALTER TABLE servers ADD COLUMN ${column} ${definition}`);
+      }
+    }
   }
 
   getAllServers(options: {
@@ -388,7 +415,7 @@ export class CatalogDatabase {
     return result ? result.count > 0 : true;
   }
 
-  getStats(): { total: number; remote: number; removed: number; featured: number } {
+  getStats(): { total: number; remote: number; removed: number; featured: number; bySource: Record<string, number> } {
     const result = this.db
       .select({
         total: sql<number>`count(*)`,
@@ -399,12 +426,92 @@ export class CatalogDatabase {
       .from(servers)
       .get();
 
+    // Get count by source
+    const bySource: Record<string, number> = {};
+    const sourceRows = this.db
+      .select({
+        source: servers.source,
+        count: sql<number>`count(*)`,
+      })
+      .from(servers)
+      .where(eq(servers.isRemoved, false))
+      .groupBy(servers.source)
+      .all();
+    
+    for (const row of sourceRows) {
+      bySource[row.source] = row.count;
+    }
+
     return {
       total: result?.total || 0,
       remote: result?.remote || 0,
       removed: result?.removed || 0,
       featured: result?.featured || 0,
+      bySource,
     };
+  }
+
+  /**
+   * Search servers by query string.
+   * Alias for searchServers.
+   */
+  search(query: string, limit?: number): CatalogServer[] {
+    return this.searchServers(query, limit);
+  }
+
+  /**
+   * Get the last successful fetch time across all providers.
+   */
+  getLastFetchTime(): number | null {
+    const result = this.db
+      .select({ lastSuccess: sql<number>`max(${providerStatus.lastSuccessAt})` })
+      .from(providerStatus)
+      .get();
+    
+    return result?.lastSuccess || null;
+  }
+
+  /**
+   * Update enrichment data for a server.
+   */
+  updateEnrichment(
+    serverId: string,
+    data: {
+      githubStars?: number;
+      npmDownloads?: number;
+      lastCommitAt?: number;
+      popularityScore?: number;
+    }
+  ): void {
+    const now = Date.now();
+    
+    this.db.update(servers)
+      .set({
+        githubStars: data.githubStars,
+        npmDownloads: data.npmDownloads,
+        lastCommitAt: data.lastCommitAt,
+        popularityScore: data.popularityScore,
+        enrichedAt: now,
+      })
+      .where(eq(servers.id, serverId))
+      .run();
+  }
+
+  /**
+   * Batch update enrichment data.
+   */
+  updateEnrichmentBatch(
+    updates: Array<{
+      serverId: string;
+      githubStars?: number;
+      npmDownloads?: number;
+      lastCommitAt?: number;
+      popularityScore?: number;
+    }>
+  ): void {
+    for (const update of updates) {
+      this.updateEnrichment(update.serverId, update);
+    }
   }
 
   private rowToServer(row: Server): CatalogServer {
@@ -430,6 +537,9 @@ export class CatalogDatabase {
       isRemoved: row.isRemoved ?? false,
       isFeatured: row.isFeatured ?? false,
       priorityScore: row.priorityScore || 0,
+      popularityScore: row.popularityScore || 0,
+      githubStars: row.githubStars ?? undefined,
+      npmDownloads: row.npmDownloads ?? undefined,
     };
   }
 

@@ -9,6 +9,7 @@ import { CatalogServer } from '../types.js';
 import { CatalogProvider, ProviderResult, generateServerId } from './base.js';
 
 const AWESOME_URL = 'https://raw.githubusercontent.com/wong2/awesome-mcp-servers/main/README.md';
+const FETCH_TIMEOUT_MS = 10000; // 10 second timeout
 
 // Regex to match markdown links: [text](url) or **[text](url)**
 const LINK_REGEX = /\*{0,2}\[([^\]]+)\]\(([^)]+)\)\*{0,2}/g;
@@ -26,7 +27,12 @@ export class GitHubAwesomeProvider extends CatalogProvider {
     try {
       log(`[${this.name}] Fetching: ${AWESOME_URL}`);
       
-      const response = await fetch(AWESOME_URL);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      
+      const response = await fetch(AWESOME_URL, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }

@@ -47,7 +47,7 @@
     .nav-logo {
       width: 24px;
       height: 24px;
-      background: var(--color-accent-primary);
+      background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
       border-radius: var(--radius-sm);
       display: flex;
       align-items: center;
@@ -114,50 +114,57 @@
       border-color: var(--color-border-strong);
     }
 
-    /* Page header - compact, not hero */
-    .page-header {
-      background: var(--color-surface-primary);
+    /* Hero / Header Section */
+    .hero {
+      background: linear-gradient(135deg, var(--color-surface-primary) 0%, var(--color-bg-subtle) 100%);
       border-bottom: 1px solid var(--color-border-subtle);
-      padding: var(--space-3) var(--space-4);
+      padding: var(--space-6) var(--space-4);
     }
 
-    .page-header-inner {
+    .hero-inner {
       max-width: 1200px;
       margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-4);
     }
 
-    .page-title {
-      font-size: var(--text-lg);
-      font-weight: var(--weight-semibold);
+    .hero-title {
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-bold);
       color: var(--color-text-primary);
+      margin-bottom: var(--space-1);
+      letter-spacing: var(--tracking-tight);
     }
 
-    .page-subtitle {
-      font-size: var(--text-sm);
+    .hero-subtitle {
+      font-size: var(--text-base);
       color: var(--color-text-muted);
-      margin-top: 2px;
+      margin-bottom: var(--space-4);
     }
 
-    /* Search */
+    /* Search & Filter Bar */
+    .search-bar {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
     .search-box {
       position: relative;
-      width: 280px;
+      flex: 1;
+      min-width: 280px;
+      max-width: 400px;
     }
 
     .search-box input {
       width: 100%;
-      height: var(--height-input);
-      padding: 0 var(--space-3) 0 var(--space-8);
+      height: 40px;
+      padding: 0 var(--space-3) 0 var(--space-10);
       background: var(--color-surface-primary);
       border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-md);
       color: var(--color-text-primary);
       font-family: var(--font-sans);
-      font-size: var(--text-sm);
+      font-size: var(--text-base);
       transition: all var(--transition-fast);
     }
 
@@ -177,8 +184,30 @@
       top: 50%;
       transform: translateY(-50%);
       color: var(--color-text-muted);
-      font-size: var(--text-sm);
+      font-size: var(--text-lg);
       pointer-events: none;
+    }
+
+    .custom-url-btn {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: 0 var(--space-4);
+      height: 40px;
+      background: var(--color-surface-primary);
+      border: 1px dashed var(--color-border-default);
+      border-radius: var(--radius-md);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .custom-url-btn:hover {
+      border-color: var(--color-accent-primary);
+      color: var(--color-accent-primary);
+      background: var(--color-accent-primary-subtle);
     }
 
     /* Filter tabs */
@@ -229,68 +258,11 @@
       padding: var(--space-4);
     }
 
-    /* Provider Status */
-    .provider-status {
-      display: flex;
-      gap: var(--space-3);
-      flex-wrap: wrap;
-      margin-bottom: var(--space-4);
+    /* Featured Section */
+    .featured-section {
+      margin-bottom: var(--space-6);
     }
 
-    .provider-badge {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-1) var(--space-3);
-      background: var(--color-surface-primary);
-      border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-    }
-
-    .provider-badge.ok {
-      border-color: var(--color-success);
-    }
-
-    .provider-badge.error {
-      border-color: var(--color-error);
-    }
-
-    .provider-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: var(--radius-full);
-      background: var(--color-text-muted);
-    }
-
-    .provider-badge.ok .provider-dot {
-      background: var(--color-success);
-    }
-
-    .provider-badge.error .provider-dot {
-      background: var(--color-error);
-    }
-
-    .provider-name {
-      color: var(--color-text-secondary);
-      font-weight: var(--weight-medium);
-    }
-
-    .provider-count {
-      color: var(--color-text-primary);
-      font-weight: var(--weight-bold);
-    }
-
-    .provider-error {
-      color: var(--color-error);
-      font-size: var(--text-2xs);
-      max-width: 150px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    /* Section Headers */
     .section-header {
       display: flex;
       align-items: center;
@@ -305,7 +277,7 @@
     }
 
     .section-title {
-      font-size: var(--text-base);
+      font-size: var(--text-lg);
       font-weight: var(--weight-semibold);
       color: var(--color-text-primary);
     }
@@ -317,6 +289,109 @@
       font-size: var(--text-2xs);
       font-weight: var(--weight-semibold);
       color: var(--color-text-secondary);
+    }
+
+    .section-subtitle {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    /* Featured Cards - Horizontal scroll */
+    .featured-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: var(--space-4);
+    }
+
+    .featured-card {
+      background: linear-gradient(135deg, var(--color-surface-primary) 0%, var(--color-bg-subtle) 100%);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .featured-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--color-accent-primary);
+    }
+
+    .featured-card:hover {
+      border-color: var(--color-accent-primary);
+      box-shadow: 0 4px 12px rgba(0, 102, 204, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .featured-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-2);
+      margin-bottom: var(--space-1);
+    }
+
+    .featured-badge {
+      background: var(--color-warning-subtle);
+      color: var(--color-warning);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-2xs);
+      font-weight: var(--weight-semibold);
+      flex-shrink: 0;
+    }
+
+    .featured-card-name {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-primary);
+      line-height: var(--leading-snug);
+      word-break: break-word;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .featured-card-description {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .featured-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .featured-card-tags {
+      display: flex;
+      gap: var(--space-1);
+    }
+
+    /* Popularity Stats */
+    .server-stats {
+      display: flex;
+      gap: var(--space-2);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .server-stats .stat {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      white-space: nowrap;
     }
 
     /* Server Grid */
@@ -333,11 +408,13 @@
       border: 1px solid var(--color-border-default);
       border-radius: var(--radius-md);
       padding: var(--space-3);
-      transition: border-color var(--transition-fast);
+      cursor: pointer;
+      transition: all var(--transition-fast);
     }
 
     .server-card:hover {
       border-color: var(--color-border-strong);
+      box-shadow: var(--shadow-sm);
     }
 
     .server-card-header {
@@ -386,6 +463,11 @@
       color: var(--color-success);
     }
 
+    .badge-installed {
+      background: var(--color-info-subtle);
+      color: var(--color-info);
+    }
+
     .server-description {
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
@@ -395,33 +477,6 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-    }
-
-    .server-endpoint {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-2);
-      background: var(--color-code-bg);
-      border-radius: var(--radius-sm);
-      margin-bottom: var(--space-3);
-    }
-
-    .server-endpoint-url {
-      font-family: var(--font-mono);
-      font-size: var(--text-2xs);
-      color: var(--color-success);
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .server-no-endpoint {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      font-style: italic;
-      margin-bottom: var(--space-3);
     }
 
     .server-tags {
@@ -457,6 +512,62 @@
 
     .server-link:hover {
       text-decoration: underline;
+    }
+
+    /* Provider Status */
+    .provider-status {
+      margin-bottom: var(--space-4);
+    }
+
+    .provider-status-inner {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .provider-badge {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-1) var(--space-3);
+      background: var(--color-surface-primary);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
+
+    .provider-badge.ok {
+      border-color: var(--color-success);
+    }
+
+    .provider-badge.error {
+      border-color: var(--color-error);
+    }
+
+    .provider-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: var(--radius-full);
+      background: var(--color-text-muted);
+    }
+
+    .provider-badge.ok .provider-dot {
+      background: var(--color-success);
+    }
+
+    .provider-badge.error .provider-dot {
+      background: var(--color-error);
+    }
+
+    .provider-name {
+      color: var(--color-text-secondary);
+      font-weight: var(--weight-medium);
+    }
+
+    .provider-count {
+      color: var(--color-text-primary);
+      font-weight: var(--weight-bold);
     }
 
     /* Empty State */
@@ -497,9 +608,327 @@
       margin-bottom: var(--space-4);
     }
 
+    .loading-title {
+      font-weight: var(--weight-medium);
+      color: var(--color-text-primary);
+      margin-bottom: var(--space-2);
+    }
+
+    .loading-status {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      min-height: 1.5em;
+    }
+
     @keyframes spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
+    }
+
+    /* Modal Base */
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: var(--z-modal);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-4);
+    }
+
+    .modal-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-content {
+      position: relative;
+      background: var(--color-surface-primary);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border-default);
+      width: 100%;
+      max-width: 520px;
+      max-height: 85vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      animation: modalIn 0.2s ease;
+    }
+
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: var(--space-4);
+      border-bottom: 1px solid var(--color-border-subtle);
+    }
+
+    .modal-header-content {
+      flex: 1;
+    }
+
+    .modal-title {
+      font-size: var(--text-lg);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-primary);
+      margin: 0 0 var(--space-1) 0;
+    }
+
+    .modal-subtitle {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    .modal-close {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: var(--color-bg-subtle);
+      font-size: var(--text-lg);
+      cursor: pointer;
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      margin-left: var(--space-3);
+      flex-shrink: 0;
+    }
+
+    .modal-close:hover {
+      background: var(--color-border-default);
+      color: var(--color-text-primary);
+    }
+
+    .modal-body {
+      padding: var(--space-4);
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: var(--space-2);
+      justify-content: flex-end;
+      padding: var(--space-4);
+      border-top: 1px solid var(--color-border-subtle);
+      background: var(--color-bg-subtle);
+    }
+
+    /* Server Detail Modal */
+    .detail-section {
+      margin-bottom: var(--space-4);
+    }
+
+    .detail-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .detail-label {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wide);
+      margin-bottom: var(--space-2);
+    }
+
+    .detail-value {
+      font-size: var(--text-sm);
+      color: var(--color-text-primary);
+      line-height: var(--leading-normal);
+    }
+
+    .detail-url {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-code-bg);
+      border-radius: var(--radius-sm);
+      color: var(--color-success);
+      word-break: break-all;
+    }
+
+    .detail-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+    }
+
+    .detail-links {
+      display: flex;
+      gap: var(--space-3);
+    }
+
+    .detail-link {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-sm);
+      color: var(--color-accent-primary);
+      text-decoration: none;
+    }
+
+    .detail-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Custom URL Modal */
+    .custom-url-input {
+      width: 100%;
+      padding: var(--space-3);
+      font-size: var(--text-base);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-sm);
+      background: var(--color-surface-primary);
+      color: var(--color-text-primary);
+    }
+
+    .custom-url-input:focus {
+      outline: none;
+      border-color: var(--color-border-focus);
+      box-shadow: 0 0 0 3px var(--color-accent-primary-subtle);
+    }
+
+    .custom-url-hint {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-2);
+    }
+
+    .custom-url-examples {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+    }
+
+    .custom-url-examples-title {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-2);
+    }
+
+    .custom-url-example {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      padding: var(--space-1) 0;
+    }
+
+    /* Install Progress Modal */
+    .install-progress {
+      padding: var(--space-2) 0;
+    }
+
+    .install-step {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-3) 0;
+      border-bottom: 1px solid var(--color-border-subtle);
+    }
+
+    .install-step:last-child {
+      border-bottom: none;
+    }
+
+    .install-step-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--text-sm);
+      flex-shrink: 0;
+    }
+
+    .install-step.pending .install-step-icon {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-muted);
+    }
+
+    .install-step.active .install-step-icon {
+      background: var(--color-accent-primary-subtle);
+      color: var(--color-accent-primary);
+      animation: pulse 1.5s infinite;
+    }
+
+    .install-step.complete .install-step-icon {
+      background: var(--color-success-subtle);
+      color: var(--color-success);
+    }
+
+    .install-step.error .install-step-icon {
+      background: var(--color-error-subtle);
+      color: var(--color-error);
+    }
+
+    .install-step-content {
+      flex: 1;
+    }
+
+    .install-step-title {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-text-primary);
+      margin-bottom: 2px;
+    }
+
+    .install-step.pending .install-step-title {
+      color: var(--color-text-muted);
+    }
+
+    .install-step-detail {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .install-step.error .install-step-detail {
+      color: var(--color-error);
+    }
+
+    .install-success-message {
+      text-align: center;
+      padding: var(--space-4);
+    }
+
+    .install-success-icon {
+      font-size: var(--text-3xl);
+      margin-bottom: var(--space-3);
+    }
+
+    .install-success-title {
+      font-size: var(--text-lg);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-primary);
+      margin-bottom: var(--space-1);
+    }
+
+    .install-success-detail {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
     }
 
     /* Toast */
@@ -539,28 +968,42 @@
       }
     }
 
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .nav-links {
         display: none;
       }
 
-      .page-header-inner {
+      .hero {
+        padding: var(--space-4);
+      }
+
+      .search-bar {
         flex-direction: column;
-        align-items: flex-start;
       }
 
       .search-box {
+        max-width: none;
         width: 100%;
       }
 
+      .custom-url-btn {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .featured-grid,
       .server-grid {
         grid-template-columns: 1fr;
       }
 
-      .filter-bar-inner {
-        padding-left: 0;
-        padding-right: 0;
+      .modal-content {
+        max-height: 90vh;
       }
     }
   </style>
@@ -576,8 +1019,7 @@
         </a>
         <div class="nav-links">
           <a href="#" class="nav-link active">Directory</a>
-          <a href="#" class="nav-link">Remote</a>
-          <a href="#" class="nav-link">Installed</a>
+          <a href="#" class="nav-link" id="nav-installed">Installed</a>
         </div>
       </div>
       <div class="nav-right">
@@ -588,16 +1030,21 @@
     </div>
   </nav>
 
-  <!-- Page Header (replaces Hero) -->
-  <div class="page-header">
-    <div class="page-header-inner">
-      <div>
-        <h1 class="page-title">MCP Server Directory</h1>
-        <p class="page-subtitle">Browse and install Model Context Protocol servers</p>
-      </div>
-      <div class="search-box">
-        <span class="search-icon">⌕</span>
-        <input type="text" id="search-input" placeholder="Search servers...">
+  <!-- Hero Section -->
+  <div class="hero">
+    <div class="hero-inner">
+      <h1 class="hero-title">MCP Server Directory</h1>
+      <p class="hero-subtitle">Install and run Model Context Protocol servers locally with one click</p>
+      
+      <div class="search-bar">
+        <div class="search-box">
+          <span class="search-icon">⌕</span>
+          <input type="text" id="search-input" placeholder="Search servers by name, description, or tag...">
+        </div>
+        <button class="custom-url-btn" id="custom-url-btn">
+          <span>+</span>
+          <span>Add from GitHub</span>
+        </button>
       </div>
     </div>
   </div>
@@ -606,13 +1053,13 @@
   <div class="filter-bar">
     <div class="filter-bar-inner" id="filter-pills">
       <button class="filter-tab active" data-filter="all">All</button>
-      <button class="filter-tab" data-filter="remote">Remote</button>
+      <button class="filter-tab" data-filter="featured">Popular</button>
       <button class="filter-tab" data-filter="official">Official</button>
-      <button class="filter-tab" data-filter="search">Search</button>
+      <button class="filter-tab" data-filter="filesystem">Filesystem</button>
       <button class="filter-tab" data-filter="database">Database</button>
-      <button class="filter-tab" data-filter="development">Development</button>
-      <button class="filter-tab" data-filter="productivity">Productivity</button>
-      <button class="filter-tab" data-filter="cloud">Cloud</button>
+      <button class="filter-tab" data-filter="search">Search</button>
+      <button class="filter-tab" data-filter="development">Dev Tools</button>
+      <button class="filter-tab" data-filter="automation">Automation</button>
     </div>
   </div>
 
@@ -630,6 +1077,110 @@
         <p>Loading directory...</p>
       </div>
     </main>
+  </div>
+
+  <!-- Server Detail Modal -->
+  <div class="modal" id="detail-modal" style="display: none;">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-content">
+          <h3 class="modal-title" id="detail-modal-title">Server Name</h3>
+          <p class="modal-subtitle" id="detail-modal-subtitle">Source</p>
+        </div>
+        <button class="modal-close" id="detail-modal-close">×</button>
+      </div>
+      <div class="modal-body" id="detail-modal-body">
+        <!-- Server details populated by JS -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="detail-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="detail-modal-install">Install</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom URL Modal -->
+  <div class="modal" id="custom-url-modal" style="display: none;">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-content">
+          <h3 class="modal-title">Install from GitHub or npm</h3>
+          <p class="modal-subtitle">Install any MCP server package</p>
+        </div>
+        <button class="modal-close" id="custom-url-modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <input 
+          type="text" 
+          class="custom-url-input" 
+          id="custom-url-input" 
+          placeholder="@modelcontextprotocol/server-memory"
+        >
+        <p class="custom-url-hint">Enter an npm package name or GitHub repository URL</p>
+        
+        <div class="custom-url-examples">
+          <div class="custom-url-examples-title">Examples:</div>
+          <div class="custom-url-example">@modelcontextprotocol/server-filesystem</div>
+          <div class="custom-url-example">@modelcontextprotocol/server-memory</div>
+          <div class="custom-url-example">https://github.com/anthropics/mcp-server-sqlite</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="custom-url-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="custom-url-modal-add">Install</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Install Progress Modal -->
+  <div class="modal" id="install-modal" style="display: none;">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-content">
+          <h3 class="modal-title" id="install-modal-title">Installing Server</h3>
+          <p class="modal-subtitle" id="install-modal-subtitle">Please wait...</p>
+        </div>
+      </div>
+      <div class="modal-body" id="install-modal-body">
+        <div class="install-progress" id="install-progress">
+          <div class="install-step active" data-step="check">
+            <div class="install-step-icon">1</div>
+            <div class="install-step-content">
+              <div class="install-step-title">Checking requirements</div>
+              <div class="install-step-detail">Verifying runtime availability...</div>
+            </div>
+          </div>
+          <div class="install-step pending" data-step="download">
+            <div class="install-step-icon">2</div>
+            <div class="install-step-content">
+              <div class="install-step-title">Downloading package</div>
+              <div class="install-step-detail">Waiting...</div>
+            </div>
+          </div>
+          <div class="install-step pending" data-step="install">
+            <div class="install-step-icon">3</div>
+            <div class="install-step-content">
+              <div class="install-step-title">Installing dependencies</div>
+              <div class="install-step-detail">Waiting...</div>
+            </div>
+          </div>
+          <div class="install-step pending" data-step="configure">
+            <div class="install-step-icon">4</div>
+            <div class="install-step-content">
+              <div class="install-step-title">Configuring server</div>
+              <div class="install-step-detail">Waiting...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" id="install-modal-footer" style="display: none;">
+        <button class="btn btn-secondary" id="install-modal-close">Close</button>
+        <button class="btn btn-primary" id="install-modal-configure">Configure</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="directory.js"></script>

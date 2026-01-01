@@ -37,6 +37,12 @@ export const servers = sqliteTable('servers', {
   isFeatured: integer('is_featured', { mode: 'boolean' }).default(false),
   popularityScore: integer('popularity_score').default(0),
   priorityScore: integer('priority_score').default(0),
+  
+  // Enrichment data
+  githubStars: integer('github_stars'),
+  npmDownloads: integer('npm_downloads'),
+  lastCommitAt: real('last_commit_at'),
+  enrichedAt: real('enriched_at'),
 }, (table) => ({
   sourceIdx: index('idx_servers_source').on(table.source),
   priorityIdx: index('idx_servers_priority').on(table.priorityScore),

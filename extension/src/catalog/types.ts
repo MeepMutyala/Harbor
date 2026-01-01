@@ -19,6 +19,10 @@ export interface CatalogServer {
   isRemoved?: boolean;
   isFeatured?: boolean;
   priorityScore?: number;
+  // Popularity data from enrichment
+  popularityScore?: number;
+  githubStars?: number;
+  npmDownloads?: number;
 }
 
 export interface ProviderStatus {

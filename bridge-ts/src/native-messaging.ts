@@ -66,6 +66,21 @@ export function log(...args: unknown[]): void {
 }
 
 /**
+ * Push a status update to the extension.
+ * This sends an unsolicited message that the extension can listen for.
+ */
+export function pushStatus(category: string, status: string, details?: Record<string, unknown>): void {
+  writeMessage({
+    type: 'status_update',
+    request_id: '',
+    category,
+    status,
+    timestamp: Date.now(),
+    ...details,
+  });
+}
+
+/**
  * Read messages from stdin asynchronously.
  * Yields decoded message objects.
  */

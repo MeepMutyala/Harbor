@@ -4,20 +4,40 @@
  * 
  * This is the main entry point that runs the bridge loop,
  * reading messages from stdin and writing responses to stdout.
+ * 
+ * Architecture:
+ * - Main bridge handles: Native messaging, MCP connections, LLM, Chat
+ * - Catalog worker (separate process): Scraping, enrichment, database writes
+ * 
+ * Enable worker architecture with: HARBOR_CATALOG_WORKER=1
  */
 
 import { readMessages, writeMessage, log, NativeMessagingError, MessageTooLargeError, InvalidMessageError } from './native-messaging.js';
-import { dispatchMessage } from './handlers.js';
+import { dispatchMessage, setCatalogClient } from './handlers.js';
 import { Message } from './types.js';
 import { warmExecutableCache } from './utils/resolve-executable.js';
+import { getCatalogClient } from './catalog/client.js';
 
 const VERSION = '0.1.0';
+const USE_WORKER = process.env.HARBOR_CATALOG_WORKER === '1';
 
 async function runBridge(): Promise<void> {
   log(`Harbor Bridge v${VERSION} starting...`);
   
   // Warm up executable cache (find npx, node, etc.)
   warmExecutableCache();
+  
+  // Optionally start the catalog worker process
+  if (USE_WORKER) {
+    log('Starting catalog worker process...');
+    const client = getCatalogClient({
+      autoStart: true,
+      onStatus: (status, data) => {
+        log(`[CatalogWorker] ${status}: ${JSON.stringify(data)}`);
+      },
+    });
+    setCatalogClient(client);
+  }
 
   try {
     for await (const message of readMessages()) {

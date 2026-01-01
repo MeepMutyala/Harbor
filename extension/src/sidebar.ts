@@ -109,20 +109,40 @@ function updateThemeIcon(theme: string): void {
 // Initialize theme immediately
 initTheme();
 
+// Catalog status types
+interface CatalogStatus {
+  serverCount: number;
+  lastUpdated: number | null;
+  isLoading: boolean;
+  error: string | null;
+  providerStatus: Array<{
+    id: string;
+    ok: boolean;
+    count?: number;
+  }>;
+}
+
+// Catalog state
+let catalogStatus: CatalogStatus = {
+  serverCount: 0,
+  lastUpdated: null,
+  isLoading: false,
+  error: null,
+  providerStatus: [],
+};
+let catalogActivity: Array<{ time: number; msg: string }> = [];
+let autoSyncEnabled = true;
+
 // DOM Elements
 const statusIndicator = document.getElementById('status-indicator') as HTMLDivElement;
 const statusText = document.getElementById('status-text') as HTMLSpanElement;
 const errorContainer = document.getElementById('error-container') as HTMLDivElement;
-const lastMessageEl = document.getElementById('last-message') as HTMLPreElement;
-const copyResponseBtn = document.getElementById('copy-response-btn') as HTMLButtonElement;
 const sendHelloBtn = document.getElementById('send-hello') as HTMLButtonElement;
 const reconnectBtn = document.getElementById('reconnect') as HTMLButtonElement;
 const serverLabelInput = document.getElementById('server-label') as HTMLInputElement;
 const serverUrlInput = document.getElementById('server-url') as HTMLInputElement;
 const addServerBtn = document.getElementById('add-server') as HTMLButtonElement;
 const serverListEl = document.getElementById('server-list') as HTMLDivElement;
-const responseHeader = document.getElementById('response-header') as HTMLDivElement;
-const responseContent = document.getElementById('response-content') as HTMLDivElement;
 const toolsCard = document.getElementById('tools-card') as HTMLDivElement;
 const toolsResponse = document.getElementById('tools-response') as HTMLPreElement;
 const openDirectoryBtn = document.getElementById('open-directory') as HTMLButtonElement;
@@ -151,6 +171,14 @@ const llmProgressText = document.getElementById('llm-progress-text') as HTMLDivE
 const llmControlSection = document.getElementById('llm-control-section') as HTMLDivElement;
 const llmStartBtn = document.getElementById('llm-start-btn') as HTMLButtonElement;
 const llmStopBtn = document.getElementById('llm-stop-btn') as HTMLButtonElement;
+
+// Catalog elements
+const catalogStatusText = document.getElementById('catalog-status-text') as HTMLSpanElement;
+const catalogServerCount = document.getElementById('catalog-server-count') as HTMLSpanElement;
+const catalogLastUpdated = document.getElementById('catalog-last-updated') as HTMLSpanElement;
+const catalogActivityEl = document.getElementById('catalog-activity') as HTMLDivElement;
+const refreshCatalogBtn = document.getElementById('refresh-catalog-btn') as HTMLButtonElement;
+const autoSyncToggle = document.getElementById('auto-sync-toggle') as HTMLInputElement;
 
 let servers: MCPServer[] = [];
 let selectedServerId: string | null = null;
@@ -182,11 +210,6 @@ function updateConnectionUI(state: ConnectionState): void {
     errorContainer.textContent = state.error;
   } else {
     errorContainer.style.display = 'none';
-  }
-
-  if (state.lastMessage) {
-    lastMessageEl.className = '';
-    lastMessageEl.innerHTML = formatJson(state.lastMessage);
   }
 }
 
@@ -442,7 +465,7 @@ function renderInstalledServers(): void {
     installedServerListEl.innerHTML = `
       <div class="empty-state">
         No servers installed. 
-        <a href="#" id="go-to-directory" style="color: var(--accent-primary);">Browse the directory</a> to find servers.
+        <a href="#" id="go-to-directory" style="color: var(--color-accent-primary);">Browse the directory</a> to find servers.
       </div>
     `;
     const goToDir = document.getElementById('go-to-directory');
@@ -457,18 +480,50 @@ function renderInstalledServers(): void {
 
   console.log('[Sidebar] Rendering installed servers:', installedServers.length);
   
-  installedServerListEl.innerHTML = installedServers
+  // Count running servers
+  const runningCount = installedServers.filter(s => s.process?.state === 'running').length;
+  
+  // Build running summary if any servers are running
+  let summaryHtml = '';
+  if (runningCount > 0) {
+    summaryHtml = `
+      <div class="running-servers-summary">
+        <span class="dot"></span>
+        <span>${runningCount} server${runningCount > 1 ? 's' : ''} running</span>
+      </div>
+    `;
+  }
+  
+  // Sort: running first, then needs-auth, then stopped
+  const sortedServers = [...installedServers]
     .filter(status => status.installed && status.server)
+    .sort((a, b) => {
+      const aRunning = a.process?.state === 'running' ? 0 : 1;
+      const bRunning = b.process?.state === 'running' ? 0 : 1;
+      if (aRunning !== bRunning) return aRunning - bRunning;
+      
+      const aNeedsAuth = (a.missingSecrets?.length || 0) > 0 ? 0 : 1;
+      const bNeedsAuth = (b.missingSecrets?.length || 0) > 0 ? 0 : 1;
+      return aNeedsAuth - bNeedsAuth;
+    });
+  
+  const serversHtml = sortedServers
     .map(status => {
       const server = status.server!;
       const statusInfo = getServerStatusInfo(status);
       const isRunning = status.process?.state === 'running';
       const needsAuth = status.missingSecrets && status.missingSecrets.length > 0;
       
+      // Determine the card class for left border
+      let cardClass = 'installed-server-item';
+      if (isRunning) cardClass += ' running';
+      else if (needsAuth) cardClass += ' needs-auth';
+      else if (status.process?.state === 'error' || status.process?.state === 'crashed') cardClass += ' error';
+      
       console.log('[Sidebar] Server:', server.id, 'isRunning:', isRunning, 'needsAuth:', needsAuth, 'process:', status.process);
 
       return `
-        <div class="installed-server-item" data-server-id="${escapeHtml(server.id)}">
+        <div class="${cardClass}" data-server-id="${escapeHtml(server.id)}">
           <div class="server-header">
             <span class="server-label">${escapeHtml(server.name)}</span>
             <span class="server-status-badge ${statusInfo.class}">${statusInfo.text}</span>
@@ -498,6 +553,8 @@ function renderInstalledServers(): void {
       `;
     })
     .join('');
+  
+  installedServerListEl.innerHTML = summaryHtml + serversHtml;
 
   // Add event listeners
   installedServerListEl.querySelectorAll('.configure-btn').forEach(btn => {
@@ -956,6 +1013,431 @@ browser.runtime.onMessage.addListener((message: unknown) => {
 });
 
 // Initialize
+// =============================================================================
+// Catalog Status Functions
+// =============================================================================
+
+function addCatalogActivity(msg: string, highlight = true): void {
+  catalogActivity.push({ time: Date.now(), msg });
+  if (catalogActivity.length > 10) {
+    catalogActivity.shift(); // Remove oldest from beginning
+  }
+  renderCatalogActivity(highlight);
+  
+  // Flash the live indicator
+  const liveDot = document.querySelector('.live-dot') as HTMLElement;
+  if (liveDot) {
+    liveDot.style.background = 'var(--color-accent-primary)';
+    setTimeout(() => {
+      liveDot.style.background = 'var(--color-success)';
+    }, 200);
+  }
+}
+
+function formatTimeWithMs(timestamp: number): string {
+  const date = new Date(timestamp);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const mins = date.getMinutes().toString().padStart(2, '0');
+  const secs = date.getSeconds().toString().padStart(2, '0');
+  const ms = date.getMilliseconds().toString().padStart(3, '0');
+  return `${hours}:${mins}:${secs}.${ms}`;
+}
+
+function renderCatalogActivity(highlightLast = false): void {
+  if (!catalogActivityEl) return;
+  
+  if (catalogActivity.length === 0) {
+    catalogActivityEl.innerHTML = '<div class="catalog-activity-item" style="color: var(--color-text-muted);">No recent activity</div>';
+    return;
+  }
+  
+  // Show newest at bottom (don't reverse)
+  const items = catalogActivity.slice(-10);
+  const lastIndex = items.length - 1;
+  
+  catalogActivityEl.innerHTML = items.map((item, index) => {
+    const time = formatTimeWithMs(item.time);
+    const isNew = highlightLast && index === lastIndex;
+    return `
+      <div class="catalog-activity-item${isNew ? ' new' : ''}">
+        <span class="catalog-activity-time">${time}</span>
+        <span class="catalog-activity-msg">${escapeHtml(item.msg)}</span>
+      </div>
+    `;
+  }).join('');
+  
+  // Auto-scroll to bottom
+  catalogActivityEl.scrollTop = catalogActivityEl.scrollHeight;
+  
+  // Remove "new" class after animation
+  if (highlightLast) {
+    setTimeout(() => {
+      const newItem = catalogActivityEl.querySelector('.catalog-activity-item.new');
+      newItem?.classList.remove('new');
+    }, 1000);
+  }
+}
+
+function updateCatalogStatusUI(): void {
+  if (!catalogStatusText || !catalogServerCount || !catalogLastUpdated) return;
+  
+  // Status
+  if (catalogStatus.isLoading) {
+    catalogStatusText.textContent = 'Syncing...';
+    catalogStatusText.className = 'catalog-status-value loading';
+  } else if (catalogStatus.error) {
+    catalogStatusText.textContent = 'Error';
+    catalogStatusText.className = 'catalog-status-value error';
+  } else if (catalogStatus.serverCount > 0) {
+    catalogStatusText.textContent = 'Ready';
+    catalogStatusText.className = 'catalog-status-value success';
+  } else {
+    catalogStatusText.textContent = 'No data';
+    catalogStatusText.className = 'catalog-status-value';
+  }
+  
+  // Server count
+  catalogServerCount.textContent = catalogStatus.serverCount > 0 
+    ? String(catalogStatus.serverCount) 
+    : '—';
+  
+  // Last updated
+  if (catalogStatus.lastUpdated) {
+    const ago = Math.floor((Date.now() - catalogStatus.lastUpdated) / 1000 / 60);
+    if (ago < 1) {
+      catalogLastUpdated.textContent = 'Just now';
+    } else if (ago < 60) {
+      catalogLastUpdated.textContent = `${ago}m ago`;
+    } else {
+      const hours = Math.floor(ago / 60);
+      catalogLastUpdated.textContent = `${hours}h ago`;
+    }
+  } else {
+    catalogLastUpdated.textContent = '—';
+  }
+}
+
+async function loadCatalogStatus(): Promise<void> {
+  catalogStatus.isLoading = true;
+  updateCatalogStatusUI();
+  // Don't add activity here - let the bridge status updates show progress
+  
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'catalog_get',
+    }) as { servers?: unknown[]; providerStatus?: unknown[]; fetchedAt?: number };
+    
+    if (response?.servers) {
+      catalogStatus.serverCount = response.servers.length;
+      catalogStatus.lastUpdated = response.fetchedAt || Date.now();
+      catalogStatus.error = null;
+      // Only show "Loaded" if we didn't get intermediate updates
+      if (catalogActivity.length === 0 || !catalogActivity[0]?.msg.includes('servers')) {
+        addCatalogActivity(`Loaded ${response.servers.length} servers`);
+      }
+    }
+    
+    if (response?.providerStatus) {
+      catalogStatus.providerStatus = response.providerStatus as CatalogStatus['providerStatus'];
+    }
+  } catch (err) {
+    console.error('[Sidebar] Failed to load catalog:', err);
+    catalogStatus.error = String(err);
+    addCatalogActivity(`Error: ${String(err).substring(0, 50)}`);
+  } finally {
+    catalogStatus.isLoading = false;
+    updateCatalogStatusUI();
+  }
+}
+
+async function refreshCatalog(): Promise<void> {
+  if (catalogStatus.isLoading) return;
+  
+  catalogStatus.isLoading = true;
+  updateCatalogStatusUI();
+  addCatalogActivity('Requesting refresh...');
+  
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'catalog_refresh',
+    }) as { servers?: unknown[]; fetchedAt?: number };
+    
+    if (response?.servers) {
+      catalogStatus.serverCount = response.servers.length;
+      catalogStatus.lastUpdated = response.fetchedAt || Date.now();
+      catalogStatus.error = null;
+      // Bridge should have sent intermediate status updates
+      // Only add this if we didn't see any updates
+      if (!catalogActivity.some(a => a.msg.includes('servers') && Date.now() - a.time < 5000)) {
+        addCatalogActivity(`Done: ${response.servers.length} servers`);
+      }
+    }
+  } catch (err) {
+    console.error('[Sidebar] Failed to refresh catalog:', err);
+    catalogStatus.error = String(err);
+    addCatalogActivity(`Refresh failed: ${String(err).substring(0, 40)}`);
+  } finally {
+    catalogStatus.isLoading = false;
+    updateCatalogStatusUI();
+  }
+}
+
+function initAutoSync(): void {
+  // Load saved preference
+  const saved = localStorage.getItem('harbor-auto-sync');
+  autoSyncEnabled = saved !== 'false'; // Default true
+  
+  if (autoSyncToggle) {
+    autoSyncToggle.checked = autoSyncEnabled;
+    autoSyncToggle.addEventListener('change', () => {
+      autoSyncEnabled = autoSyncToggle.checked;
+      localStorage.setItem('harbor-auto-sync', String(autoSyncEnabled));
+      addCatalogActivity(autoSyncEnabled ? 'Auto-sync enabled' : 'Auto-sync disabled');
+    });
+  }
+  
+  // Update "last updated" timestamp every minute
+  setInterval(() => {
+    updateCatalogStatusUI();
+  }, 60 * 1000);
+  
+  // Set up periodic refresh (every hour if auto-sync enabled)
+  setInterval(() => {
+    if (autoSyncEnabled && !catalogStatus.isLoading) {
+      const hourAgo = Date.now() - (60 * 60 * 1000);
+      if (!catalogStatus.lastUpdated || catalogStatus.lastUpdated < hourAgo) {
+        addCatalogActivity('Auto-refreshing catalog...');
+        refreshCatalog();
+      }
+    }
+  }, 5 * 60 * 1000); // Check every 5 minutes
+}
+
+// =============================================================================
+// Bridge Activity Panel
+// =============================================================================
+
+interface BridgeLogEntry {
+  id: number;
+  timestamp: number;
+  direction: 'send' | 'recv';
+  type: string;
+  summary: string;
+  data: unknown;
+}
+
+let bridgeLog: BridgeLogEntry[] = [];
+let bridgeTab: 'activity' | 'json' = 'activity';
+let selectedBridgeEntry: BridgeLogEntry | null = null;
+
+const bridgeActivityPanel = document.getElementById('bridge-activity-panel') as HTMLDivElement;
+const bridgeActivityHeader = document.getElementById('bridge-activity-header') as HTMLDivElement;
+const bridgeActivityContent = document.getElementById('bridge-activity-content') as HTMLDivElement;
+const bridgeActivityLog = document.getElementById('bridge-activity-log') as HTMLDivElement;
+const bridgeJsonView = document.getElementById('bridge-json-view') as HTMLDivElement;
+const bridgeJsonContent = document.getElementById('bridge-json-content') as HTMLPreElement;
+const bridgeIndicator = document.getElementById('bridge-indicator') as HTMLSpanElement;
+const bridgeCollapseIcon = document.getElementById('bridge-activity-collapse-icon') as HTMLSpanElement;
+const copyBridgeJsonBtn = document.getElementById('copy-bridge-json-btn') as HTMLButtonElement;
+
+function initBridgeActivityPanel(): void {
+  // Toggle collapsed state
+  bridgeActivityHeader?.addEventListener('click', () => {
+    bridgeActivityContent.classList.toggle('collapsed');
+    bridgeCollapseIcon.textContent = bridgeActivityContent.classList.contains('collapsed') ? '▶' : '▼';
+  });
+  
+  // Tab switching
+  document.querySelectorAll('.bridge-tab').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tabName = (tab as HTMLElement).dataset.tab as 'activity' | 'json';
+      bridgeTab = tabName;
+      
+      document.querySelectorAll('.bridge-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      
+      if (tabName === 'activity') {
+        bridgeActivityLog.style.display = 'block';
+        bridgeJsonView.style.display = 'none';
+      } else {
+        bridgeActivityLog.style.display = 'none';
+        bridgeJsonView.style.display = 'block';
+      }
+    });
+  });
+  
+  // Copy JSON button
+  copyBridgeJsonBtn?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const content = bridgeJsonContent.textContent || '';
+    if (content && content !== 'Select a message to view') {
+      try {
+        await navigator.clipboard.writeText(content);
+        const originalText = copyBridgeJsonBtn.textContent;
+        copyBridgeJsonBtn.textContent = '✓ Copied!';
+        setTimeout(() => {
+          copyBridgeJsonBtn.textContent = originalText;
+        }, 1500);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
+  });
+  
+  // Load existing log
+  loadBridgeLog();
+}
+
+async function loadBridgeLog(): Promise<void> {
+  try {
+    const response = await browser.runtime.sendMessage({ type: 'get_message_log' }) as { log: BridgeLogEntry[] };
+    if (response?.log) {
+      bridgeLog = response.log;
+      renderBridgeLog();
+    }
+  } catch (e) {
+    console.error('[Bridge Activity] Failed to load log:', e);
+  }
+}
+
+function addBridgeEntry(entry: BridgeLogEntry): void {
+  bridgeLog.push(entry);
+  if (bridgeLog.length > 100) {
+    bridgeLog.shift();
+  }
+  
+  // Update indicator
+  if (bridgeIndicator) {
+    bridgeIndicator.classList.remove('idle', 'error');
+    if (entry.type === 'error') {
+      bridgeIndicator.classList.add('error');
+    }
+  }
+  
+  renderBridgeLog();
+}
+
+function renderBridgeLog(): void {
+  if (!bridgeActivityLog) return;
+  
+  if (bridgeLog.length === 0) {
+    bridgeActivityLog.innerHTML = '<div style="color: var(--color-text-muted); padding: var(--space-2);">No messages yet...</div>';
+    return;
+  }
+  
+  // Show newest at bottom (slice last 50)
+  const entries = bridgeLog.slice(-50);
+  
+  bridgeActivityLog.innerHTML = entries.map(entry => {
+    const time = formatTimeWithMs(entry.timestamp);
+    const dirClass = entry.direction === 'send' ? 'send' : 'recv';
+    const arrow = entry.direction === 'send' ? '→' : '←';
+    
+    return `
+      <div class="bridge-entry" data-id="${entry.id}">
+        <span class="bridge-time">${time}</span>
+        <span class="bridge-dir ${dirClass}">${arrow}</span>
+        <span class="bridge-type">${escapeHtml(entry.type)}</span>
+        <span class="bridge-summary">${escapeHtml(entry.summary)}</span>
+      </div>
+    `;
+  }).join('');
+  
+  // Auto-scroll to bottom
+  bridgeActivityLog.scrollTop = bridgeActivityLog.scrollHeight;
+  
+  // Make entries clickable to show JSON
+  bridgeActivityLog.querySelectorAll('.bridge-entry').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = parseInt((el as HTMLElement).dataset.id || '0');
+      const entry = bridgeLog.find(e => e.id === id);
+      if (entry) {
+        selectedBridgeEntry = entry;
+        try {
+          bridgeJsonContent.textContent = JSON.stringify(entry.data, null, 2);
+        } catch {
+          bridgeJsonContent.textContent = 'Unable to display message data';
+        }
+        // Switch to JSON tab
+        bridgeTab = 'json';
+        document.querySelectorAll('.bridge-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector('.bridge-tab[data-tab="json"]')?.classList.add('active');
+        bridgeActivityLog.style.display = 'none';
+        bridgeJsonView.style.display = 'block';
+      }
+    });
+  });
+}
+
+// Listen for bridge activity updates
+browser.runtime.onMessage.addListener((message) => {
+  // Handle log entries for bridge activity panel
+  if (message.type === 'log_entry') {
+    addBridgeEntry(message.entry);
+  }
+  
+  // Handle real-time catalog status updates from bridge
+  if (message.type === 'catalog_status') {
+    const category = message.category as string || 'catalog';
+    const status = message.status as string;
+    const statusMessage = message.message as string || status;
+    
+    // Log ALL status updates so we can see what's coming through
+    console.log('[Sidebar] Status update:', category, status, statusMessage);
+    
+    // Handle diagnostic pings
+    if (category === 'diagnostic') {
+      addCatalogActivity(`🔔 ${statusMessage}`);
+      return;
+    }
+    
+    // Update catalog loading state based on status
+    switch (status) {
+      case 'fetching':
+      case 'enriching':
+      case 'initializing':
+      case 'provider_fetch':
+      case 'saving':
+      case 'enriching_progress':
+        catalogStatus.isLoading = true;
+        break;
+      case 'ready':
+      case 'fetched':
+      case 'enrichment_done':
+        catalogStatus.isLoading = false;
+        if (message.serverCount) {
+          catalogStatus.serverCount = message.serverCount as number;
+          catalogStatus.lastUpdated = Date.now();
+        }
+        break;
+      case 'provider_error':
+      case 'enrichment_error':
+        catalogStatus.error = statusMessage;
+        break;
+      case 'provider_done':
+        // Provider completed - update count if provided
+        if (message.count) {
+          // Don't set final count yet, just show progress
+        }
+        break;
+    }
+    
+    // Add to activity log
+    addCatalogActivity(statusMessage);
+    updateCatalogStatusUI();
+    return;
+  }
+  
+  if (message.type === 'log_entry') {
+    const entry = message.entry;
+    // Update catalog activity for catalog-related messages
+    if (entry.type.startsWith('catalog_')) {
+      addCatalogActivity(entry.summary.replace(/^[←→]\s*/, ''));
+    }
+  }
+});
+
 async function init(): Promise<void> {
   try {
     const state = (await browser.runtime.sendMessage({
@@ -971,6 +1453,13 @@ async function init(): Promise<void> {
   await loadServers();
   await loadInstalledServers();
   await checkLLMStatus();
+  
+  // Initialize catalog
+  initAutoSync();
+  await loadCatalogStatus();
+  
+  // Initialize bridge activity panel
+  initBridgeActivityPanel();
 }
 
 // Button handlers
@@ -982,24 +1471,28 @@ sendHelloBtn.addEventListener('click', async () => {
   }
 });
 
-// Copy last response button
-copyResponseBtn.addEventListener('click', async () => {
-  const content = lastMessageEl.textContent || '';
-  if (content && content !== 'No messages received') {
-    try {
-      await navigator.clipboard.writeText(content);
-      const originalText = copyResponseBtn.textContent;
-      copyResponseBtn.textContent = '✓ Copied!';
-      copyResponseBtn.style.background = 'var(--accent-success-bg)';
-      copyResponseBtn.style.color = 'var(--accent-success)';
-      setTimeout(() => {
-        copyResponseBtn.textContent = originalText;
-        copyResponseBtn.style.background = '';
-        copyResponseBtn.style.color = '';
-      }, 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
+// Catalog refresh button
+refreshCatalogBtn?.addEventListener('click', () => {
+  refreshCatalog();
+});
+
+// Ping bridge button - test full pipeline including push status updates
+const pingBridgeBtn = document.getElementById('ping-bridge-btn');
+pingBridgeBtn?.addEventListener('click', async () => {
+  addCatalogActivity('Sending ping...');
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'send_ping',
+      echo: `test-${Date.now()}`,
+    }) as { echo?: string; timestamp?: number };
+    
+    if (response?.echo) {
+      addCatalogActivity(`Pong: ${response.echo}`);
+    } else {
+      addCatalogActivity('Ping response received (no echo)');
     }
+  } catch (err) {
+    addCatalogActivity(`Ping failed: ${String(err).substring(0, 40)}`);
   }
 });
 
@@ -1018,13 +1511,6 @@ serverUrlInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     addServer();
   }
-});
-
-// Collapsible response section
-responseHeader.addEventListener('click', () => {
-  responseContent.classList.toggle('collapsed');
-  const icon = responseHeader.querySelector('.collapse-icon') as HTMLSpanElement;
-  icon.textContent = responseContent.classList.contains('collapsed') ? '▶' : '▼';
 });
 
 // Open Directory button
@@ -1083,6 +1569,22 @@ openChatBtn?.addEventListener('click', () => {
 
 // Theme toggle
 themeToggleBtn.addEventListener('click', toggleTheme);
+
+// Refresh installed servers button
+const refreshInstalledBtn = document.getElementById('refresh-installed') as HTMLButtonElement;
+refreshInstalledBtn?.addEventListener('click', async () => {
+  refreshInstalledBtn.classList.add('loading');
+  refreshInstalledBtn.disabled = true;
+  await loadInstalledServers();
+  refreshInstalledBtn.classList.remove('loading');
+  refreshInstalledBtn.disabled = false;
+});
+
+// Go to directory link (in empty state)
+document.getElementById('go-to-directory-link')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  openDirectoryBtn.click();
+});
 
 // Credential modal event listeners
 credentialModalClose.addEventListener('click', closeCredentialModal);
