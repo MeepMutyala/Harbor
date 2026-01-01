@@ -1567,6 +1567,13 @@ openChatBtn?.addEventListener('click', () => {
   browser.tabs.create({ url: chatUrl });
 });
 
+// Open Chat POC (API demo) button
+const openChatPocBtn = document.getElementById('open-chat-poc') as HTMLButtonElement;
+openChatPocBtn?.addEventListener('click', () => {
+  const chatPocUrl = browser.runtime.getURL('chat-poc.html');
+  browser.tabs.create({ url: chatPocUrl });
+});
+
 // Theme toggle
 themeToggleBtn.addEventListener('click', toggleTheme);
 

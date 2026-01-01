@@ -18,6 +18,11 @@ export default defineConfig({
         sidebar: resolve(__dirname, 'src/sidebar.ts'),
         directory: resolve(__dirname, 'src/directory.ts'),
         chat: resolve(__dirname, 'src/chat.ts'),
+        'chat-poc': resolve(__dirname, 'src/chat-poc.js'),
+        // JS AI Provider files
+        'content-bridge': resolve(__dirname, 'src/provider/content-bridge.ts'),
+        'provider-injected': resolve(__dirname, 'src/provider/injected.ts'),
+        'permission-prompt': resolve(__dirname, 'src/permission-prompt.ts'),
       },
       output: {
         entryFileNames: '[name].js',
@@ -57,6 +62,20 @@ export default defineConfig({
           'utf-8'
         );
         writeFileSync(resolve(__dirname, 'dist/chat.html'), chatHtml);
+
+        // Copy chat-poc.html
+        const chatPocHtml = readFileSync(
+          resolve(__dirname, 'src/chat-poc.html'),
+          'utf-8'
+        );
+        writeFileSync(resolve(__dirname, 'dist/chat-poc.html'), chatPocHtml);
+
+        // Copy permission-prompt.html
+        const permissionPromptHtml = readFileSync(
+          resolve(__dirname, 'src/permission-prompt.html'),
+          'utf-8'
+        );
+        writeFileSync(resolve(__dirname, 'dist/permission-prompt.html'), permissionPromptHtml);
 
         // Copy manifest.json
         const manifest = readFileSync(

@@ -2,15 +2,18 @@
   "manifest_version": 3,
   "name": "Harbor",
   "version": "0.0.1",
-  "description": "Native messaging bridge for Harbor",
+  "description": "Native messaging bridge for Harbor - AI agents with MCP tools",
   "permissions": [
     "nativeMessaging",
     "storage",
-    "tabs"
+    "tabs",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://registry.modelcontextprotocol.io/*",
-    "https://raw.githubusercontent.com/*"
+    "https://raw.githubusercontent.com/*",
+    "<all_urls>"
   ],
   "background": {
     "scripts": ["background.js"],
@@ -20,6 +23,20 @@
     "default_title": "Harbor",
     "default_panel": "sidebar.html"
   },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content-bridge.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["provider-injected.js"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "harbor@example.com",
@@ -27,4 +44,3 @@
     }
   }
 }
-

@@ -1,4 +1,5 @@
 import browser from 'webextension-polyfill';
+import { setupProviderRouter, handlePermissionPromptResponse } from './provider/background-router';
 
 const NATIVE_HOST_NAME = 'harbor_bridge_host';
 
@@ -717,6 +718,23 @@ browser.runtime.onMessage.addListener(
       });
     }
 
+    // MCP tool call (used by JS AI Provider)
+    if (msg.type === 'mcp_call_tool') {
+      return sendToBridge({
+        type: 'mcp_call_tool',
+        request_id: generateRequestId(),
+        server_id: msg.server_id,
+        tool_name: msg.tool_name,
+        arguments: msg.arguments,
+      });
+    }
+
+    // Permission prompt response (from permission-prompt.html)
+    if (msg.type === 'provider_permission_response') {
+      handlePermissionPromptResponse(msg.promptId, msg.decision);
+      return Promise.resolve({ received: true });
+    }
+
     // Proxy fetch requests from sidebar (for CORS)
     if (msg.type === 'proxy_fetch') {
       console.log('[proxy_fetch] Received request for:', msg.url);
@@ -769,5 +787,29 @@ browser.runtime.onMessage.addListener(
 // Connect on startup
 connectToNative();
 sendHello();
+
+// Auto-detect LLM on startup so provider API can use it immediately
+async function autoDetectLLM(): Promise<void> {
+  try {
+    // Give the bridge a moment to initialize
+    await new Promise(r => setTimeout(r, 500));
+    
+    const response = await sendToBridge({
+      type: 'llm_detect',
+      request_id: generateRequestId(),
+    });
+    
+    if (response.type === 'llm_detect_result') {
+      console.log('[Background] Auto-detected LLM providers:', response);
+    }
+  } catch (err) {
+    console.warn('[Background] LLM auto-detection failed:', err);
+  }
+}
+
+autoDetectLLM();
+
+// Initialize the JS AI Provider router
+setupProviderRouter();
 
 console.log('Harbor background script initialized');

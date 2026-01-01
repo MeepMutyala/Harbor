@@ -331,6 +331,192 @@ The bridge can install and run local MCP servers:
 3. **Process Management** - Start/stop servers, capture logs
 4. **Secret Management** - Store API keys securely
 
+## Web Page JS AI Provider (v1)
+
+Harbor exposes a secure, capability-based JavaScript API to any web page through two global namespaces: `window.ai` and `window.agent`.
+
+### Getting Started
+
+When the Harbor extension is installed, any website can access the API:
+
+```javascript
+// Check if Harbor is available
+if (window.agent) {
+  console.log('Harbor is installed!');
+}
+
+// Wait for the provider to be ready
+window.addEventListener('harbor-provider-ready', () => {
+  console.log('Harbor provider is ready');
+});
+```
+
+### Requesting Permissions
+
+Before using any API, you must request permissions from the user:
+
+```javascript
+const result = await window.agent.requestPermissions({
+  scopes: [
+    'model:prompt',      // Basic text generation
+    'model:tools',       // AI with tool calling
+    'mcp:tools.list',    // List available tools
+    'mcp:tools.call',    // Execute tools
+    'browser:activeTab.read'  // Read active tab content
+  ],
+  reason: 'My app needs AI and tools to help you.',
+});
+
+if (result.granted) {
+  console.log('Permissions granted!');
+} else {
+  console.log('User denied permissions');
+}
+```
+
+### window.ai - Text Generation API
+
+Compatible with Chrome's emerging Prompt API concepts:
+
+```javascript
+// Create a text session
+const session = await window.ai.createTextSession({
+  model: 'default',
+  temperature: 0.7,
+  systemPrompt: 'You are a helpful assistant.',
+});
+
+// Simple prompt (returns full response)
+const response = await session.prompt('What is the capital of France?');
+console.log(response); // "Paris is the capital of France."
+
+// Streaming prompt (token by token)
+for await (const event of session.promptStreaming('Tell me a story')) {
+  if (event.type === 'token') {
+    process.stdout.write(event.token);
+  } else if (event.type === 'error') {
+    console.error(event.error);
+  }
+}
+
+// Clean up when done
+await session.destroy();
+```
+
+### window.agent - Tools and Agent API
+
+The differentiator: access MCP tools and run autonomous agent tasks:
+
+```javascript
+// List available tools
+const tools = await window.agent.tools.list();
+console.log(tools);
+// [
+//   { name: 'memory/save_memory', description: 'Save a memory' },
+//   { name: 'filesystem/read_file', description: 'Read a file' },
+//   ...
+// ]
+
+// Call a specific tool
+const result = await window.agent.tools.call({
+  tool: 'memory/save_memory',
+  args: { content: 'User prefers dark mode' },
+});
+
+// Read active tab content
+const tabContent = await window.agent.browser.activeTab.readability();
+console.log(tabContent.title, tabContent.text);
+```
+
+### Running an Agent Task
+
+The most powerful feature - run autonomous tasks with tool access:
+
+```javascript
+for await (const event of window.agent.run({
+  task: 'Summarize my active tab and save the key points to memory',
+  tools: ['memory/save_memory'],  // Optional: restrict to specific tools
+  maxToolCalls: 5,
+  requireCitations: true,
+})) {
+  switch (event.type) {
+    case 'status':
+      console.log('Status:', event.message);
+      break;
+    case 'tool_call':
+      console.log('Calling:', event.tool, event.args);
+      break;
+    case 'tool_result':
+      console.log('Result:', event.result);
+      break;
+    case 'token':
+      process.stdout.write(event.token);
+      break;
+    case 'final':
+      console.log('\nFinal:', event.output);
+      if (event.citations) {
+        console.log('Sources:', event.citations);
+      }
+      break;
+    case 'error':
+      console.error('Error:', event.error);
+      break;
+  }
+}
+```
+
+### Permission Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `model:prompt` | Basic text generation without tools |
+| `model:tools` | AI with tool calling capabilities |
+| `mcp:tools.list` | List available MCP tools |
+| `mcp:tools.call` | Execute MCP tools |
+| `browser:activeTab.read` | Read content from active tab |
+| `web:fetch` | Proxy fetch requests (not implemented in v1) |
+
+### Error Handling
+
+All API calls can throw errors with typed codes:
+
+```javascript
+try {
+  await window.agent.tools.call({ tool: 'unknown/tool', args: {} });
+} catch (err) {
+  console.error(err.code);    // 'ERR_TOOL_NOT_ALLOWED'
+  console.error(err.message); // 'Tool not found or not allowed'
+}
+```
+
+Error codes:
+- `ERR_NOT_INSTALLED` - Extension not installed
+- `ERR_PERMISSION_DENIED` - User denied permission
+- `ERR_USER_GESTURE_REQUIRED` - Needs user gesture (click)
+- `ERR_SCOPE_REQUIRED` - Missing required permission scope
+- `ERR_TOOL_NOT_ALLOWED` - Tool not in allowlist
+- `ERR_TOOL_FAILED` - Tool execution failed
+- `ERR_MODEL_FAILED` - LLM request failed
+- `ERR_NOT_IMPLEMENTED` - Feature not available
+- `ERR_INTERNAL` - Internal error
+
+### Demo
+
+A demo page is included at `/demo/index.html`. To try it:
+
+1. Build and install the extension
+2. Start a local server: `cd demo && python -m http.server 8000`
+3. Open `http://localhost:8000` in Firefox
+4. Click "Connect to Harbor" to request permissions
+
+### Security Model
+
+- **Per-origin permissions**: Each website must be granted access separately
+- **User consent required**: Extension shows a permission prompt for new sites
+- **Grant types**: "Allow once" (session) or "Always allow" (persistent)
+- **Scope isolation**: Sites can only access granted scopes
+- **Tool filtering**: `agent.run()` can be limited to specific tools
+
 ## Roadmap
 
 - [x] v0: Native messaging hello/pong
@@ -342,7 +528,8 @@ The bridge can install and run local MCP servers:
 - [x] v0.6: Credential management (API keys, passwords)
 - [x] v0.7: LLM integration (llamafile provider)
 - [x] v0.8: Chat orchestration (agent loop)
-- [ ] v0.9: Extension UI for chat and installed servers
+- [x] v0.9: Extension UI for chat and installed servers
+- [x] v0.10: Web Page JS AI Provider (window.ai + window.agent)
 - [ ] v1.0: Production-ready release
 
 ## License
