@@ -223,6 +223,10 @@ function updateViewUI(): void {
   if (filterBar) {
     filterBar.style.display = currentView === 'browse' ? 'block' : 'none';
   }
+  // Hide provider status on Quick Start (only relevant when browsing catalog)
+  if (providerStatusEl) {
+    providerStatusEl.style.display = currentView === 'browse' ? 'block' : 'none';
+  }
 }
 
 function switchView(view: 'quickstart' | 'browse'): void {
@@ -370,6 +374,13 @@ function formatDownloads(count?: number): string {
 
 // Provider status rendering
 function renderProviderStatus(): void {
+  // Only show provider status on Browse view, not Quick Start
+  if (currentView === 'quickstart') {
+    providerStatusEl.style.display = 'none';
+    return;
+  }
+  providerStatusEl.style.display = 'block';
+  
   if (providerStatus.length === 0) {
     providerStatusEl.innerHTML = '';
     return;
