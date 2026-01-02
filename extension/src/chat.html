@@ -566,6 +566,31 @@
       color: var(--color-info);
     }
 
+    .chat-column-header .copy-column-btn {
+      margin-left: auto;
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-surface-primary);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-2xs);
+      font-weight: var(--weight-medium);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      color: var(--color-text-secondary);
+    }
+
+    .chat-column-header .copy-column-btn:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-primary);
+      border-color: var(--color-border-focus);
+    }
+
+    .chat-column-header .copy-column-btn.copied {
+      background: var(--color-success-subtle);
+      color: var(--color-success);
+      border-color: var(--color-success);
+    }
+
     .chat-column-content {
       flex: 1;
       overflow-y: auto;
@@ -612,6 +637,9 @@
       </div>
     </div>
     <div class="header-right">
+      <button class="btn btn-sm btn-ghost" id="copy-chat-btn" title="Copy entire conversation">
+        Copy
+      </button>
       <button class="btn btn-sm btn-ghost" id="clear-context-btn" title="Clear conversation history">
         Clear
       </button>
@@ -641,6 +669,7 @@
           <div class="chat-column-header">
             <span class="badge stock">Stock</span>
             <span>Without Tools</span>
+            <button class="copy-column-btn" id="copy-stock-btn" title="Copy entire conversation">Copy</button>
           </div>
           <div class="chat-column-content">
             <div class="chat-messages" id="messages-stock"></div>
@@ -650,6 +679,7 @@
           <div class="chat-column-header with-tools">
             <span class="badge tools">MCP</span>
             <span>With Tools</span>
+            <button class="copy-column-btn" id="copy-tools-btn" title="Copy entire conversation">Copy</button>
           </div>
           <div class="chat-column-content">
             <div class="chat-messages" id="messages-tools"></div>

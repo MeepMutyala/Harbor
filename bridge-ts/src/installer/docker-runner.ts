@@ -126,11 +126,32 @@ export class DockerRunner {
       // Stop any existing container with same name
       await this.cleanupContainer(containerName);
       
-      // Ensure the appropriate Docker image is built
-      const imageType = this.imageManager.getImageTypeForPackage(packageType);
-      options.onProgress?.(`Preparing Docker environment for ${packageType}...`);
+      let imageName: string;
       
-      const imageName = await this.imageManager.ensureImage(imageType, options.onProgress);
+      if (packageType === 'oci') {
+        // For OCI/Docker images, use the packageId directly as the image
+        imageName = packageId;
+        options.onProgress?.(`Pulling Docker image ${imageName}...`);
+        
+        // Pull the image if not present
+        try {
+          execSync(`docker pull ${imageName}`, {
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: 300000, // 5 minute timeout for large images
+          });
+          options.onProgress?.(`✓ Image ${imageName} ready`);
+        } catch (e) {
+          const error = e instanceof Error ? e.message : String(e);
+          log(`[DockerRunner] Failed to pull image ${imageName}: ${error}`);
+          throw new Error(`Failed to pull Docker image ${imageName}: ${error}`);
+        }
+      } else {
+        // For npm/pypi/binary, use our custom images
+        const imageType = this.imageManager.getImageTypeForPackage(packageType);
+        options.onProgress?.(`Preparing Docker environment for ${packageType}...`);
+        imageName = await this.imageManager.ensureImage(imageType, options.onProgress);
+      }
       
       // Build Docker run command
       const dockerArgs = this.buildDockerArgs(
@@ -407,6 +428,9 @@ export class DockerRunner {
       args.push(packageId);
     } else if (packageType === 'binary') {
       // Binary is mounted at /app/server, entrypoint handles it
+    } else if (packageType === 'oci') {
+      // OCI images have their own entrypoint/cmd, nothing to add
+      // But some MCP servers need 'stdio' argument
     }
     
     // Add additional arguments

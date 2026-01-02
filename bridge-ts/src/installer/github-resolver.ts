@@ -375,6 +375,97 @@ export function findBestBinaryAsset(assets: GitHubAsset[]): GitHubAsset | null {
 }
 
 /**
+ * Score an asset for Linux platform (for Docker use).
+ */
+function scoreAssetForLinux(assetName: string): number {
+  const name = assetName.toLowerCase();
+  
+  let score = 0;
+  
+  // Must be Linux
+  if (name.includes('linux')) {
+    score += 10;
+  } else {
+    return 0; // Not a Linux asset
+  }
+  
+  // Architecture - prefer amd64/x86_64 for broader compatibility
+  // (Docker on Apple Silicon can run amd64 via emulation)
+  if (name.includes('amd64') || name.includes('x86_64') || name.includes('x64')) {
+    score += 5;
+  } else if (name.includes('arm64') || name.includes('aarch64')) {
+    score += 4; // Slightly lower priority but still good
+  }
+  
+  // Prefer archives
+  if (name.endsWith('.tar.gz') || name.endsWith('.tgz') || name.endsWith('.zip')) {
+    score += 2;
+  }
+  
+  // Deprioritize checksum files
+  if (name.includes('sha256') || name.includes('checksum') || name.endsWith('.sig') || name.endsWith('.asc')) {
+    return 0;
+  }
+  
+  return score;
+}
+
+/**
+ * Find the best Linux binary asset (for Docker use).
+ */
+export function findLinuxBinaryAsset(assets: GitHubAsset[]): GitHubAsset | null {
+  if (!assets || assets.length === 0) {
+    return null;
+  }
+  
+  // Score all assets for Linux
+  const scored = assets.map(asset => ({
+    asset,
+    score: scoreAssetForLinux(asset.name),
+  }));
+  
+  // Sort by score descending
+  scored.sort((a, b) => b.score - a.score);
+  
+  // Log for debugging
+  log(`[GitHubResolver] Looking for Linux binary...`);
+  for (const { asset, score } of scored.slice(0, 5)) {
+    log(`[GitHubResolver] Linux asset: ${asset.name} (score: ${score})`);
+  }
+  
+  // Return best match if score > 0
+  if (scored[0] && scored[0].score > 0) {
+    log(`[GitHubResolver] Selected Linux binary: ${scored[0].asset.name}`);
+    return scored[0].asset;
+  }
+  
+  return null;
+}
+
+/**
+ * Get the Linux binary URL for a GitHub repo.
+ * Used when running binary servers in Docker.
+ */
+export async function getLinuxBinaryUrl(
+  owner: string,
+  repo: string
+): Promise<string | null> {
+  const release = await fetchLatestRelease(owner, repo);
+  if (!release || release.assets.length === 0) {
+    log(`[GitHubResolver] No release found for ${owner}/${repo}`);
+    return null;
+  }
+  
+  const linuxAsset = findLinuxBinaryAsset(release.assets);
+  if (!linuxAsset) {
+    log(`[GitHubResolver] No Linux binary found for ${owner}/${repo}`);
+    return null;
+  }
+  
+  return linuxAsset.browser_download_url;
+}
+
+/**
  * Resolve a Go project to a binary package by checking GitHub releases.
  */
 export async function resolveGoBinary(

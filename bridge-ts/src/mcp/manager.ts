@@ -306,25 +306,71 @@ export class McpClientManager {
     log(`[McpClientManager] Connecting to ${serverId} via Docker`);
     progress(`🐳 Starting Docker setup for ${server.name}...`);
 
+    // Declare client outside try block so it's accessible in catch for error logging
+    let client: StdioMcpClient | null = null;
+
     try {
-      // Import Docker modules dynamically to avoid loading if not used
-      progress('Checking Docker image...');
-      const { getDockerImageManager } = await import('../installer/docker-images.js');
-      const imageManager = getDockerImageManager();
+      let imageName: string;
       
-      // Ensure the appropriate Docker image is built
-      const imageType = imageManager.getImageTypeForPackage(packageType);
-      progress(`Checking for ${imageType} runtime image...`);
-      
-      // Check if image exists
-      const imageExists = await imageManager.imageExists(imageType);
-      if (!imageExists) {
-        progress(`Building ${imageType} Docker image (first time only)...`);
-        progress('This may take 1-2 minutes to download and build...');
+      // For OCI packages, use the package ID directly as the Docker image
+      // No need to build a custom image
+      if (packageType === 'oci') {
+        progress('Using official Docker image...');
+        imageName = packageId;  // e.g., "ghcr.io/github/github-mcp-server"
+        
+        // Pull the image if needed
+        progress(`Pulling Docker image: ${imageName}...`);
+        const { spawn } = await import('node:child_process');
+        const dockerPath = resolveExecutable('docker');
+        
+        await new Promise<void>((resolve, reject) => {
+          const pull = spawn(dockerPath, ['pull', imageName], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+          
+          pull.stdout?.on('data', (data: Buffer) => {
+            const line = data.toString().trim();
+            if (line) progress(line);
+          });
+          
+          pull.stderr?.on('data', (data: Buffer) => {
+            const line = data.toString().trim();
+            if (line) log(`[Docker pull stderr] ${line}`);
+          });
+          
+          pull.on('close', (code) => {
+            if (code === 0) {
+              progress(`✓ Docker image ready: ${imageName}`);
+              resolve();
+            } else {
+              reject(new Error(`Failed to pull Docker image: ${imageName}`));
+            }
+          });
+          
+          pull.on('error', (err) => {
+            reject(new Error(`Docker pull failed: ${err.message}`));
+          });
+        });
+      } else {
+        // Import Docker modules dynamically to avoid loading if not used
+        progress('Checking Docker image...');
+        const { getDockerImageManager } = await import('../installer/docker-images.js');
+        const imageManager = getDockerImageManager();
+        
+        // Ensure the appropriate Docker image is built
+        const imageType = imageManager.getImageTypeForPackage(packageType);
+        progress(`Checking for ${imageType} runtime image...`);
+        
+        // Check if image exists
+        const imageExists = await imageManager.imageExists(imageType);
+        if (!imageExists) {
+          progress(`Building ${imageType} Docker image (first time only)...`);
+          progress('This may take 1-2 minutes to download and build...');
+        }
+        
+        imageName = await imageManager.ensureImage(imageType, progress);
+        progress(`✓ Docker image ready: ${imageName}`);
       }
-      
-      const imageName = await imageManager.ensureImage(imageType, progress);
-      progress(`✓ Docker image ready: ${imageName}`);
       
       // Build docker run command
       progress('Preparing container configuration...');
@@ -348,22 +394,59 @@ export class McpClientManager {
         }
       }
       
-      // For binary packages, mount the binary
+      // For binary packages, we need the LINUX binary (not the native one)
+      // Docker runs Linux containers, so macOS/Windows binaries won't work
       if (packageType === 'binary') {
-        const binaryPath = server.binaryPath || getBinaryPath(packageId);
-        if (existsSync(binaryPath)) {
-          dockerArgs.push('-v', `${binaryPath}:/app/server:ro`);
+        const { isLinuxBinaryDownloaded, getBinaryPath: getBinPath, downloadLinuxBinary } = await import('../installer/binary-downloader.js');
+        const { getLinuxBinaryUrl } = await import('../installer/github-resolver.js');
+        
+        // Check if we have the Linux binary already
+        let linuxBinaryPath = getBinPath(serverId, undefined, true);
+        
+        if (!isLinuxBinaryDownloaded(serverId)) {
+          // Need to download the Linux binary
+          progress('Downloading Linux binary for Docker...');
+          
+          if (!server.githubOwner || !server.githubRepo) {
+            throw new Error(
+              'Cannot run this binary server in Docker: missing GitHub repository info. ' +
+              'The Linux binary needs to be downloaded from GitHub releases.'
+            );
+          }
+          
+          const linuxUrl = await getLinuxBinaryUrl(server.githubOwner, server.githubRepo);
+          if (!linuxUrl) {
+            throw new Error(
+              `No Linux binary found for ${server.githubOwner}/${server.githubRepo}. ` +
+              'This server may not have Linux releases available.'
+            );
+          }
+          
+          log(`[McpClientManager] Downloading Linux binary from: ${linuxUrl}`);
+          linuxBinaryPath = await downloadLinuxBinary(serverId, linuxUrl, {
+            expectedBinaryName: server.name,
+            onProgress: progress,
+          });
         }
+        
+        log(`[McpClientManager] Mounting Linux binary: ${linuxBinaryPath}`);
+        progress('Mounting Linux binary into container...');
+        dockerArgs.push('-v', `${linuxBinaryPath}:/app/server:ro`);
       }
       
       // Add the image
       dockerArgs.push(imageName);
       
-      // Add the package to run
+      // Add the package/command to run based on package type
       if (packageType === 'npm') {
+        // Our node image expects the npm package as argument
         dockerArgs.push(packageId);
       } else if (packageType === 'pypi') {
+        // Our python image expects the pypi package as argument
         dockerArgs.push(packageId);
+      } else if (packageType === 'oci') {
+        // OCI images have their own entrypoint, no command needed
+        // Just add any user-specified args
       }
       // For binary, the entrypoint handles /app/server
       
@@ -372,6 +455,10 @@ export class McpClientManager {
         dockerArgs.push(...server.args);
       } else if (packageType === 'binary') {
         // Most Go MCP servers need 'stdio' subcommand
+        dockerArgs.push('stdio');
+      } else if (packageType === 'oci') {
+        // GitHub MCP server needs 'stdio' mode
+        // Most MCP servers in Docker expect stdio transport
         dockerArgs.push('stdio');
       }
       
@@ -382,7 +469,7 @@ export class McpClientManager {
       const dockerPath = resolveExecutable('docker');
       
       // Create the client
-      const client = new StdioMcpClient({
+      client = new StdioMcpClient({
         command: dockerPath,
         args: dockerArgs,
         env: {
@@ -437,10 +524,36 @@ export class McpClientManager {
       const message = error instanceof Error ? error.message : String(error);
       log(`[McpClientManager] Failed to connect to ${serverId} via Docker: ${message}`);
 
+      // Try to get stderr output from the client for better error messages
+      let stderrOutput = '';
+      try {
+        if (client && client.getStderrLog) {
+          const stderrLines = client.getStderrLog();
+          if (stderrLines.length > 0) {
+            stderrOutput = '\n\nServer output:\n' + stderrLines.slice(-10).join('\n');
+          }
+        }
+      } catch {
+        // Ignore errors getting stderr
+      }
+
+      // Try to provide more context about why the connection failed
+      let errorDetail = `Docker connection failed: ${message}`;
+      
+      // Check if we have any stderr output that might explain the failure
+      if (message.includes('Connection closed') || message.includes('-32000')) {
+        errorDetail += '\n\nThe server crashed on startup. Common causes:';
+        errorDetail += '\n• Missing required environment variables (API tokens, credentials)';
+        errorDetail += '\n• Invalid configuration or arguments';
+        errorDetail += '\n\nClick ⚙️ to configure, then check the server documentation for required settings.';
+      }
+      
+      errorDetail += stderrOutput;
+
       return {
         success: false,
         serverId,
-        error: `Docker connection failed: ${message}`,
+        error: errorDetail,
       };
     }
   }

@@ -839,17 +839,29 @@ const handleStartInstalled: MessageHandler = async (message, _store, _client, _c
                            errorMsg.includes('EACCES');
     const isMacOS = process.platform === 'darwin';
     
+    // For binary servers that fail with security errors, offer Docker as alternative
+    // Docker will download and use the Linux binary from GitHub releases
     if (isBinary && isMacOS && isSecurityError && !useDocker && !server.noDocker) {
-      // Check if Docker is available as an alternative (but not for servers that need host access)
       const dockerInfo = await installer.checkDockerAvailable();
-      if (dockerInfo.available) {
-        log(`[handleStartInstalled] Binary server failed with security error, Docker available as alternative`);
+      const hasGitHubInfo = server.githubOwner && server.githubRepo;
+      
+      if (dockerInfo.available && hasGitHubInfo) {
+        log(`[handleStartInstalled] Binary server failed with security error, Docker available with Linux binary`);
         return makeResult('start_installed', requestId, {
           process: null,
           error: errorMsg,
           docker_available: true,
           docker_recommended: true,
-          suggestion: 'This binary was blocked by macOS security. Would you like to run it in Docker instead?'
+          suggestion: 'This binary was blocked by macOS Gatekeeper. Would you like to run in Docker instead? (The Linux binary will be downloaded automatically)'
+        });
+      } else {
+        log(`[handleStartInstalled] Binary server failed with security error, Docker not available or no GitHub info`);
+        return makeResult('start_installed', requestId, {
+          process: null,
+          error: errorMsg,
+          docker_available: false,
+          docker_recommended: false,
+          suggestion: 'This binary was blocked by macOS Gatekeeper. Go to System Settings → Privacy & Security and click "Allow Anyway".'
         });
       }
     }
@@ -961,7 +973,7 @@ const handleMcpConnect: MessageHandler = async (message, _store, _client, _catal
   }
 
   // Check if supported package type
-  const supportedTypes = ['npm', 'pypi', 'binary', 'http', 'sse'];
+  const supportedTypes = ['npm', 'pypi', 'binary', 'http', 'sse', 'oci'];
   if (!supportedTypes.includes(server.packageType)) {
     return makeError(
       requestId, 
@@ -971,18 +983,19 @@ const handleMcpConnect: MessageHandler = async (message, _store, _client, _catal
   }
 
   // Determine if we should use Docker
-  let useDocker = useDockerOverride ?? server.useDocker ?? false;
+  // OCI (Docker image) servers MUST use Docker
+  let useDocker = server.packageType === 'oci' || (useDockerOverride ?? server.useDocker ?? false);
   
-  // For binary packages on macOS, ALWAYS offer Docker option on first run
-  // (Don't rely on quarantine attribute as it's unreliable after first spawn attempt)
-  // But NOT for servers that need host filesystem access (noDocker)
-  if (server.packageType === 'binary' && !useDocker && !message.skip_security_check && !server.noDocker) {
-    const dockerPreference = await installer.shouldPreferDocker(serverId);
+  // For binary packages on macOS, offer Docker as an option (bypasses Gatekeeper)
+  // Docker will use a separately downloaded Linux binary
+  if (server.packageType === 'binary' && !useDocker && !message.skip_security_check) {
     const binaryPath = server.binaryPath || `~/.harbor/bin/${serverId}`;
+    const dockerPreference = await installer.shouldPreferDocker(serverId);
+    const hasGitHubInfo = server.githubOwner && server.githubRepo;
     
-    // If Docker is available, always offer it as the recommended option for binaries
-    if (dockerPreference.dockerAvailable) {
-      log(`[handleMcpConnect] Binary server on macOS with Docker available - showing options`);
+    // Always show the choice for binary servers on first run
+    if (dockerPreference.dockerAvailable && hasGitHubInfo) {
+      log(`[handleMcpConnect] Binary server on macOS - Docker available with Linux binary option`);
       return makeResult('mcp_connect', requestId, {
         connected: false,
         needs_security_approval: true,
@@ -990,47 +1003,46 @@ const handleMcpConnect: MessageHandler = async (message, _store, _client, _catal
         docker_recommended: true,
         security_instructions: `Binary Server - Choose How to Run
 
-This is a compiled binary. On macOS, you have two options:
+This is a compiled binary from GitHub. You have two options:
 
 🐳 OPTION 1: Run in Docker (Recommended)
-Click "Run in Docker" to run the binary in a container.
+Click "Run in Docker" to download the Linux binary and run in a container.
 This bypasses all macOS security restrictions.
 
 💻 OPTION 2: Run Natively
-Click "I've Allowed It - Start Now" to run directly.
+Click "Run Natively" to use the macOS binary.
 If macOS blocks it:
 1. Open System Settings → Privacy & Security
 2. Find "${server.name}" and click "Allow Anyway"
 3. Try starting again
 
-Or remove quarantine in Terminal:
-  sudo xattr -rd com.apple.quarantine "${binaryPath}"`,
+Binary path: ${binaryPath}`,
       });
-    }
-    
-    // No Docker available, show security warning with native instructions only
-    const needsApproval = await needsSecurityApproval(serverId);
-    if (needsApproval) {
-      log(`[handleMcpConnect] Binary server needs security approval, Docker not available`);
-      return makeResult('mcp_connect', requestId, {
-        connected: false,
-        needs_security_approval: true,
-        docker_available: false,
-        security_instructions: `macOS Security Approval May Be Required
+    } else if (!dockerPreference.dockerAvailable) {
+      // No Docker - show native-only instructions
+      const needsApproval = await needsSecurityApproval(serverId);
+      if (needsApproval) {
+        log(`[handleMcpConnect] Binary server needs security approval, Docker not available`);
+        return makeResult('mcp_connect', requestId, {
+          connected: false,
+          needs_security_approval: true,
+          docker_available: false,
+          docker_recommended: false,
+          security_instructions: `macOS Security Approval Required
 
-This binary may be blocked by macOS Gatekeeper.
+This is a compiled binary from GitHub. macOS Gatekeeper may block it.
 
-If macOS shows a security warning:
-1. DON'T click "Move to Trash"
-2. Open System Settings → Privacy & Security
-3. Find "${server.name}" and click "Allow Anyway"
+📋 Steps to approve:
+1. Click "Run Natively" to attempt starting
+2. If macOS blocks it, open System Settings → Privacy & Security
+3. Scroll down and click "Allow Anyway" next to "${server.name}"
 4. Try starting again
 
-Or remove quarantine in Terminal:
-  sudo xattr -rd com.apple.quarantine "${binaryPath}"
+Binary path: ${binaryPath}
 
-TIP: Install Docker Desktop to bypass this in the future.`,
-      });
+💡 TIP: Install Docker Desktop to bypass this in the future.`,
+        });
+      }
     }
   }
 
@@ -2557,22 +2569,17 @@ const handleInstallCuratedServer: MessageHandler = async (message, _store, _clie
         break;
     }
     
-    // Add packages and env vars to catalog entry
+    // Add packages to catalog entry (no hardcoded env vars - user configures via UI)
     (catalogEntry as any).packages = packages.map(p => ({
       registryType: p.registryType,
       identifier: p.identifier,
       binaryUrl: p.binaryUrl,
-      environmentVariables: curated.envVars?.map(e => ({
-        name: e.name,
-        description: e.description,
-        isSecret: e.isSecret,
-      })) || [],
+      environmentVariables: [],
     }));
     
-    // Install the server (passing noDocker and requiredArgs if set)
+    // Install the server
     const server = await installer.install(catalogEntry, 0, { 
       noDocker: curated.noDocker,
-      requiredArgs: curated.requiredArgs,
     });
     
     return makeResult('install_curated_server', requestId, { 
@@ -2658,32 +2665,21 @@ const handleInstallCurated: MessageHandler = async (message, _store, _client, _c
       }
     }
     
-    // Add packages and env vars to catalog entry
+    // Add packages to catalog entry (no hardcoded env vars - user configures via UI)
     (catalogEntry as any).packages = packages.map(p => ({
       registryType: p.registryType,
       identifier: p.identifier,
       binaryUrl: p.binaryUrl,
-      environmentVariables: curated.envVars?.map(e => ({
-        name: e.name,
-        description: e.description,
-        isSecret: e.isSecret,
-      })) || [],
+      environmentVariables: [],
     }));
     
-    // Install the server (passing noDocker and requiredArgs if set)
+    // Install the server
     const server = await installer.install(catalogEntry, 0, { 
       noDocker: curated.noDocker,
-      requiredArgs: curated.requiredArgs,
     });
-    
-    // Check if server needs configuration
-    const needsConfig = curated.envVars?.some(e => e.required && e.isSecret) || 
-                        (curated.requiredArgs?.required === true);
     
     return makeResult('install_curated', requestId, { 
       server,
-      needsConfig,
-      requiredEnvVars: curated.envVars || [],
     });
   } catch (e) {
     log(`Failed to install curated server: ${e}`);

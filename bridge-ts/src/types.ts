@@ -123,20 +123,15 @@ export interface InstalledServer {
   packageId: string;
   autoStart: boolean;
   args: string[];
+  /** 
+   * Env vars that the server needs (discovered from package metadata).
+   * Note: We don't hardcode these per-server. Users configure via generic UI.
+   */
   requiredEnvVars: Array<{
     name: string;
     description?: string;
     isSecret?: boolean;
   }>;
-  // Command-line argument configuration (if server needs args)
-  requiredArgs?: {
-    name: string;
-    description?: string;
-    type: 'path' | 'string' | 'number';
-    multiple?: boolean;
-    placeholder?: string;
-    required?: boolean;
-  };
   installedAt: number;
   catalogSource: string | null;
   homepageUrl: string | null;
@@ -144,6 +139,9 @@ export interface InstalledServer {
   // For binary packages
   binaryUrl?: string;
   binaryPath?: string;
+  // GitHub info (for fetching Linux binaries for Docker)
+  githubOwner?: string;
+  githubRepo?: string;
   // For remote HTTP/SSE servers
   remoteUrl?: string;
   remoteHeaders?: Record<string, string>;
@@ -320,6 +318,10 @@ export interface McpToolResult {
 
 /**
  * A curated MCP server that we recommend and provide easy installation for.
+ * 
+ * Note: We intentionally don't hardcode per-server configuration requirements.
+ * Users can configure args and env vars for ANY server through the generic UI.
+ * If a server needs specific config, it will fail on start and the error will guide the user.
  */
 export interface CuratedServer {
   /** Unique ID for this server (e.g., 'curated-filesystem') */
@@ -345,15 +347,6 @@ export interface CuratedServer {
   
   /** URL to documentation or homepage */
   homepageUrl?: string;
-  
-  /** Whether this server requires native messaging bridge */
-  requiresNative?: boolean;
-  
-  /** Whether the server requires configuration/credentials */
-  requiresConfig?: boolean;
-  
-  /** Hint about what configuration is needed */
-  configHint?: string;
 }
 
 // =============================================================================

@@ -10,7 +10,7 @@ interface RecommendedServer {
   name: string;
   description: string;
   icon: string;
-  packageType: 'npm' | 'pypi' | 'binary';
+  packageType: 'npm' | 'pypi' | 'binary' | 'oci';
   packageId: string;
   tags: string[];
   requiresNative: boolean;
@@ -19,9 +19,10 @@ interface RecommendedServer {
   homepageUrl: string;
 }
 
+// IDs MUST match the curated-servers.ts IDs exactly for install state sync
 const RECOMMENDED_SERVERS: RecommendedServer[] = [
   {
-    id: 'recommended-filesystem',
+    id: 'curated-filesystem',  // Must match curated-servers.ts
     name: 'Filesystem',
     description: 'Read, write, and manage files on your local system. Perfect for working with documents, code, and data.',
     icon: '📁',
@@ -34,21 +35,33 @@ const RECOMMENDED_SERVERS: RecommendedServer[] = [
     homepageUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem',
   },
   {
-    id: 'recommended-github',
-    name: 'GitHub',
-    description: 'Access repositories, issues, pull requests, and more. Great for developers and project management.',
+    id: 'curated-github',  // Must match curated-servers.ts
+    name: 'GitHub (npm)',
+    description: 'Access repositories, issues, and PRs via npm package. Requires GITHUB_PERSONAL_ACCESS_TOKEN.',
     icon: '🐙',
-    // Package info will be resolved from GitHub URL - it's a Go binary
-    packageType: 'npm', // Placeholder - will be resolved from homepageUrl
-    packageId: '', // Empty - triggers GitHub resolution
+    packageType: 'npm',
+    packageId: '@modelcontextprotocol/server-github',
     tags: ['development', 'git', 'collaboration'],
+    requiresNative: true,
+    requiresConfig: true,
+    configHint: 'Requires a GitHub Personal Access Token',
+    homepageUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/github',
+  },
+  {
+    id: 'curated-github-docker',  // Must match curated-servers.ts
+    name: 'GitHub (Docker)',
+    description: 'Official GitHub MCP server via Docker. Best option if npm version has issues.',
+    icon: '🐳',
+    packageType: 'oci',
+    packageId: 'ghcr.io/github/github-mcp-server',
+    tags: ['development', 'git', 'collaboration', 'docker'],
     requiresNative: true,
     requiresConfig: true,
     configHint: 'Requires a GitHub Personal Access Token',
     homepageUrl: 'https://github.com/github/github-mcp-server',
   },
   {
-    id: 'recommended-time',
+    id: 'curated-time',  // Must match curated-servers.ts
     name: 'Time',
     description: 'Get current time, convert timezones, and work with dates. Simple but useful for scheduling tasks.',
     icon: '🕐',
@@ -246,11 +259,17 @@ async function refreshInstalledServerIds(): Promise<void> {
   try {
     const response = await browser.runtime.sendMessage({ type: 'list_installed' }) as {
       type: string;
-      servers?: Array<{ id: string }>;
+      servers?: Array<{ server?: { id: string }; id?: string }>;
     };
     
     if (response.type === 'list_installed_result' && response.servers) {
-      installedServerIds = new Set(response.servers.map(s => s.id));
+      // Parse response - may be { server: { id } } or { id } format
+      installedServerIds = new Set(
+        response.servers
+          .map(s => (s as any).server?.id || s.id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      );
+      console.log('[Directory] Refreshed installed servers:', [...installedServerIds]);
       renderServers();
     }
   } catch (e) {
@@ -770,22 +789,52 @@ function renderFeaturedCard(server: CatalogServer): string {
 
 // Render Quick Start / Recommended section
 function renderQuickStartSection(): string {
+  console.log('[Directory] renderQuickStartSection called');
+  console.log('[Directory] installedServerIds:', [...installedServerIds]);
+  console.log('[Directory] RECOMMENDED_SERVERS:', RECOMMENDED_SERVERS.map(s => s.id));
+  
   // Check which recommended servers are already installed
-  const recommendedWithStatus = RECOMMENDED_SERVERS.map(server => ({
-    ...server,
-    isInstalled: installedServerIds.has(server.id) || 
-      // Also check if installed by package ID matching
-      [...installedServerIds].some(id => {
-        if (!id || typeof id !== 'string') return false;
-        const pkgPart = server.packageId.split('/').pop();
-        return pkgPart ? id.toLowerCase().includes(pkgPart.toLowerCase()) : false;
-      }),
-  }));
+  // We need multiple matching strategies since IDs may differ
+  const recommendedWithStatus = RECOMMENDED_SERVERS.map(server => {
+    const serverIdLower = server.id.toLowerCase();
+    const serverNameLower = server.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const pkgPart = server.packageId.split('/').pop()?.toLowerCase() || '';
+    
+    const isInstalled = [...installedServerIds].some(installedId => {
+      if (!installedId || typeof installedId !== 'string') return false;
+      const idLower = installedId.toLowerCase();
+      
+      // Direct match
+      if (idLower === serverIdLower) return true;
+      
+      // Match by package part (e.g., "server-filesystem" in "curated-filesystem")
+      if (pkgPart && idLower.includes(pkgPart)) return true;
+      
+      // Match by server name (e.g., "filesystem" in "recommended-filesystem")  
+      if (serverNameLower && idLower.includes(serverNameLower)) return true;
+      
+      // Match old ID formats (recommended-X matches curated-X)
+      const oldId = server.id.replace('curated-', 'recommended-');
+      if (idLower === oldId.toLowerCase()) return true;
+      
+      // Match package ID directly (e.g., "mcp-server-time")
+      if (idLower === pkgPart) return true;
+      if (idLower.replace(/-/g, '') === pkgPart.replace(/-/g, '')) return true;
+      
+      return false;
+    });
+    
+    console.log(`[Directory] Server ${server.id} (name=${server.name}, pkg=${pkgPart}): isInstalled=${isInstalled}`);
+    return {
+      ...server,
+      isInstalled,
+    };
+  });
 
   const allInstalled = recommendedWithStatus.every(s => s.isInstalled);
+  const installedCount = recommendedWithStatus.filter(s => s.isInstalled).length;
   
-  // If all are installed, don't show the section
-  if (allInstalled) return '';
+  // Always show all servers - just mark installed ones appropriately
 
   const cardsHtml = recommendedWithStatus.map(server => {
     const requirementBadge = server.requiresNative 
@@ -826,14 +875,20 @@ function renderQuickStartSection(): string {
     `;
   }).join('');
 
+  const subtitle = allInstalled 
+    ? 'All recommended servers installed!' 
+    : installedCount > 0 
+      ? `${installedCount} of ${RECOMMENDED_SERVERS.length} installed`
+      : 'Get started with these essential MCP servers';
+
   return `
     <section class="quickstart-section">
       <div class="quickstart-header">
         <div class="quickstart-title-group">
-          <span class="quickstart-icon">🚀</span>
+          <span class="quickstart-icon">${allInstalled ? '✅' : '🚀'}</span>
           <div>
             <h2 class="quickstart-title">Quick Start</h2>
-            <p class="quickstart-subtitle">Get started with these essential MCP servers</p>
+            <p class="quickstart-subtitle">${subtitle}</p>
           </div>
         </div>
       </div>

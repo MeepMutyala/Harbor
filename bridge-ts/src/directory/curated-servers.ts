@@ -23,23 +23,8 @@ export interface CuratedServerFull extends CuratedServer {
     image: string;
     command?: string;
   };
-  envVars?: Array<{
-    name: string;
-    description?: string;
-    isSecret?: boolean;
-    required?: boolean;
-  }>;
-  // Command-line arguments configuration
-  // If defined, the UI will prompt the user to configure these
-  requiredArgs?: {
-    name: string;           // Display name (e.g., "Allowed Directories")
-    description?: string;   // Help text
-    type: 'path' | 'string' | 'number';  // Input type for validation hints
-    multiple?: boolean;     // Can user add multiple values?
-    placeholder?: string;   // Example value
-    required?: boolean;     // Must have at least one?
-  };
-  // If true, this server must NOT run in Docker (needs host filesystem access, etc.)
+  // If true, this server must NOT run in Docker (needs host filesystem access)
+  // This is a technical constraint for servers that access local resources
   noDocker?: boolean;
 }
 
@@ -58,9 +43,6 @@ const CURATED_SERVERS_FULL: CuratedServerFull[] = [
     homepageUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem',
     repository: 'https://github.com/modelcontextprotocol/servers',
-    requiresNative: true,
-    requiresConfig: true,
-    configHint: 'Choose which folders to allow access to',
     // Filesystem server must NOT run in Docker - it needs host filesystem access
     noDocker: true,
     install: {
@@ -70,8 +52,8 @@ const CURATED_SERVERS_FULL: CuratedServerFull[] = [
   },
   {
     id: 'curated-github',
-    name: 'GitHub',
-    description: 'Access repositories, issues, pull requests, and more.',
+    name: 'GitHub (Local)',
+    description: 'Access repositories, issues, pull requests via npm package. Requires GITHUB_PERSONAL_ACCESS_TOKEN env var.',
     icon: '🐙',
     packageType: 'npm',
     packageId: '@modelcontextprotocol/server-github',
@@ -79,21 +61,26 @@ const CURATED_SERVERS_FULL: CuratedServerFull[] = [
     homepageUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/github',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/github',
     repository: 'https://github.com/modelcontextprotocol/servers',
-    requiresNative: true,
-    requiresConfig: true,
-    configHint: 'Requires a GitHub Personal Access Token',
     install: {
       type: 'npm',
       package: '@modelcontextprotocol/server-github',
     },
-    envVars: [
-      {
-        name: 'GITHUB_PERSONAL_ACCESS_TOKEN',
-        description: 'GitHub Personal Access Token with repo access',
-        isSecret: true,
-        required: true,
-      },
-    ],
+  },
+  {
+    id: 'curated-github-docker',
+    name: 'GitHub (Docker)',
+    description: 'Official GitHub MCP server via Docker. Requires GITHUB_PERSONAL_ACCESS_TOKEN env var.',
+    icon: '🐙',
+    packageType: 'oci',
+    packageId: 'ghcr.io/github/github-mcp-server',
+    tags: ['development', 'git', 'collaboration', 'docker'],
+    homepageUrl: 'https://github.com/github/github-mcp-server',
+    homepage: 'https://github.com/github/github-mcp-server',
+    repository: 'https://github.com/github/github-mcp-server',
+    install: {
+      type: 'docker',
+      image: 'ghcr.io/github/github-mcp-server',
+    },
   },
   {
     id: 'curated-time',
@@ -106,8 +93,6 @@ const CURATED_SERVERS_FULL: CuratedServerFull[] = [
     homepageUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/time',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/time',
     repository: 'https://github.com/modelcontextprotocol/servers',
-    requiresNative: true,
-    requiresConfig: false,
     install: {
       type: 'pypi',
       package: 'mcp-server-time',
@@ -124,8 +109,6 @@ const CURATED_SERVERS_FULL: CuratedServerFull[] = [
     homepageUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/memory',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/memory',
     repository: 'https://github.com/modelcontextprotocol/servers',
-    requiresNative: true,
-    requiresConfig: false,
     install: {
       type: 'npm',
       package: '@modelcontextprotocol/server-memory',
@@ -142,8 +125,6 @@ const CURATED_SERVERS_FULL: CuratedServerFull[] = [
     homepageUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/fetch',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/fetch',
     repository: 'https://github.com/modelcontextprotocol/servers',
-    requiresNative: true,
-    requiresConfig: false,
     install: {
       type: 'npm',
       package: '@modelcontextprotocol/server-fetch',
@@ -163,9 +144,6 @@ export const CURATED_SERVERS: CuratedServer[] = CURATED_SERVERS_FULL.map(s => ({
   packageId: s.packageId,
   tags: s.tags,
   homepageUrl: s.homepageUrl,
-  requiresNative: s.requiresNative,
-  requiresConfig: s.requiresConfig,
-  configHint: s.configHint,
 }));
 
 /**

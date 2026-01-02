@@ -852,7 +852,13 @@ async function startInstalledServer(
         // Connection failed with error - no Docker fallback
         console.error('[Sidebar] Connection failed (no Docker fallback):', response.error);
         clearServerProgress(serverId);
-        alert(`Failed to start: ${response.error}`);
+        
+        // Provide more helpful error messages
+        let errorMsg = response.error;
+        if (errorMsg.includes('Connection closed') || errorMsg.includes('-32000')) {
+          errorMsg += '\n\nThis usually means the server crashed on startup. Check:\n• Missing environment variables (click ⚙️ to configure)\n• Incorrect command arguments';
+        }
+        alert(`Failed to start: ${errorMsg}`);
       } else {
         // Connected is false but no security approval needed - must be an error
         console.error('[Sidebar] Connection failed without error details');
@@ -875,55 +881,70 @@ async function startInstalledServer(
   }
 }
 
+/**
+ * Show an inline security approval prompt below the server card.
+ */
 function showSecurityApprovalModal(
   serverId: string, 
   instructions: string,
   dockerAvailable: boolean = false,
   dockerRecommended: boolean = false
 ): void {
+  // Remove any existing inline prompts first (security or docker fallback)
+  document.querySelectorAll('.security-approval-inline').forEach(el => el.remove());
+  document.querySelectorAll('.docker-fallback-inline').forEach(el => el.remove());
+  
+  // Find the server card
+  const serverCard = document.querySelector(`.installed-server-item[data-server-id="${serverId}"]`);
+  if (!serverCard) {
+    console.error('Could not find server card for:', serverId);
+    // Fallback: use alert
+    alert(instructions);
+    return;
+  }
+  
   // Build Docker button if available
   const dockerButton = dockerAvailable 
-    ? `<button class="btn btn-success" id="security-docker-btn" style="margin-right: auto;">
+    ? `<button class="btn btn-success security-docker-btn" style="flex: 1;">
         🐳 Run in Docker${dockerRecommended ? ' (Recommended)' : ''}
        </button>`
     : '';
   
-  // Create modal HTML
-  const modalHtml = `
-    <div class="modal-overlay" id="security-modal">
-      <div class="modal-content" style="max-width: 550px;">
-        <div class="modal-header">
-          <h3>⚠️ macOS Security Approval</h3>
-        </div>
-        <div class="modal-body">
-          <pre style="white-space: pre-wrap; font-family: var(--font-sans); font-size: var(--text-sm); line-height: 1.5; background: var(--color-surface-secondary); padding: var(--space-3); border-radius: var(--radius-md); overflow-x: auto;">${escapeHtml(instructions)}</pre>
-        </div>
-        <div class="modal-footer" style="display: flex; gap: var(--space-2);">
-          ${dockerButton}
-          <button class="btn btn-secondary" id="security-cancel-btn">Cancel</button>
-          <button class="btn btn-primary" id="security-proceed-btn">I've Allowed It - Start Now</button>
-        </div>
+  // Create inline prompt
+  const inlinePrompt = document.createElement('div');
+  inlinePrompt.className = 'security-approval-inline';
+  inlinePrompt.innerHTML = `
+    <div style="background: var(--color-surface-secondary, #1e1e1e); border: 1px solid var(--color-border-default, #333); border-radius: 8px; padding: 12px; margin-top: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="font-size: 18px;">⚠️</span>
+        <strong style="color: var(--color-text-primary, #fff);">macOS Security Approval</strong>
+      </div>
+      <pre style="white-space: pre-wrap; font-family: var(--font-sans); font-size: 11px; line-height: 1.4; background: var(--color-bg-subtle, #2a2a2a); color: var(--color-text-secondary, #aaa); padding: 8px; border-radius: 4px; margin: 0 0 12px 0; max-height: 150px; overflow-y: auto;">${escapeHtml(instructions)}</pre>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        ${dockerButton}
+        <button class="btn btn-primary security-proceed-btn" style="flex: 1;">✓ I've Allowed It - Start Now</button>
+        <button class="btn btn-secondary security-cancel-btn">Cancel</button>
       </div>
     </div>
   `;
-
-  // Add to DOM
-  const container = document.createElement('div');
-  container.innerHTML = modalHtml;
-  document.body.appendChild(container.firstElementChild!);
-
-  // Event handlers
-  const modal = document.getElementById('security-modal')!;
-  const cancelBtn = document.getElementById('security-cancel-btn')!;
-  const proceedBtn = document.getElementById('security-proceed-btn')!;
-  const dockerBtn = document.getElementById('security-docker-btn');
+  
+  // Insert after the server card
+  serverCard.insertAdjacentElement('afterend', inlinePrompt);
+  
+  // Scroll into view
+  inlinePrompt.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  
+  // Add event listeners
+  const cancelBtn = inlinePrompt.querySelector('.security-cancel-btn')!;
+  const proceedBtn = inlinePrompt.querySelector('.security-proceed-btn')!;
+  const dockerBtn = inlinePrompt.querySelector('.security-docker-btn');
 
   cancelBtn.addEventListener('click', () => {
-    modal.remove();
+    inlinePrompt.remove();
   });
 
   proceedBtn.addEventListener('click', async () => {
-    modal.remove();
+    inlinePrompt.remove();
     // Retry with skip_security_check to bypass the first-run check
     await startInstalledServer(serverId, true, false);
   });
@@ -931,18 +952,11 @@ function showSecurityApprovalModal(
   // Docker button handler
   if (dockerBtn) {
     dockerBtn.addEventListener('click', async () => {
-      modal.remove();
+      inlinePrompt.remove();
       // Start in Docker mode
       await startInstalledServer(serverId, false, true);
     });
   }
-
-  // Click outside to close
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-      modal.remove();
-    }
-  });
 }
 
 /**

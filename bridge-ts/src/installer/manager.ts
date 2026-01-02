@@ -46,7 +46,6 @@ export class InstalledServerManager {
             autoStart: serverData.autoStart || false,
             args: serverData.args || [],
             requiredEnvVars: serverData.requiredEnvVars || [],
-            requiredArgs: serverData.requiredArgs,
             installedAt: serverData.installedAt || Date.now(),
             catalogSource: serverData.catalogSource || null,
             homepageUrl: serverData.homepageUrl || null,
@@ -54,6 +53,9 @@ export class InstalledServerManager {
             // Binary package fields
             binaryUrl: serverData.binaryUrl,
             binaryPath: serverData.binaryPath,
+            // GitHub info for Linux binary downloads
+            githubOwner: serverData.githubOwner,
+            githubRepo: serverData.githubRepo,
             // Remote HTTP/SSE server fields
             remoteUrl: serverData.remoteUrl,
             remoteHeaders: serverData.remoteHeaders,
@@ -89,7 +91,6 @@ export class InstalledServerManager {
     packageIndex: number = 0,
     options?: { 
       noDocker?: boolean;
-      requiredArgs?: InstalledServer['requiredArgs'];
     }
   ): Promise<InstalledServer> {
     const serverId = catalogEntry.id;
@@ -143,6 +144,17 @@ export class InstalledServerManager {
       }
     }
 
+    // Try to extract GitHub owner/repo from homepage or repository URL (for binary Linux downloads)
+    let githubOwner: string | undefined;
+    let githubRepo: string | undefined;
+    const repoUrl = catalogEntry.repositoryUrl || catalogEntry.homepageUrl || '';
+    const githubMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+    if (githubMatch) {
+      githubOwner = githubMatch[1];
+      githubRepo = githubMatch[2].replace(/\.git$/, '').split('/')[0]; // Handle paths like /tree/main/...
+      log(`[InstalledServerManager] Extracted GitHub info: ${githubOwner}/${githubRepo}`);
+    }
+
     const server: InstalledServer = {
       id: serverId,
       name,
@@ -151,13 +163,14 @@ export class InstalledServerManager {
       autoStart: false,
       args: [],
       requiredEnvVars,
-      requiredArgs: options?.requiredArgs,
       installedAt: Date.now(),
       catalogSource: catalogEntry.source || null,
       homepageUrl: catalogEntry.homepageUrl || null,
       description: catalogEntry.description || null,
       binaryUrl,
       binaryPath,
+      githubOwner,
+      githubRepo,
       // If noDocker is true, this server requires host filesystem access
       noDocker: options?.noDocker,
     };
@@ -296,7 +309,8 @@ export class InstalledServerManager {
     const envVars = this.secrets.getAll(serverId);
 
     // Determine if we should use Docker
-    const useDocker = options?.useDocker ?? server.useDocker ?? false;
+    // OCI (Docker image) servers MUST use Docker
+    const useDocker = server.packageType === 'oci' || (options?.useDocker ?? server.useDocker ?? false);
     
     if (useDocker) {
       log(`[InstalledServerManager] Starting ${serverId} in Docker mode`);
@@ -360,6 +374,11 @@ export class InstalledServerManager {
   /**
    * Check if Docker should be preferred for a given server.
    * Returns recommendation based on package type and platform.
+   * 
+   * For binary servers:
+   * - We download the native binary (macOS) for native execution
+   * - We download the Linux binary on-demand for Docker execution
+   * - Docker is recommended on macOS to bypass Gatekeeper
    */
   async shouldPreferDocker(serverId: string): Promise<{
     prefer: boolean;
@@ -382,11 +401,21 @@ export class InstalledServerManager {
     }
 
     // Recommend Docker for binaries on macOS (Gatekeeper bypass)
+    // We'll download the Linux binary on-demand for Docker
     if (server.packageType === 'binary' && process.platform === 'darwin') {
+      // Only recommend if we have GitHub info to download Linux binary
+      if (server.githubOwner && server.githubRepo) {
+        return {
+          prefer: true,
+          dockerAvailable: true,
+          reason: 'Docker bypasses macOS Gatekeeper (Linux binary will be downloaded)'
+        };
+      }
+      // No GitHub info - can't download Linux binary
       return {
-        prefer: true,
+        prefer: false,
         dockerAvailable: true,
-        reason: 'Docker bypasses macOS Gatekeeper for downloaded binaries'
+        reason: 'Docker not available for this binary (missing GitHub repository info for Linux binary download)'
       };
     }
 

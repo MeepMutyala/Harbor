@@ -13,27 +13,46 @@ import { spawn } from 'node:child_process';
 import { log } from '../native-messaging.js';
 
 const BIN_DIR = join(homedir(), '.harbor', 'bin');
+const LINUX_BIN_DIR = join(homedir(), '.harbor', 'bin', 'linux');
 
 /**
  * Ensure the bin directory exists.
  */
-function ensureBinDir(): void {
-  if (!existsSync(BIN_DIR)) {
-    mkdirSync(BIN_DIR, { recursive: true });
+function ensureBinDir(forLinux: boolean = false): void {
+  const dir = forLinux ? LINUX_BIN_DIR : BIN_DIR;
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
 }
 
 /**
  * Get the path where a binary should be stored.
+ * @param serverId - The server ID
+ * @param binaryName - Optional binary name override
+ * @param forDocker - If true, returns path to Linux binary for Docker use
  */
-export function getBinaryPath(serverId: string, binaryName?: string): string {
-  ensureBinDir();
+export function getBinaryPath(serverId: string, binaryName?: string, forDocker: boolean = false): string {
+  ensureBinDir(forDocker);
   const name = binaryName || serverId;
-  // On Windows, add .exe extension if not present
+  
+  if (forDocker) {
+    // Linux binaries for Docker - no extension
+    return join(LINUX_BIN_DIR, name);
+  }
+  
+  // Native binaries - platform-specific
   if (platform() === 'win32' && !name.endsWith('.exe')) {
     return join(BIN_DIR, `${name}.exe`);
   }
   return join(BIN_DIR, name);
+}
+
+/**
+ * Check if the Linux binary exists (for Docker use).
+ */
+export function isLinuxBinaryDownloaded(serverId: string): boolean {
+  const binPath = getBinaryPath(serverId, undefined, true);
+  return existsSync(binPath);
 }
 
 /**
@@ -335,6 +354,87 @@ export async function downloadBinary(
     }
     
     log(`[BinaryDownloader] Binary installed: ${finalBinaryPath}`);
+    return finalBinaryPath;
+    
+  } finally {
+    // Clean up temp directory
+    try {
+      if (existsSync(tempDir)) {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch (e) {
+      log(`[BinaryDownloader] Failed to clean up temp dir: ${e}`);
+    }
+  }
+}
+
+/**
+ * Download the Linux binary for Docker use.
+ * This is separate from the native binary download.
+ */
+export async function downloadLinuxBinary(
+  serverId: string,
+  linuxBinaryUrl: string,
+  options?: {
+    expectedBinaryName?: string;
+    onProgress?: (message: string) => void;
+  }
+): Promise<string> {
+  ensureBinDir(true);
+  
+  const urlFilename = basename(new URL(linuxBinaryUrl).pathname);
+  const tempDir = join(LINUX_BIN_DIR, `temp_${serverId}_${Date.now()}`);
+  const archivePath = join(tempDir, urlFilename);
+  const finalBinaryPath = getBinaryPath(serverId, undefined, true);
+  
+  options?.onProgress?.(`Downloading Linux binary for Docker...`);
+  log(`[BinaryDownloader] Downloading Linux binary: ${linuxBinaryUrl}`);
+  
+  try {
+    // Create temp directory
+    mkdirSync(tempDir, { recursive: true });
+    
+    // Download the file
+    await downloadFile(linuxBinaryUrl, archivePath);
+    options?.onProgress?.(`Download complete, extracting...`);
+    
+    // Determine if it's an archive
+    const isArchive = 
+      urlFilename.endsWith('.tar.gz') || 
+      urlFilename.endsWith('.tgz') || 
+      urlFilename.endsWith('.zip');
+    
+    if (isArchive) {
+      // Extract the archive
+      if (urlFilename.endsWith('.tar.gz') || urlFilename.endsWith('.tgz')) {
+        await extractTarGz(archivePath, tempDir);
+      } else if (urlFilename.endsWith('.zip')) {
+        await extractZip(archivePath, tempDir);
+      }
+      
+      // Remove the archive file
+      unlinkSync(archivePath);
+      
+      // Find the executable (look for any file, Linux binaries don't need .exe)
+      const executable = findExecutable(tempDir, options?.expectedBinaryName || serverId);
+      if (!executable) {
+        throw new Error('Could not find executable in Linux archive');
+      }
+      
+      log(`[BinaryDownloader] Found Linux executable: ${executable}`);
+      
+      // Move to final location
+      renameSync(executable, finalBinaryPath);
+    } else {
+      // Direct binary download
+      renameSync(archivePath, finalBinaryPath);
+    }
+    
+    // Make executable
+    chmodSync(finalBinaryPath, 0o755);
+    
+    options?.onProgress?.(`Linux binary ready: ${finalBinaryPath}`);
+    log(`[BinaryDownloader] Linux binary installed: ${finalBinaryPath}`);
     return finalBinaryPath;
     
   } finally {

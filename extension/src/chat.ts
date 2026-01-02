@@ -86,12 +86,15 @@ const sendBtn = document.getElementById('send-btn') as HTMLButtonElement;
 const serverSelector = document.getElementById('server-selector') as HTMLDivElement;
 const newChatBtn = document.getElementById('new-chat-btn') as HTMLButtonElement;
 const clearContextBtn = document.getElementById('clear-context-btn') as HTMLButtonElement;
+const copyChatBtn = document.getElementById('copy-chat-btn') as HTMLButtonElement;
 const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
 // Compare toggle is now in sidebar only - we use storage to sync
 const compareToggle = document.getElementById('compare-toggle') as HTMLInputElement | null;
 const compareResults = document.getElementById('compare-results') as HTMLDivElement;
 const messagesStock = document.getElementById('messages-stock') as HTMLDivElement;
 const messagesTools = document.getElementById('messages-tools') as HTMLDivElement;
+const copyStockBtn = document.getElementById('copy-stock-btn') as HTMLButtonElement;
+const copyToolsBtn = document.getElementById('copy-tools-btn') as HTMLButtonElement;
 
 // =============================================================================
 // Theme
@@ -463,6 +466,79 @@ function scrollToBottom(): void {
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
+/**
+ * Extract all message content from a messages container for copying
+ */
+function extractColumnContent(container: HTMLElement): string {
+  const messages = container.querySelectorAll('.message');
+  const parts: string[] = [];
+  
+  messages.forEach((msg) => {
+    const roleEl = msg.querySelector('.message-role');
+    const role = roleEl?.textContent || '';
+    
+    // Get raw content if stored, otherwise extract from DOM
+    const rawContent = (msg as HTMLElement).dataset.rawContent;
+    if (rawContent) {
+      parts.push(`${role}:\n${rawContent}`);
+    } else {
+      // Fallback to extracting text from message body
+      const bodyEl = msg.querySelector('.message-body');
+      if (bodyEl) {
+        // Get text content, excluding the copy button
+        const clone = bodyEl.cloneNode(true) as HTMLElement;
+        clone.querySelectorAll('.copy-btn').forEach(btn => btn.remove());
+        const text = clone.textContent?.trim() || '';
+        if (text) {
+          parts.push(`${role}:\n${text}`);
+        }
+      }
+    }
+    
+    // Include tool calls if present
+    const toolCalls = msg.querySelectorAll('.tool-call');
+    toolCalls.forEach(tc => {
+      const name = tc.querySelector('.tool-call-name')?.textContent || '';
+      const args = tc.querySelector('.tool-call-args')?.textContent || '';
+      parts.push(`Tool Call: ${name}\n${args}`);
+    });
+  });
+  
+  // Include tool results that are outside messages
+  const toolResults = container.querySelectorAll('.tool-result');
+  toolResults.forEach(tr => {
+    const header = tr.querySelector('.tool-result-header')?.textContent || '';
+    const content = tr.textContent?.replace(header, '').trim() || '';
+    parts.push(`${header}\n${content}`);
+  });
+  
+  return parts.join('\n\n---\n\n');
+}
+
+/**
+ * Copy column content to clipboard
+ */
+async function copyColumnContent(container: HTMLElement, button: HTMLButtonElement): Promise<void> {
+  const content = extractColumnContent(container);
+  
+  if (!content.trim()) {
+    return;
+  }
+  
+  try {
+    await navigator.clipboard.writeText(content);
+    const originalText = button.textContent;
+    button.textContent = '✓ Copied';
+    button.classList.add('copied');
+    setTimeout(() => {
+      button.textContent = originalText;
+      button.classList.remove('copied');
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy column content:', err);
+  }
+}
+
 // =============================================================================
 // Send Message
 // =============================================================================
@@ -782,6 +858,11 @@ clearContextBtn.addEventListener('click', async () => {
 });
 
 themeToggle.addEventListener('click', toggleTheme);
+
+// Copy buttons
+copyChatBtn.addEventListener('click', () => copyColumnContent(chatMessages, copyChatBtn));
+copyStockBtn.addEventListener('click', () => copyColumnContent(messagesStock, copyStockBtn));
+copyToolsBtn.addEventListener('click', () => copyColumnContent(messagesTools, copyToolsBtn));
 
 // Compare mode is now controlled from sidebar only
 // The chat listens for 'compare_mode_changed' messages and storage changes
