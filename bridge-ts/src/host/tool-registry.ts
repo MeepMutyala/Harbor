@@ -17,6 +17,7 @@ import {
   PermissionScope,
 } from './types.js';
 import { checkPermission, isToolAllowed } from './permissions.js';
+import { getToolRouter } from '../chat/tool-router.js';
 
 /**
  * Tool storage: namespaced name -> descriptor.
@@ -83,6 +84,17 @@ export function registerServerTools(
 
   log(`[ToolRegistry] Registered ${registered.length} tools from server "${serverLabel}" (${serverId})`);
 
+  // Index tools in the router for dynamic routing
+  try {
+    const router = getToolRouter();
+    router.indexServer(serverId, serverTools_.map(t => ({
+      name: t.name,
+      description: t.description,
+    })));
+  } catch (e) {
+    log(`[ToolRegistry] Failed to index tools in router: ${e}`);
+  }
+
   return registered;
 }
 
@@ -104,6 +116,14 @@ export function unregisterServerTools(serverId: string): number {
 
   if (removed > 0) {
     log(`[ToolRegistry] Unregistered ${removed} tools from server ${serverId}`);
+  }
+
+  // Remove from router index
+  try {
+    const router = getToolRouter();
+    router.removeServer(serverId);
+  } catch (e) {
+    log(`[ToolRegistry] Failed to remove from router: ${e}`);
   }
 
   return removed;
