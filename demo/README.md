@@ -8,6 +8,7 @@ Example code showing how web pages can use the Harbor JS AI Provider to interact
 |------|-------------|------|
 | **Main Demo** | Full-featured chat with permissions flow | `/demo/index.html` |
 | **Chat POC** | Minimal example code for developers | `/demo/chat-poc/` |
+| **Page Summarizer** | Simple one-click page summarization | `/demo/summarizer/` |
 
 ## Quick Start
 
@@ -22,6 +23,7 @@ Example code showing how web pages can use the Harbor JS AI Provider to interact
 3. **Open a demo in your browser**:
    - Main demo: `http://localhost:8000`
    - Chat POC: `http://localhost:8000/chat-poc/`
+   - Page Summarizer: `http://localhost:8000/summarizer/`
 
 4. **Connect to Harbor**:
    - Click "Connect to Harbor" 

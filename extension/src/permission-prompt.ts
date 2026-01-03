@@ -243,28 +243,11 @@ function setupListeners(): void {
 }
 
 // =============================================================================
-// Theme
-// =============================================================================
-
-function initTheme(): void {
-  // Check localStorage first
-  const savedTheme = localStorage.getItem('harbor-theme');
-  if (savedTheme) {
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    return;
-  }
-  
-  // Fall back to system preference
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-}
-
-// =============================================================================
 // Initialize
 // =============================================================================
 
 function init(): void {
-  initTheme();
+  // No theme init needed - CSS uses system colors automatically
   renderUI();
   setupListeners();
 }

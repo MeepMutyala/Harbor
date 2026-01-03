@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, build } from 'vite';
 import { resolve } from 'path';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -7,24 +7,29 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Content scripts that must be bundled as IIFE (not ES modules)
+const contentScriptEntries = {
+  'content-bridge': resolve(__dirname, 'src/provider/content-bridge.ts'),
+  'vscode-detector': resolve(__dirname, 'src/vscode-detector.ts'),
+};
+
+// ES module entries (background, sidebar, etc.)
+const esModuleEntries = {
+  background: resolve(__dirname, 'src/background.ts'),
+  sidebar: resolve(__dirname, 'src/sidebar.ts'),
+  directory: resolve(__dirname, 'src/directory.ts'),
+  'demo-bootstrap': resolve(__dirname, 'src/demo-bootstrap.ts'),
+  'provider-injected': resolve(__dirname, 'src/provider/injected.ts'),
+  'permission-prompt': resolve(__dirname, 'src/permission-prompt.ts'),
+};
+
 export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
     rollupOptions: {
-      input: {
-        background: resolve(__dirname, 'src/background.ts'),
-        sidebar: resolve(__dirname, 'src/sidebar.ts'),
-        directory: resolve(__dirname, 'src/directory.ts'),
-        'demo-bootstrap': resolve(__dirname, 'src/demo-bootstrap.ts'),
-        // JS AI Provider files
-        'content-bridge': resolve(__dirname, 'src/provider/content-bridge.ts'),
-        'provider-injected': resolve(__dirname, 'src/provider/injected.ts'),
-        'permission-prompt': resolve(__dirname, 'src/permission-prompt.ts'),
-        // VS Code MCP button detector
-        'vscode-detector': resolve(__dirname, 'src/vscode-detector.ts'),
-      },
+      input: esModuleEntries,
       output: {
         entryFileNames: '[name].js',
         format: 'es',
@@ -33,6 +38,36 @@ export default defineConfig({
   },
   publicDir: false,
   plugins: [
+    {
+      name: 'build-content-scripts',
+      async closeBundle() {
+        // Build content scripts as IIFE (required for Chrome content scripts)
+        for (const [fileName, entry] of Object.entries(contentScriptEntries)) {
+          // Convert filename to valid JS identifier for IIFE global name
+          const globalName = fileName.replace(/-/g, '_');
+          await build({
+            configFile: false,
+            build: {
+              outDir: 'dist',
+              emptyOutDir: false,
+              sourcemap: true,
+              lib: {
+                entry,
+                name: globalName,
+                formats: ['iife'],
+                fileName: () => `${fileName}.js`,
+              },
+              rollupOptions: {
+                output: {
+                  // Ensure single file output
+                  inlineDynamicImports: true,
+                },
+              },
+            },
+          });
+        }
+      },
+    },
     {
       name: 'copy-html-and-manifest',
       writeBundle() {

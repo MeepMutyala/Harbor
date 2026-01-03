@@ -11,7 +11,7 @@ import browser from 'webextension-polyfill';
 import type { ProviderMessage } from './types';
 
 const NAMESPACE = 'harbor-provider';
-const DEBUG = false;
+const DEBUG = true;
 
 function log(...args: unknown[]): void {
   if (DEBUG) {

@@ -87,11 +87,22 @@ window.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.namespace !== NAMESPACE) return;
   
+  console.log('[Harbor Injected] Received message:', data.type, data.requestId, data.payload);
+  
   // Check if this is a response to a pending request
   const pending = pendingRequests.get(data.requestId);
   if (pending) {
+    // Ignore responses with undefined payload (likely from stale content scripts)
+    // The real response should have a payload
+    if (data.payload === undefined && data.type !== 'error') {
+      console.log('[Harbor Injected] Ignoring response with undefined payload (likely stale):', data.requestId);
+      return;
+    }
+    
     clearTimeout(pending.timeout);
     pendingRequests.delete(data.requestId);
+    
+    console.log('[Harbor Injected] Resolving pending request:', data.requestId, 'with payload:', data.payload);
     
     if (data.type === 'error') {
       pending.reject(createApiError(
@@ -103,6 +114,8 @@ window.addEventListener('message', (event) => {
       pending.resolve(data.payload);
     }
     return;
+  } else {
+    console.log('[Harbor Injected] No pending request found for:', data.requestId);
   }
   
   // Check for streaming events

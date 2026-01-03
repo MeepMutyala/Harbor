@@ -4,8 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Harbor - Permission Request</title>
-  <link rel="stylesheet" href="design-tokens.css">
   <style>
+    /**
+     * Permission Prompt - Native/System Theme
+     * Uses CSS System Colors to match OS/browser appearance
+     */
+    
     * {
       box-sizing: border-box;
       margin: 0;
@@ -13,11 +17,13 @@
     }
 
     body {
-      font-family: var(--font-sans);
-      font-size: var(--text-sm);
-      background: var(--color-bg-primary);
-      color: var(--color-text-primary);
+      /* System fonts for native look */
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
       line-height: 1.5;
+      /* System colors - automatically match OS theme */
+      background: Canvas;
+      color: CanvasText;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -27,73 +33,73 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      padding: var(--space-4);
+      padding: 16px;
       max-width: 100%;
     }
 
     .header {
       display: flex;
       align-items: center;
-      gap: var(--space-3);
-      margin-bottom: var(--space-4);
-      padding-bottom: var(--space-3);
-      border-bottom: 1px solid var(--color-border-primary);
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid GrayText;
     }
 
     .logo {
       width: 40px;
       height: 40px;
-      background: linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary));
-      border-radius: var(--radius-md);
+      background: AccentColor;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: var(--text-lg);
+      font-size: 18px;
       font-weight: bold;
-      color: white;
+      color: AccentColorText;
     }
 
     .header-text h1 {
-      font-size: var(--text-base);
+      font-size: 15px;
       font-weight: 600;
-      color: var(--color-text-primary);
+      color: CanvasText;
     }
 
     .header-text p {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
+      font-size: 12px;
+      color: GrayText;
     }
 
     .origin-badge {
-      background: var(--color-bg-tertiary);
-      border: 1px solid var(--color-border-primary);
-      border-radius: var(--radius-md);
-      padding: var(--space-3);
-      margin-bottom: var(--space-4);
+      background: color-mix(in srgb, CanvasText 5%, Canvas);
+      border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 16px;
     }
 
     .origin-label {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
+      font-size: 11px;
+      color: GrayText;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      margin-bottom: var(--space-1);
+      margin-bottom: 4px;
     }
 
     .origin-value {
-      font-family: var(--font-mono);
-      font-size: var(--text-sm);
-      color: var(--color-accent-primary);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      font-size: 13px;
+      color: LinkText;
       word-break: break-all;
     }
 
     .reason {
-      background: var(--color-bg-secondary);
-      border-radius: var(--radius-md);
-      padding: var(--space-3);
-      margin-bottom: var(--space-4);
+      background: color-mix(in srgb, CanvasText 5%, Canvas);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 16px;
       font-style: italic;
-      color: var(--color-text-secondary);
+      color: GrayText;
     }
 
     .reason::before {
@@ -106,55 +112,67 @@
 
     .scopes-section {
       flex: 1;
-      margin-bottom: var(--space-4);
+      margin-bottom: 16px;
     }
 
     .scopes-title {
-      font-size: var(--text-sm);
+      font-size: 13px;
       font-weight: 600;
-      color: var(--color-text-primary);
-      margin-bottom: var(--space-3);
+      color: CanvasText;
+      margin-bottom: 12px;
     }
 
     .scope-list {
       display: flex;
       flex-direction: column;
-      gap: var(--space-2);
+      gap: 8px;
     }
 
     .scope-item {
       display: flex;
       align-items: flex-start;
-      gap: var(--space-3);
-      padding: var(--space-3);
-      background: var(--color-bg-secondary);
-      border-radius: var(--radius-md);
-      border: 1px solid var(--color-border-primary);
+      gap: 12px;
+      padding: 12px;
+      background: color-mix(in srgb, CanvasText 3%, Canvas);
+      border-radius: 6px;
+      border: 1px solid color-mix(in srgb, CanvasText 15%, Canvas);
     }
 
     .scope-icon {
-      width: 24px;
-      height: 24px;
-      min-width: 24px;
-      background: var(--color-accent-primary);
-      border-radius: var(--radius-sm);
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      background: AccentColor;
+      border-radius: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: var(--text-xs);
-      color: white;
+      font-size: 14px;
+      color: AccentColorText;
     }
 
     .scope-icon.model {
-      background: var(--color-accent-secondary);
+      background: #0066cc;
     }
 
     .scope-icon.tools {
-      background: var(--color-success);
+      background: #16a34a;
     }
 
     .scope-icon.browser {
-      background: var(--color-warning);
+      background: #ca8a04;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .scope-icon.model {
+        background: #4d9eff;
+      }
+      .scope-icon.tools {
+        background: #22c55e;
+      }
+      .scope-icon.browser {
+        background: #eab308;
+      }
     }
 
     .scope-info {
@@ -162,22 +180,23 @@
     }
 
     .scope-name {
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-      margin-bottom: var(--space-1);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      font-size: 11px;
+      color: GrayText;
+      margin-bottom: 2px;
     }
 
     .scope-description {
-      font-size: var(--text-sm);
-      color: var(--color-text-primary);
+      font-size: 13px;
+      font-weight: 500;
+      color: CanvasText;
     }
 
     /* Tools Section */
     .tools-section {
-      margin-bottom: var(--space-4);
-      border: 1px solid var(--color-border-primary);
-      border-radius: var(--radius-md);
+      margin-bottom: 16px;
+      border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas);
+      border-radius: 6px;
       overflow: hidden;
     }
 
@@ -185,54 +204,55 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: var(--space-2) var(--space-3);
-      background: var(--color-bg-tertiary);
-      border-bottom: 1px solid var(--color-border-primary);
+      padding: 8px 12px;
+      background: color-mix(in srgb, CanvasText 8%, Canvas);
+      border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, Canvas);
     }
 
     .tools-title {
-      font-size: var(--text-sm);
+      font-size: 13px;
       font-weight: 600;
-      color: var(--color-text-primary);
+      color: CanvasText;
     }
 
     .tools-actions {
       display: flex;
-      gap: var(--space-2);
+      gap: 8px;
     }
 
     .btn-link {
       background: none;
       border: none;
-      padding: var(--space-1) var(--space-2);
-      font-size: var(--text-xs);
-      color: var(--color-accent-primary);
+      padding: 4px 8px;
+      font-size: 12px;
+      color: LinkText;
       cursor: pointer;
-      border-radius: var(--radius-sm);
+      border-radius: 4px;
     }
 
     .btn-link:hover {
-      background: var(--color-bg-hover);
+      background: color-mix(in srgb, LinkText 10%, Canvas);
     }
 
     .tools-description {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      padding: var(--space-2) var(--space-3);
-      background: var(--color-bg-secondary);
+      font-size: 12px;
+      color: GrayText;
+      padding: 8px 12px;
+      background: color-mix(in srgb, CanvasText 5%, Canvas);
     }
 
     .tools-list {
       max-height: 180px;
       overflow-y: auto;
+      background: Canvas;
     }
 
     .tool-item {
       display: flex;
       align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-2) var(--space-3);
-      border-bottom: 1px solid var(--color-border-primary);
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid color-mix(in srgb, CanvasText 10%, Canvas);
       cursor: pointer;
     }
 
@@ -241,13 +261,14 @@
     }
 
     .tool-item:hover {
-      background: var(--color-bg-hover);
+      background: color-mix(in srgb, CanvasText 5%, Canvas);
     }
 
     .tool-checkbox {
       width: 16px;
       height: 16px;
       flex-shrink: 0;
+      accent-color: AccentColor;
     }
 
     .tool-info {
@@ -256,61 +277,70 @@
     }
 
     .tool-name {
-      font-size: var(--text-sm);
+      font-size: 13px;
       font-weight: 500;
-      color: var(--color-text-primary);
+      color: CanvasText;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     .tool-server {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      font-family: var(--font-mono);
+      font-size: 11px;
+      color: GrayText;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     }
 
     .warning-box {
-      background: rgba(var(--color-warning-rgb, 255, 193, 7), 0.1);
-      border: 1px solid var(--color-warning);
-      border-radius: var(--radius-md);
-      padding: var(--space-3);
-      margin-bottom: var(--space-4);
+      background: color-mix(in srgb, #ca8a04 15%, Canvas);
+      border: 1px solid #ca8a04;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 16px;
       display: flex;
-      gap: var(--space-2);
+      gap: 8px;
       align-items: flex-start;
     }
 
+    @media (prefers-color-scheme: dark) {
+      .warning-box {
+        background: color-mix(in srgb, #eab308 15%, Canvas);
+        border-color: #eab308;
+      }
+    }
+
     .warning-icon {
-      color: var(--color-warning);
-      font-size: var(--text-base);
+      font-size: 14px;
+      flex-shrink: 0;
     }
 
     .warning-text {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
+      font-size: 12px;
+      color: CanvasText;
+      line-height: 1.5;
     }
 
     .actions {
       display: flex;
       flex-direction: column;
-      gap: var(--space-2);
+      gap: 8px;
     }
 
+    /* Native-looking buttons */
     .btn {
-      padding: var(--space-3) var(--space-4);
-      border-radius: var(--radius-md);
-      font-size: var(--text-sm);
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 13px;
       font-weight: 500;
       cursor: pointer;
-      border: none;
-      transition: all 0.15s ease;
+      transition: all 0.1s ease;
       text-align: center;
     }
 
     .btn-primary {
-      background: var(--color-accent-primary);
-      color: white;
+      background: AccentColor;
+      color: AccentColorText;
+      border: none;
     }
 
     .btn-primary:hover {
@@ -318,32 +348,48 @@
     }
 
     .btn-secondary {
-      background: var(--color-bg-tertiary);
-      color: var(--color-text-primary);
-      border: 1px solid var(--color-border-primary);
+      background: ButtonFace;
+      color: ButtonText;
+      border: 1px solid ButtonBorder;
     }
 
     .btn-secondary:hover {
-      background: var(--color-bg-hover);
+      background: color-mix(in srgb, ButtonText 10%, ButtonFace);
     }
 
     .btn-danger {
-      background: transparent;
-      color: var(--color-error);
-      border: 1px solid var(--color-error);
+      background: color-mix(in srgb, #dc2626 10%, Canvas);
+      color: #dc2626;
+      border: 1px solid #dc2626;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .btn-danger {
+        background: color-mix(in srgb, #ef4444 15%, Canvas);
+        color: #ef4444;
+        border-color: #ef4444;
+      }
     }
 
     .btn-danger:hover {
-      background: rgba(var(--color-error-rgb, 239, 68, 68), 0.1);
+      background: color-mix(in srgb, #dc2626 20%, Canvas);
     }
 
     .btn-group {
       display: flex;
-      gap: var(--space-2);
+      gap: 8px;
     }
 
     .btn-group .btn {
       flex: 1;
+    }
+
+    /* Focus states for accessibility */
+    .btn:focus-visible,
+    .tool-checkbox:focus-visible,
+    .btn-link:focus-visible {
+      outline: 2px solid AccentColor;
+      outline-offset: 2px;
     }
   </style>
 </head>
@@ -405,4 +451,5 @@
   <script type="module" src="permission-prompt.js"></script>
 </body>
 </html>
+
 
