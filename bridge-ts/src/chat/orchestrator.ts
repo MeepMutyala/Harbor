@@ -149,6 +149,14 @@ export class ChatOrchestrator {
     const { tools, toolMapping } = await this.collectTools(serversToUse);
     log(`[Orchestrator] Collected ${tools.length} tools from ${serversToUse.length} servers`);
     
+    // Log tool names and descriptions for debugging
+    log(`[Orchestrator] === TOOLS SENT TO LLM ===`);
+    for (const tool of tools) {
+      log(`[Orchestrator] Tool: ${tool.name}`);
+      log(`[Orchestrator]   Description: ${tool.description || '(no description)'}`);
+    }
+    log(`[Orchestrator] === END TOOLS ===`);
+    
     // Main agent loop
     while (iterations < session.config.maxIterations) {
       iterations++;
