@@ -23,6 +23,12 @@ interface RoutingRule {
  * Default routing rules for common MCP servers.
  */
 const DEFAULT_RULES: RoutingRule[] = [
+  // Time/Date
+  {
+    keywords: ['time', 'date', 'clock', 'timezone', 'hour', 'minute', 'second', 'today', 'now', 'current time', 'what time'],
+    serverPatterns: ['time', 'clock', 'datetime'],
+    priority: 10,
+  },
   // GitHub
   {
     keywords: ['github', 'repo', 'repository', 'repositories', 'commit', 'commits', 'pull request', 'pr', 'issue', 'issues', 'branch', 'branches', 'fork', 'star', 'gist'],
