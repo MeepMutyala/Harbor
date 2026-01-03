@@ -744,11 +744,11 @@ CRITICAL: You are an AGENT. When the user asks something that requires a tool, y
 
 AVAILABLE TOOLS BY SERVER:
 ${serverInfo}
-TOOL SELECTION GUIDANCE:
-- When user says "my" (my username, my repos, my account): Use tools like "get_me" that return the authenticated user's info, NOT search tools.
-- When user asks about specific other people/things: Use search or lookup tools.
-- Prefer simple tools over complex ones when possible.
-- Read tool descriptions carefully - "get_me" returns YOUR info, "search_users" searches for OTHER users.
+TOOL SELECTION PRINCIPLES:
+- When user says "my" or "me" (my account, my files, etc.): Look for tools that return the current/authenticated user's info rather than search tools.
+- Prefer direct/specific tools over search tools when available.
+- Read tool descriptions carefully to understand what each tool returns.
+- Choose the simplest tool that accomplishes the task.
 
 RULES:
 1. ALWAYS call tools directly when needed - never just describe how to use them.
@@ -756,12 +756,7 @@ RULES:
 3. NEVER say things like "you can use..." or "try calling..." - just DO IT.
 4. If you need to call a tool, respond ONLY with the tool call, no extra text.
 5. After receiving tool results, summarize them naturally for the user.
-6. If a tool errors, try a different approach or explain what went wrong.
-
-EXAMPLES:
-- "what is my github username?" → Call get_me (NOT search_users)
-- "what repos do I have?" → Call list_repos or get_me, not search
-- "find user octocat" → Call search_users with query "octocat"`;
+6. If a tool errors, try a different approach or explain what went wrong.`;
   }
 
   /**
