@@ -764,13 +764,22 @@ COMMON TOOL PATTERNS:
 - "list_*" → Returns a collection
 - "search_*" → Requires a query to search
 
+HOW TO CALL A TOOL:
+When you need to call a tool, output ONLY this JSON format (nothing else):
+{"name": "tool_name_here", "parameters": {}}
+
+Example - to call a tool named "get_me" with no parameters:
+{"name": "get_me", "parameters": {}}
+
+Example - to call a tool named "search_users" with a query:
+{"name": "search_users", "parameters": {"query": "octocat"}}
+
 RULES:
-1. ALWAYS call tools directly when needed - never just describe how to use them.
-2. NEVER output raw JSON to the user.
-3. NEVER say things like "you can use..." or "try calling..." - just DO IT.
-4. When calling a tool, respond ONLY with the JSON tool call format, no extra text before or after.
-5. After receiving tool results, summarize them naturally in plain language for the user.
-6. If a tool errors, try a different approach or explain what went wrong.`;
+1. To call a tool: Output ONLY the JSON object above. No other text before or after.
+2. NEVER output raw data/results as JSON - that's not a tool call.
+3. NEVER describe tools or say "you can use..." - just call them.
+4. After receiving tool results, respond in plain English summarizing the answer.
+5. If a tool errors, try a different approach or explain what went wrong.`;
   }
 
   /**
