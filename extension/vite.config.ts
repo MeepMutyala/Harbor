@@ -101,6 +101,13 @@ export default defineConfig({
         );
         writeFileSync(resolve(__dirname, 'dist/permission-prompt.html'), permissionPromptHtml);
 
+        // Copy welcome.html (first-run welcome page)
+        const welcomeHtml = readFileSync(
+          resolve(__dirname, 'src/welcome.html'),
+          'utf-8'
+        );
+        writeFileSync(resolve(__dirname, 'dist/welcome.html'), welcomeHtml);
+
         // Copy manifest.json
         const manifest = readFileSync(
           resolve(__dirname, 'manifest.json'),
@@ -118,6 +125,17 @@ export default defineConfig({
           'utf-8'
         );
         writeFileSync(resolve(__dirname, 'dist/icons/harbor-icon.svg'), harborIcon);
+
+        // Copy demo/shared styles
+        const sharedDir = resolve(__dirname, 'dist/shared');
+        if (!existsSync(sharedDir)) {
+          mkdirSync(sharedDir, { recursive: true });
+        }
+        const sharedStyles = readFileSync(
+          resolve(__dirname, '../demo/shared/styles.css'),
+          'utf-8'
+        );
+        writeFileSync(resolve(__dirname, 'dist/shared/styles.css'), sharedStyles);
 
         // Copy demo/chat-poc files (API demo/example code)
         const demoPocDir = resolve(__dirname, 'dist/demo');
@@ -137,8 +155,8 @@ export default defineConfig({
         );
         // Update header badge for extension context
         chatPocHtml = chatPocHtml.replace(
-          '<span class="header-badge" style="background: var(--color-warning);">API Demo</span>',
-          '<span class="header-badge" style="background: var(--color-success);">Extension</span>'
+          '<span class="header-badge">API Demo</span>',
+          '<span class="header-badge" style="background: var(--harbor-success);">Extension</span>'
         );
         // Add bootstrap script before app.js to set up window.ai/window.agent
         chatPocHtml = chatPocHtml.replace(

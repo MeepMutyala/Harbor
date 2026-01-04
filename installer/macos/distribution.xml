@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Harbor</title>
+    <organization>com.harbor</organization>
+    <domains enable_localSystem="true"/>
+    
+    <!-- Minimum OS version: macOS 12 Monterey -->
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="12.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    
+    <!-- Welcome, License, Conclusion pages -->
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="license.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    
+    <!-- Background image (optional) -->
+    <!-- <background file="background.png" alignment="bottomleft" scaling="none"/> -->
+    
+    <!-- Installation choices -->
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.harbor.bridge"/>
+        </line>
+    </choices-outline>
+    
+    <choice id="default"/>
+    
+    <choice id="com.harbor.bridge" 
+            visible="false" 
+            title="Harbor Bridge"
+            description="Harbor native bridge and Firefox extension">
+        <pkg-ref id="com.harbor.bridge"/>
+    </choice>
+    
+    <pkg-ref id="com.harbor.bridge" 
+             version="1.0.0" 
+             onConclusion="none">harbor-bridge.pkg</pkg-ref>
+    
+</installer-gui-script>
+

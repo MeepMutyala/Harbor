@@ -1059,6 +1059,24 @@ browser.runtime.onMessage.addListener(
 connectToNative();
 sendHello();
 
+// Check for first run and open welcome page
+async function checkFirstRun(): Promise<void> {
+  try {
+    const result = await browser.storage.local.get('harbor_first_run_complete');
+    if (!result.harbor_first_run_complete) {
+      // First run! Open the welcome page
+      console.log('[Background] First run detected, opening welcome page');
+      await browser.tabs.create({
+        url: browser.runtime.getURL('welcome.html'),
+      });
+    }
+  } catch (err) {
+    console.error('[Background] Error checking first run:', err);
+  }
+}
+
+checkFirstRun();
+
 // Auto-detect LLM on startup so provider API can use it immediately
 async function autoDetectLLM(): Promise<void> {
   try {

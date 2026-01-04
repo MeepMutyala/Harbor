@@ -7,6 +7,7 @@
 
 import { execSync, spawn } from 'node:child_process';
 import { log } from '../native-messaging.js';
+import { resolveExecutable, getEnhancedPath } from '../utils/resolve-executable.js';
 
 export interface DockerInfo {
   available: boolean;
@@ -121,8 +122,10 @@ export class DockerExec {
     return new Promise((resolve, reject) => {
       log(`[Docker] Pulling image: ${image}`);
       
-      const proc = spawn('docker', ['pull', image], {
+      const dockerPath = resolveExecutable('docker');
+      const proc = spawn(dockerPath, ['pull', image], {
         stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: getEnhancedPath() },
       });
 
       let stderr = '';
@@ -156,9 +159,11 @@ export class DockerExec {
     }
 
     try {
-      execSync(`docker image inspect ${image}`, {
+      const dockerPath = resolveExecutable('docker');
+      execSync(`"${dockerPath}" image inspect ${image}`, {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: getEnhancedPath() },
       });
       return true;
     } catch {
@@ -218,10 +223,12 @@ export class DockerExec {
       dockerArgs.push(...options.args);
     }
     
-    log(`[Docker] Starting container: docker ${dockerArgs.join(' ')}`);
+    const dockerPath = resolveExecutable('docker');
+    log(`[Docker] Starting container: ${dockerPath} ${dockerArgs.join(' ')}`);
     
-    const proc = spawn('docker', dockerArgs, {
+    const proc = spawn(dockerPath, dockerArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: getEnhancedPath() },
     });
     
     // Handle stderr for logging
@@ -248,7 +255,11 @@ export class DockerExec {
       kill: () => {
         log(`[Docker] Killing container ${containerName}`);
         try {
-          execSync(`docker kill ${containerName}`, { stdio: 'ignore' });
+          const dockerKillPath = resolveExecutable('docker');
+          execSync(`"${dockerKillPath}" kill ${containerName}`, { 
+            stdio: 'ignore',
+            env: { ...process.env, PATH: getEnhancedPath() },
+          });
         } catch {
           // Container might already be dead
           proc.kill('SIGKILL');
@@ -264,9 +275,11 @@ export class DockerExec {
     const containerName = `harbor-mcp-${serverId}`;
     
     try {
-      execSync(`docker stop ${containerName}`, {
+      const dockerPath = resolveExecutable('docker');
+      execSync(`"${dockerPath}" stop ${containerName}`, {
         timeout: 10000,
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: getEnhancedPath() },
       });
       log(`[Docker] Container stopped: ${containerName}`);
       return true;
@@ -283,9 +296,10 @@ export class DockerExec {
     const containerName = `harbor-mcp-${serverId}`;
     
     try {
+      const dockerPath = resolveExecutable('docker');
       const result = execSync(
-        `docker inspect -f '{{.State.Running}}' ${containerName}`,
-        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+        `"${dockerPath}" inspect -f '{{.State.Running}}' ${containerName}`,
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PATH: getEnhancedPath() } }
       ).trim();
       return result === 'true';
     } catch {
@@ -299,9 +313,10 @@ export class DockerExec {
   listHarborContainers(): HarborContainer[] {
     try {
       // List containers with harbor-mcp prefix
+      const dockerPath = resolveExecutable('docker');
       const output = execSync(
-        `docker ps -a --filter "name=harbor-mcp-" --format "{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}|{{.CreatedAt}}|{{.Ports}}"`,
-        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+        `"${dockerPath}" ps -a --filter "name=harbor-mcp-" --format "{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}|{{.CreatedAt}}|{{.Ports}}"`,
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PATH: getEnhancedPath() } }
       ).trim();
       
       if (!output) {
@@ -353,9 +368,10 @@ export class DockerExec {
    */
   getContainerStats(): ContainerStats[] {
     try {
+      const dockerPath = resolveExecutable('docker');
       const output = execSync(
-        `docker stats --no-stream --filter "name=harbor-mcp-" --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}"`,
-        { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
+        `"${dockerPath}" stats --no-stream --filter "name=harbor-mcp-" --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}"`,
+        { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PATH: getEnhancedPath() } }
       ).trim();
       
       if (!output) {

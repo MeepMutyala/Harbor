@@ -1,0 +1,278 @@
+#!/bin/bash
+# Harbor Installer - Pre-install checks
+# This script runs before installation to verify requirements
+
+set -e
+
+LOG_FILE="/tmp/harbor-install.log"
+echo "Harbor pre-install check started at $(date)" >> "$LOG_FILE"
+
+# =============================================================================
+# Check 0: Architecture Compatibility
+# =============================================================================
+check_architecture() {
+    CURRENT_ARCH=$(uname -m)
+    # This marker is set during build - will be replaced by build script
+    BUILT_FOR_ARCH="__BUILD_ARCH__"
+    
+    echo -n "Checking architecture... "
+    
+    # If marker wasn't replaced, assume it matches (universal or dev build)
+    if [ "$BUILT_FOR_ARCH" = "__BUILD_ARCH__" ]; then
+        echo "✓ (universal or dev build)"
+        return 0
+    fi
+    
+    # Check if we're running on a compatible architecture
+    if [ "$BUILT_FOR_ARCH" = "universal" ]; then
+        echo "✓ Universal binary (works on Intel and Apple Silicon)"
+        return 0
+    fi
+    
+    if [ "$CURRENT_ARCH" = "$BUILT_FOR_ARCH" ]; then
+        echo "✓ $CURRENT_ARCH"
+        return 0
+    fi
+    
+    # Architecture mismatch!
+    echo "✗ INCOMPATIBLE"
+    echo ""
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    echo "  ❌ Architecture Mismatch!"
+    echo ""
+    echo "  This installer was built for: $BUILT_FOR_ARCH"
+    echo "  Your Mac is running: $CURRENT_ARCH"
+    echo ""
+    if [ "$CURRENT_ARCH" = "x86_64" ]; then
+        echo "  You have an Intel Mac, but this installer is for Apple Silicon."
+    else
+        echo "  You have an Apple Silicon Mac, but this installer is for Intel."
+    fi
+    echo ""
+    echo "  Please download the correct installer for your Mac."
+    echo ""
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    echo "Architecture mismatch: built for $BUILT_FOR_ARCH, running on $CURRENT_ARCH" >> "$LOG_FILE"
+    exit 1
+}
+
+# =============================================================================
+# Check 1: Firefox (REQUIRED)
+# =============================================================================
+check_firefox() {
+    echo -n "Checking for Firefox... "
+    
+    # Check for Firefox.app in Applications
+    if [ -d "/Applications/Firefox.app" ]; then
+        FIREFOX_VERSION=$(/Applications/Firefox.app/Contents/MacOS/firefox --version 2>/dev/null | head -1 || echo "unknown")
+        echo "✓ Found: $FIREFOX_VERSION"
+        echo "Firefox found: $FIREFOX_VERSION" >> "$LOG_FILE"
+        return 0
+    fi
+    
+    # Check for Firefox in user Applications
+    if [ -d "$HOME/Applications/Firefox.app" ]; then
+        FIREFOX_VERSION=$("$HOME/Applications/Firefox.app/Contents/MacOS/firefox" --version 2>/dev/null | head -1 || echo "unknown")
+        echo "✓ Found: $FIREFOX_VERSION"
+        echo "Firefox found (user): $FIREFOX_VERSION" >> "$LOG_FILE"
+        return 0
+    fi
+    
+    # Check if firefox is in PATH (e.g., installed via Homebrew)
+    if command -v firefox &> /dev/null; then
+        FIREFOX_VERSION=$(firefox --version 2>/dev/null | head -1 || echo "unknown")
+        echo "✓ Found: $FIREFOX_VERSION"
+        echo "Firefox found (PATH): $FIREFOX_VERSION" >> "$LOG_FILE"
+        return 0
+    fi
+    
+    echo "✗ NOT FOUND"
+    echo "Firefox NOT found" >> "$LOG_FILE"
+    return 1
+}
+
+# =============================================================================
+# Check 2: Docker (RECOMMENDED)
+# =============================================================================
+check_docker() {
+    echo -n "Checking for Docker... "
+    
+    # Check for Docker Desktop
+    if [ -d "/Applications/Docker.app" ]; then
+        echo "✓ Found: Docker Desktop"
+        echo "Docker Desktop found" >> "$LOG_FILE"
+        
+        # Check if Docker daemon is running (quick socket check)
+        if [ -S /var/run/docker.sock ] || [ -S "$HOME/.docker/run/docker.sock" ]; then
+            echo "  └─ Docker daemon appears to be running ✓"
+            return 0
+        else
+            echo "  └─ ⚠ Docker Desktop installed but not running"
+            echo "Docker not running" >> "$LOG_FILE"
+            return 2  # Installed but not running
+        fi
+    fi
+    
+    # Check for docker CLI (could be installed via Homebrew, Colima, etc.)
+    if command -v docker &> /dev/null; then
+        DOCKER_VERSION=$(docker --version 2>/dev/null || echo "unknown")
+        echo "✓ Found: $DOCKER_VERSION"
+        echo "Docker CLI found: $DOCKER_VERSION" >> "$LOG_FILE"
+        
+        # Check if daemon is running (quick socket check)
+        if [ -S /var/run/docker.sock ] || [ -S "$HOME/.docker/run/docker.sock" ]; then
+            echo "  └─ Docker daemon appears to be running ✓"
+            return 0
+        else
+            echo "  └─ ⚠ Docker CLI found but daemon not running"
+            return 2
+        fi
+    fi
+    
+    # Check for Podman as alternative
+    if command -v podman &> /dev/null; then
+        PODMAN_VERSION=$(podman --version 2>/dev/null || echo "unknown")
+        echo "✓ Found: Podman ($PODMAN_VERSION)"
+        echo "Podman found: $PODMAN_VERSION" >> "$LOG_FILE"
+        return 0
+    fi
+    
+    echo "✗ NOT FOUND"
+    echo "Docker NOT found" >> "$LOG_FILE"
+    return 1
+}
+
+# =============================================================================
+# Check 3: Existing Harbor Installation
+# =============================================================================
+check_existing_install() {
+    echo -n "Checking for existing Harbor installation... "
+    
+    EXISTING=0
+    EXISTING_VERSION=""
+    
+    # Check for Harbor directory
+    if [ -d "/Library/Application Support/Harbor" ]; then
+        EXISTING=1
+        # Try to get version from the bridge
+        if [ -f "/Library/Application Support/Harbor/harbor-bridge" ]; then
+            # Could potentially query version, for now just note it exists
+            EXISTING_VERSION="(version unknown)"
+        fi
+    fi
+    
+    # Check for native messaging manifest
+    if [ -f "/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge_host.json" ]; then
+        EXISTING=1
+    fi
+    
+    # Check for Firefox policy
+    if [ -f "/Library/Application Support/Mozilla/policies/policies.json" ]; then
+        if grep -q "harbor" "/Library/Application Support/Mozilla/policies/policies.json" 2>/dev/null; then
+            EXISTING=1
+        fi
+    fi
+    
+    if [ $EXISTING -eq 1 ]; then
+        echo "✓ Found existing installation $EXISTING_VERSION"
+        echo "Existing Harbor installation found" >> "$LOG_FILE"
+        return 0
+    else
+        echo "✓ No existing installation (fresh install)"
+        echo "No existing installation" >> "$LOG_FILE"
+        return 1
+    fi
+}
+
+# =============================================================================
+# Display Results
+# =============================================================================
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+echo "  Harbor Installer - System Requirements Check"
+echo "═══════════════════════════════════════════════════════════════"
+echo ""
+
+# Check architecture first (exits if incompatible)
+check_architecture
+
+echo ""
+
+FIREFOX_OK=0
+DOCKER_OK=0
+DOCKER_WARNING=""
+UPGRADE_MODE=0
+
+# Check Firefox (REQUIRED)
+if check_firefox; then
+    FIREFOX_OK=1
+fi
+
+echo ""
+
+# Check Docker (recommended)
+check_docker
+DOCKER_STATUS=$?
+if [ $DOCKER_STATUS -eq 0 ]; then
+    DOCKER_OK=1
+elif [ $DOCKER_STATUS -eq 2 ]; then
+    DOCKER_WARNING="Docker is installed but not running. Please start Docker Desktop before using Harbor."
+fi
+
+echo ""
+
+# Check for existing installation
+if check_existing_install; then
+    UPGRADE_MODE=1
+fi
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+echo ""
+
+# =============================================================================
+# Handle Results
+# =============================================================================
+
+# Firefox is required - block if not found
+if [ $FIREFOX_OK -eq 0 ]; then
+    echo "❌ Firefox is required to use Harbor."
+    echo ""
+    echo "   Please install Firefox first:"
+    echo "   https://www.mozilla.org/firefox/"
+    echo ""
+    echo "   Installation cannot continue without Firefox."
+    echo ""
+    echo "Firefox required but not found - blocking install" >> "$LOG_FILE"
+    exit 1
+fi
+
+# Docker warning (but allow continue)
+if [ $DOCKER_OK -eq 0 ]; then
+    echo "⚠️  Docker is recommended for running MCP servers."
+    echo ""
+    echo "   Harbor will install, but you'll need Docker to use MCP tools."
+    echo "   Install Docker Desktop from: https://www.docker.com/products/docker-desktop/"
+    echo ""
+elif [ -n "$DOCKER_WARNING" ]; then
+    echo "⚠️  $DOCKER_WARNING"
+    echo ""
+fi
+
+# Upgrade mode notification
+if [ $UPGRADE_MODE -eq 1 ]; then
+    echo "ℹ️  An existing Harbor installation was detected."
+    echo "   This installer will upgrade your installation."
+    echo "   Your settings and data in ~/.harbor/ will be preserved."
+    echo ""
+fi
+
+echo "Proceeding with installation..."
+echo ""
+
+echo "Pre-install checks passed at $(date)" >> "$LOG_FILE"
+exit 0

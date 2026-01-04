@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { log } from '../native-messaging.js';
+import { resolveExecutable, getEnhancedPath } from '../utils/resolve-executable.js';
 
 // Base directory for Harbor Docker assets
 const DOCKER_ASSETS_DIR = join(homedir(), '.harbor', 'docker');
@@ -151,9 +152,11 @@ export class DockerImageManager {
     const imageName = this.getImageName(type);
     
     try {
-      execSync(`docker image inspect ${imageName}`, {
+      const dockerPath = resolveExecutable('docker');
+      execSync(`"${dockerPath}" image inspect ${imageName}`, {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: getEnhancedPath() },
       });
       return true;
     } catch {
@@ -178,13 +181,15 @@ export class DockerImageManager {
     onProgress?.(`Building ${imageName} image...`);
     
     return new Promise((resolve, reject) => {
-      const proc = spawn('docker', [
+      const dockerPath = resolveExecutable('docker');
+      const proc = spawn(dockerPath, [
         'build',
         '-t', imageName,
         '-f', dockerfilePath,
         DOCKER_ASSETS_DIR,
       ], {
         stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: getEnhancedPath() },
       });
       
       let output = '';
@@ -283,9 +288,11 @@ export class DockerImageManager {
     const imageName = this.getImageName(type);
     
     try {
-      execSync(`docker rmi ${imageName}`, {
+      const dockerPath = resolveExecutable('docker');
+      execSync(`"${dockerPath}" rmi ${imageName}`, {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: getEnhancedPath() },
       });
       this.builtImages.delete(imageName);
       this.saveBuiltImagesCache();
@@ -302,12 +309,15 @@ export class DockerImageManager {
     const types: DockerImageType[] = ['node', 'python', 'binary', 'multi'];
     const status: Record<string, { exists: boolean; size?: string }> = {};
     
+    const dockerPath = resolveExecutable('docker');
+    const dockerEnv = { ...process.env, PATH: getEnhancedPath() };
+    
     for (const type of types) {
       const imageName = this.getImageName(type);
       try {
         const result = execSync(
-          `docker image inspect ${imageName} --format '{{.Size}}'`,
-          { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+          `"${dockerPath}" image inspect ${imageName} --format '{{.Size}}'`,
+          { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], env: dockerEnv }
         ).trim();
         
         const sizeBytes = parseInt(result, 10);

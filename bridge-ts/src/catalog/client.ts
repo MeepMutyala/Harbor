@@ -18,7 +18,20 @@ import { log } from '../native-messaging.js';
 import { getCatalogDb, CatalogDatabase } from './database.js';
 import { CatalogServer, CatalogResult, ProviderStatus } from '../types.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+// Support both ESM and CJS bundling  
+// In pkg/bundled environments, use process.cwd() as fallback
+const getCurrentDir = (): string => {
+  try {
+    // @ts-ignore - import.meta might not exist in CJS
+    if (typeof import.meta?.url === 'string') {
+      return dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {
+    // Fall through
+  }
+  return process.cwd();
+};
+const __dirname = getCurrentDir();
 
 export interface CatalogClientOptions {
   /** Start worker automatically on client creation */

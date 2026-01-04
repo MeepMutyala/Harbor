@@ -6,170 +6,174 @@
   <title>Harbor Demos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="shared/styles.css">
   <style>
-    :root {
-      --color-bg-primary: #0a0a0f;
-      --color-bg-secondary: #12121a;
-      --color-text-primary: #e8e8ed;
-      --color-text-secondary: #9898a8;
-      --color-accent-primary: #6366f1;
-      --color-accent-secondary: #8b5cf6;
-      --font-sans: 'Outfit', system-ui, -apple-system, sans-serif;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
     body {
-      font-family: var(--font-sans);
-      background: var(--color-bg-primary);
-      color: var(--color-text-primary);
-      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 40px 20px;
+      min-height: 100vh;
+      padding: var(--harbor-space-10) var(--harbor-space-6);
     }
 
-    .container {
-      max-width: 600px;
-      text-align: center;
+    .page-container {
+      max-width: 640px;
+      width: 100%;
     }
 
-    h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin-bottom: 16px;
-      background: linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .subtitle {
-      color: var(--color-text-secondary);
-      font-size: 1.1rem;
-      margin-bottom: 48px;
-      line-height: 1.6;
-    }
-
-    .demos {
+    .demos-grid {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: var(--harbor-space-4);
     }
 
     .demo-card {
-      background: var(--color-bg-secondary);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      padding: 24px;
+      display: block;
       text-decoration: none;
       color: inherit;
-      transition: all 0.2s ease;
-      text-align: left;
     }
 
-    .demo-card:hover {
-      border-color: var(--color-accent-primary);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15);
+    .demo-card .harbor-card {
+      cursor: pointer;
     }
 
-    .demo-card h2 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 8px;
+    .demo-card-content {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--harbor-space-4);
+    }
+
+    .demo-card-icon {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, var(--harbor-accent-primary), var(--harbor-accent-tertiary));
+      border-radius: var(--harbor-radius-lg);
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
     }
 
-    .demo-card p {
-      color: var(--color-text-secondary);
-      font-size: 0.95rem;
-      line-height: 1.5;
+    .demo-card-text {
+      flex: 1;
+      min-width: 0;
     }
 
-    .badge {
-      font-size: 0.7rem;
-      padding: 3px 8px;
-      background: var(--color-accent-primary);
-      border-radius: 4px;
-      text-transform: uppercase;
-      font-weight: 600;
-      letter-spacing: 0.5px;
+    .demo-card-title {
+      font-size: var(--harbor-text-lg);
+      font-weight: var(--harbor-weight-semibold);
+      color: var(--harbor-text-primary);
+      margin-bottom: var(--harbor-space-1);
+      display: flex;
+      align-items: center;
+      gap: var(--harbor-space-2);
+    }
+
+    .demo-card-description {
+      font-size: var(--harbor-text-sm);
+      color: var(--harbor-text-secondary);
+      line-height: var(--harbor-leading-relaxed);
+    }
+
+    .demo-card-description code {
+      font-size: var(--harbor-text-xs);
     }
 
     .extension-note {
-      margin-top: 48px;
-      padding: 20px;
-      background: rgba(99, 102, 241, 0.1);
-      border: 1px solid rgba(99, 102, 241, 0.2);
-      border-radius: 8px;
-      font-size: 0.9rem;
-      color: var(--color-text-secondary);
+      margin-top: var(--harbor-space-10);
+      padding: var(--harbor-space-5);
+      background: var(--harbor-accent-glow);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: var(--harbor-radius-lg);
+      font-size: var(--harbor-text-sm);
+      color: var(--harbor-text-secondary);
+      text-align: center;
     }
 
     .extension-note strong {
-      color: var(--color-text-primary);
+      color: var(--harbor-text-primary);
     }
   </style>
 </head>
-<body>
-  <div class="container">
-    <h1>Harbor Demos</h1>
-    <p class="subtitle">
-      Example applications showing how to use the Harbor JS AI Provider API
-      to add AI capabilities to any website.
-    </p>
+<body class="harbor-bg-glow">
+  <div class="page-container">
+    <header class="harbor-demo-header">
+      <div class="harbor-demo-logo">⚓</div>
+      <h1 class="harbor-demo-title harbor-text-gradient">Harbor Demos</h1>
+      <p class="harbor-demo-subtitle">
+        Example applications showing how to use the Harbor JS AI Provider API
+        to add AI capabilities to any website.
+      </p>
+    </header>
 
-    <div class="demos">
+    <div class="demos-grid">
       <a href="getting-started/" class="demo-card">
-        <h2>
-          🚀 Getting Started
-          <span class="badge">Start Here</span>
-        </h2>
-        <p>
-          Interactive walkthrough — step through connecting to Harbor, 
-          requesting permissions, and making your first tool call.
-        </p>
+        <div class="harbor-card harbor-card-interactive">
+          <div class="demo-card-content">
+            <div class="demo-card-icon">🚀</div>
+            <div class="demo-card-text">
+              <div class="demo-card-title">
+                Getting Started
+                <span class="harbor-badge">Start Here</span>
+              </div>
+              <p class="demo-card-description">
+                Interactive walkthrough — step through connecting to Harbor, 
+                requesting permissions, and making your first tool call.
+              </p>
+            </div>
+          </div>
+        </div>
       </a>
 
       <a href="chat-poc/" class="demo-card">
-        <h2>
-          💬 Chat Demo
-          <span class="badge">API</span>
-        </h2>
-        <p>
-          Full-featured chat interface using <code>window.agent.run()</code> with 
-          MCP tool integration, streaming responses, and citations.
-        </p>
+        <div class="harbor-card harbor-card-interactive">
+          <div class="demo-card-content">
+            <div class="demo-card-icon">💬</div>
+            <div class="demo-card-text">
+              <div class="demo-card-title">
+                Chat Demo
+                <span class="harbor-badge harbor-badge-info">API</span>
+              </div>
+              <p class="demo-card-description">
+                Full-featured chat interface using <code>window.agent.run()</code> with 
+                MCP tool integration, streaming responses, and citations.
+              </p>
+            </div>
+          </div>
+        </div>
       </a>
 
       <a href="summarizer/" class="demo-card">
-        <h2>
-          📄 Page Summarizer
-        </h2>
-        <p>
-          Simple bookmarklet-style demo using <code>window.ai.createTextSession()</code>
-          to summarize the current page. Shows Chrome API compatibility.
-        </p>
+        <div class="harbor-card harbor-card-interactive">
+          <div class="demo-card-content">
+            <div class="demo-card-icon">📄</div>
+            <div class="demo-card-text">
+              <div class="demo-card-title">Page Summarizer</div>
+              <p class="demo-card-description">
+                Simple bookmarklet-style demo using <code>window.ai.createTextSession()</code>
+                to summarize the current page. Shows Chrome API compatibility.
+              </p>
+            </div>
+          </div>
+        </div>
       </a>
 
       <a href="summarizer/chrome-compat.html" class="demo-card">
-        <h2>
-          🔄 Chrome Compat Demo
-        </h2>
-        <p>
-          Same summarizer but using the Chrome-compatible 
-          <code>window.ai.languageModel.create()</code> API style.
-        </p>
+        <div class="harbor-card harbor-card-interactive">
+          <div class="demo-card-content">
+            <div class="demo-card-icon">🔄</div>
+            <div class="demo-card-text">
+              <div class="demo-card-title">Chrome Compat Demo</div>
+              <p class="demo-card-description">
+                Same summarizer but using the Chrome-compatible 
+                <code>window.ai.languageModel.create()</code> API style.
+              </p>
+            </div>
+          </div>
+        </div>
       </a>
     </div>
 

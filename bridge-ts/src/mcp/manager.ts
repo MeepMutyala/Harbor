@@ -22,7 +22,10 @@ import {
 } from './stdio-client.js';
 import { HttpMcpClient } from './http-client.js';
 import { resolveExecutable, getEnhancedPath } from '../utils/resolve-executable.js';
-import { getBinaryPath } from '../installer/binary-downloader.js';
+import { getBinaryPath, isLinuxBinaryDownloaded, downloadLinuxBinary } from '../installer/binary-downloader.js';
+import { getLinuxBinaryUrl } from '../installer/github-resolver.js';
+import { getDockerImageManager } from '../installer/docker-images.js';
+import { spawn } from 'node:child_process';
 
 // Union type for both client types
 type McpClient = StdioMcpClient | HttpMcpClient;
@@ -320,7 +323,6 @@ export class McpClientManager {
         
         // Pull the image if needed
         progress(`Pulling Docker image: ${imageName}...`);
-        const { spawn } = await import('node:child_process');
         const dockerPath = resolveExecutable('docker');
         
         await new Promise<void>((resolve, reject) => {
@@ -354,7 +356,6 @@ export class McpClientManager {
       } else {
         // Import Docker modules dynamically to avoid loading if not used
         progress('Checking Docker image...');
-        const { getDockerImageManager } = await import('../installer/docker-images.js');
         const imageManager = getDockerImageManager();
         
         // Ensure the appropriate Docker image is built
@@ -397,11 +398,8 @@ export class McpClientManager {
       // For binary packages, we need the LINUX binary (not the native one)
       // Docker runs Linux containers, so macOS/Windows binaries won't work
       if (packageType === 'binary') {
-        const { isLinuxBinaryDownloaded, getBinaryPath: getBinPath, downloadLinuxBinary } = await import('../installer/binary-downloader.js');
-        const { getLinuxBinaryUrl } = await import('../installer/github-resolver.js');
-        
         // Check if we have the Linux binary already
-        let linuxBinaryPath = getBinPath(serverId, undefined, true);
+        let linuxBinaryPath = getBinaryPath(serverId, undefined, true);
         
         if (!isLinuxBinaryDownloaded(serverId)) {
           // Need to download the Linux binary

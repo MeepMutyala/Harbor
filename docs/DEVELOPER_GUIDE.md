@@ -1,11 +1,32 @@
 # Harbor Developer Guide
 
-**Harbor** is a Firefox browser extension with a native TypeScript/Node.js bridge that enables web applications to securely access AI models and MCP (Model Context Protocol) tools through a capability-based permission system.
+**Build web applications with AI and MCP tools using Harbor's JavaScript APIs.**
 
-> **Related Documentation:**
-> - [LLMS.txt](./LLMS.txt) - Token-efficient version for AI coding assistants
-> - [JS AI Provider API](./JS_AI_PROVIDER_API.md) - Detailed `window.ai` and `window.agent` reference
-> - [MCP Host](./MCP_HOST.md) - MCP execution environment internals
+This guide is for developers who want to integrate Harbor capabilities into their web applications. If you're looking to install and use Harbor as an end user, see [User Guide](USER_GUIDE.md). If you're contributing to Harbor itself, see [Contributing](../CONTRIBUTING.md).
+
+---
+
+## Quick Links
+
+| Resource | Description |
+|----------|-------------|
+| [LLMS.txt](./LLMS.txt) | Token-efficient version for AI coding assistants |
+| [JS AI Provider API](./JS_AI_PROVIDER_API.md) | Detailed `window.ai` and `window.agent` reference |
+| [Demo Code](../demo/) | Working examples you can run locally |
+| [Architecture](../ARCHITECTURE.md) | System design overview |
+
+---
+
+## What You Can Build
+
+With Harbor, your web application can:
+
+- **Generate text** with local AI models (Ollama, llamafile)
+- **Call MCP tools** like file access, GitHub, databases, web search
+- **Run autonomous agent tasks** that use tools to accomplish goals
+- **Read the active tab** for page summarization or context
+
+All with user consent and local-first privacy.
 
 ## Table of Contents
 
@@ -66,8 +87,28 @@ Harbor consists of three main components:
 - **Node.js** 18+ and npm
 - **Firefox** 109+
 - An LLM provider (llamafile or Ollama)
+- **Docker Desktop** (for MCP servers)
 
-### Installation
+### Installation Options
+
+#### Option A: macOS Package Installer (Recommended for Users)
+
+Build a distributable `.pkg` installer:
+
+```bash
+cd installer/macos
+./build-pkg.sh --fast --sign-extension
+sudo installer -pkg build/Harbor-*.pkg -target /
+```
+
+See [Installer Documentation](../installer/README.md) for full details including:
+- Setting up `credentials.env` for extension signing
+- Build options and troubleshooting
+- What gets installed
+
+#### Option B: Development Setup
+
+For contributing to Harbor or local development:
 
 ```bash
 # 1. Build the extension

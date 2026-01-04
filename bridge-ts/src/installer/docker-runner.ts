@@ -16,6 +16,7 @@ import { ProcessState, ServerProcess } from '../types.js';
 import { getDockerExec, DockerInfo } from './docker-exec.js';
 import { getDockerImageManager, DockerImageType } from './docker-images.js';
 import { getBinaryPath } from './binary-downloader.js';
+import { resolveExecutable, getEnhancedPath } from '../utils/resolve-executable.js';
 
 interface DockerProcess {
   serverId: string;
@@ -135,10 +136,12 @@ export class DockerRunner {
         
         // Pull the image if not present
         try {
-          execSync(`docker pull ${imageName}`, {
+          const dockerPath = resolveExecutable('docker');
+          execSync(`"${dockerPath}" pull ${imageName}`, {
             encoding: 'utf-8',
             stdio: ['pipe', 'pipe', 'pipe'],
             timeout: 300000, // 5 minute timeout for large images
+            env: { ...process.env, PATH: getEnhancedPath() },
           });
           options.onProgress?.(`✓ Image ${imageName} ready`);
         } catch (e) {
@@ -162,12 +165,16 @@ export class DockerRunner {
         options
       );
       
-      log(`[DockerRunner] Starting: docker ${dockerArgs.join(' ')}`);
+      // Resolve docker path (pkg-bundled binaries may not have docker in PATH)
+      const dockerPath = resolveExecutable('docker');
+      
+      log(`[DockerRunner] Starting: ${dockerPath} ${dockerArgs.join(' ')}`);
       proc.logBuffer.push(`$ docker ${dockerArgs.join(' ')}`);
       
-      // Start container
-      const child = spawn('docker', dockerArgs, {
+      // Start container with enhanced PATH
+      const child = spawn(dockerPath, dockerArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: getEnhancedPath() },
       });
       
       proc.process = child;
@@ -228,9 +235,10 @@ export class DockerRunner {
       // Get container ID
       setTimeout(async () => {
         try {
+          const dockerPath = resolveExecutable('docker');
           const containerId = execSync(
-            `docker inspect -f '{{.Id}}' ${containerName}`,
-            { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+            `"${dockerPath}" inspect -f '{{.Id}}' ${containerName}`,
+            { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PATH: getEnhancedPath() } }
           ).trim().substring(0, 12);
           proc.containerId = containerId;
           log(`[DockerRunner] Container ID: ${containerId}`);
@@ -265,12 +273,16 @@ export class DockerRunner {
     
     proc.state = ProcessState.STOPPING;
     
+    const dockerPath = resolveExecutable('docker');
+    const dockerEnv = { ...process.env, PATH: getEnhancedPath() };
+    
     try {
       // Try graceful stop first
-      execSync(`docker stop -t ${Math.floor(timeout / 1000)} ${proc.containerName}`, {
+      execSync(`"${dockerPath}" stop -t ${Math.floor(timeout / 1000)} ${proc.containerName}`, {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: timeout + 2000,
+        env: dockerEnv,
       });
       
       proc.state = ProcessState.STOPPED;
@@ -280,9 +292,10 @@ export class DockerRunner {
     } catch (e) {
       // Force kill
       try {
-        execSync(`docker kill ${proc.containerName}`, {
+        execSync(`"${dockerPath}" kill ${proc.containerName}`, {
           encoding: 'utf-8',
           stdio: ['pipe', 'pipe', 'pipe'],
+          env: dockerEnv,
         });
         proc.state = ProcessState.STOPPED;
         proc.stoppedAt = Date.now();
@@ -350,26 +363,32 @@ export class DockerRunner {
    * Cleanup a container by name.
    */
   private async cleanupContainer(containerName: string): Promise<void> {
+    const dockerPath = resolveExecutable('docker');
+    const dockerEnv = { ...process.env, PATH: getEnhancedPath() };
+    
     try {
       // Check if container exists
-      execSync(`docker inspect ${containerName}`, {
+      execSync(`"${dockerPath}" inspect ${containerName}`, {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: dockerEnv,
       });
       
       // Stop and remove
       try {
-        execSync(`docker stop ${containerName}`, {
+        execSync(`"${dockerPath}" stop ${containerName}`, {
           timeout: 5000,
           stdio: ['pipe', 'pipe', 'pipe'],
+          env: dockerEnv,
         });
       } catch {
         // Ignore
       }
       
       try {
-        execSync(`docker rm ${containerName}`, {
+        execSync(`"${dockerPath}" rm ${containerName}`, {
           stdio: ['pipe', 'pipe', 'pipe'],
+          env: dockerEnv,
         });
       } catch {
         // Ignore

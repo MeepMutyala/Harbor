@@ -1,0 +1,608 @@
+/*
+ * Harbor Demo - Unified Design System
+ * A cohesive dark theme with warm accents
+ */
+
+/* ============================================
+   FONTS
+   ============================================ */
+/* 
+ * To use these fonts, add to your HTML <head>:
+ * <link rel="preconnect" href="https://fonts.googleapis.com">
+ * <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ * <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+ */
+
+/* ============================================
+   CSS CUSTOM PROPERTIES (Design Tokens)
+   ============================================ */
+:root {
+  /* ---- Color Palette ---- */
+  /* Background layers (darkest to lighter) */
+  --harbor-bg-base: #08080c;
+  --harbor-bg-subtle: #0e0e14;
+  --harbor-bg-elevated: #14141c;
+  --harbor-bg-surface: #1a1a24;
+  --harbor-bg-overlay: #20202c;
+  
+  /* Text colors */
+  --harbor-text-primary: #f0f0f5;
+  --harbor-text-secondary: #a0a0b0;
+  --harbor-text-muted: #606070;
+  --harbor-text-faint: #404050;
+  
+  /* Border colors */
+  --harbor-border-subtle: rgba(255, 255, 255, 0.06);
+  --harbor-border-default: rgba(255, 255, 255, 0.10);
+  --harbor-border-strong: rgba(255, 255, 255, 0.15);
+  
+  /* Accent colors - warm violet/coral gradient */
+  --harbor-accent-primary: #8b5cf6;
+  --harbor-accent-secondary: #a855f7;
+  --harbor-accent-tertiary: #ec4899;
+  --harbor-accent-glow: rgba(139, 92, 246, 0.25);
+  
+  /* Semantic colors */
+  --harbor-success: #22c55e;
+  --harbor-success-dim: rgba(34, 197, 94, 0.15);
+  --harbor-warning: #f59e0b;
+  --harbor-warning-dim: rgba(245, 158, 11, 0.15);
+  --harbor-error: #ef4444;
+  --harbor-error-dim: rgba(239, 68, 68, 0.15);
+  --harbor-info: #3b82f6;
+  --harbor-info-dim: rgba(59, 130, 246, 0.15);
+  
+  /* ---- Typography ---- */
+  --harbor-font-sans: 'Instrument Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --harbor-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  
+  --harbor-text-xs: 0.75rem;    /* 12px */
+  --harbor-text-sm: 0.875rem;   /* 14px */
+  --harbor-text-base: 1rem;     /* 16px */
+  --harbor-text-lg: 1.125rem;   /* 18px */
+  --harbor-text-xl: 1.25rem;    /* 20px */
+  --harbor-text-2xl: 1.5rem;    /* 24px */
+  --harbor-text-3xl: 2rem;      /* 32px */
+  
+  --harbor-weight-normal: 400;
+  --harbor-weight-medium: 500;
+  --harbor-weight-semibold: 600;
+  --harbor-weight-bold: 700;
+  
+  --harbor-leading-tight: 1.25;
+  --harbor-leading-normal: 1.5;
+  --harbor-leading-relaxed: 1.7;
+  
+  /* ---- Spacing ---- */
+  --harbor-space-1: 0.25rem;    /* 4px */
+  --harbor-space-2: 0.5rem;     /* 8px */
+  --harbor-space-3: 0.75rem;    /* 12px */
+  --harbor-space-4: 1rem;       /* 16px */
+  --harbor-space-5: 1.25rem;    /* 20px */
+  --harbor-space-6: 1.5rem;     /* 24px */
+  --harbor-space-8: 2rem;       /* 32px */
+  --harbor-space-10: 2.5rem;    /* 40px */
+  --harbor-space-12: 3rem;      /* 48px */
+  --harbor-space-16: 4rem;      /* 64px */
+  
+  /* ---- Border Radius ---- */
+  --harbor-radius-sm: 4px;
+  --harbor-radius-md: 8px;
+  --harbor-radius-lg: 12px;
+  --harbor-radius-xl: 16px;
+  --harbor-radius-2xl: 24px;
+  --harbor-radius-full: 9999px;
+  
+  /* ---- Shadows ---- */
+  --harbor-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --harbor-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --harbor-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.4);
+  --harbor-shadow-glow: 0 0 30px var(--harbor-accent-glow);
+  
+  /* ---- Transitions ---- */
+  --harbor-transition-fast: 150ms ease;
+  --harbor-transition-normal: 200ms ease;
+  --harbor-transition-slow: 300ms ease;
+}
+
+/* Light theme overrides */
+[data-theme="light"] {
+  --harbor-bg-base: #ffffff;
+  --harbor-bg-subtle: #f8f8fa;
+  --harbor-bg-elevated: #f0f0f4;
+  --harbor-bg-surface: #ffffff;
+  --harbor-bg-overlay: #f4f4f8;
+  
+  --harbor-text-primary: #18181b;
+  --harbor-text-secondary: #52525b;
+  --harbor-text-muted: #a1a1aa;
+  --harbor-text-faint: #d4d4d8;
+  
+  --harbor-border-subtle: rgba(0, 0, 0, 0.04);
+  --harbor-border-default: rgba(0, 0, 0, 0.08);
+  --harbor-border-strong: rgba(0, 0, 0, 0.12);
+  
+  --harbor-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --harbor-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --harbor-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+/* ============================================
+   RESET & BASE
+   ============================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--harbor-font-sans);
+  font-size: var(--harbor-text-base);
+  line-height: var(--harbor-leading-normal);
+  color: var(--harbor-text-primary);
+  background: var(--harbor-bg-base);
+}
+
+/* ============================================
+   BACKGROUND PATTERNS
+   ============================================ */
+/* Subtle grid pattern */
+.harbor-bg-grid::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Gradient glow effect */
+.harbor-bg-glow::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse 80% 50% at 50% -20%, var(--harbor-accent-glow), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(236, 72, 153, 0.08), transparent);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--harbor-weight-bold);
+  line-height: var(--harbor-leading-tight);
+  letter-spacing: -0.02em;
+}
+
+h1 { font-size: var(--harbor-text-3xl); }
+h2 { font-size: var(--harbor-text-2xl); }
+h3 { font-size: var(--harbor-text-xl); }
+h4 { font-size: var(--harbor-text-lg); }
+
+p {
+  color: var(--harbor-text-secondary);
+}
+
+a {
+  color: var(--harbor-accent-primary);
+  text-decoration: none;
+  transition: color var(--harbor-transition-fast);
+}
+
+a:hover {
+  color: var(--harbor-accent-secondary);
+}
+
+code {
+  font-family: var(--harbor-font-mono);
+  font-size: 0.9em;
+  background: var(--harbor-bg-elevated);
+  padding: 0.15em 0.4em;
+  border-radius: var(--harbor-radius-sm);
+}
+
+/* Gradient text effect */
+.harbor-text-gradient {
+  background: linear-gradient(135deg, var(--harbor-accent-primary), var(--harbor-accent-tertiary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================
+   LAYOUT COMPONENTS
+   ============================================ */
+.harbor-container {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 var(--harbor-space-6);
+}
+
+.harbor-container-wide {
+  max-width: 1000px;
+}
+
+.harbor-container-narrow {
+  max-width: 560px;
+}
+
+/* ============================================
+   CARDS
+   ============================================ */
+.harbor-card {
+  background: var(--harbor-bg-surface);
+  border: 1px solid var(--harbor-border-default);
+  border-radius: var(--harbor-radius-xl);
+  padding: var(--harbor-space-6);
+  transition: all var(--harbor-transition-normal);
+}
+
+.harbor-card:hover {
+  border-color: var(--harbor-border-strong);
+}
+
+.harbor-card-interactive:hover {
+  border-color: var(--harbor-accent-primary);
+  box-shadow: var(--harbor-shadow-glow);
+  transform: translateY(-2px);
+}
+
+.harbor-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--harbor-space-3);
+  margin-bottom: var(--harbor-space-4);
+  padding-bottom: var(--harbor-space-4);
+  border-bottom: 1px solid var(--harbor-border-subtle);
+}
+
+.harbor-card-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--harbor-accent-primary), var(--harbor-accent-tertiary));
+  border-radius: var(--harbor-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.harbor-card-title {
+  font-size: var(--harbor-text-lg);
+  font-weight: var(--harbor-weight-semibold);
+  color: var(--harbor-text-primary);
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+.harbor-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--harbor-space-2);
+  padding: var(--harbor-space-3) var(--harbor-space-5);
+  border: none;
+  border-radius: var(--harbor-radius-md);
+  font-family: var(--harbor-font-sans);
+  font-size: var(--harbor-text-sm);
+  font-weight: var(--harbor-weight-semibold);
+  cursor: pointer;
+  transition: all var(--harbor-transition-fast);
+}
+
+.harbor-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.harbor-btn-primary {
+  background: linear-gradient(135deg, var(--harbor-accent-primary), var(--harbor-accent-secondary));
+  color: white;
+  box-shadow: var(--harbor-shadow-sm);
+}
+
+.harbor-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow: var(--harbor-shadow-glow);
+  transform: translateY(-1px);
+}
+
+.harbor-btn-secondary {
+  background: var(--harbor-bg-elevated);
+  border: 1px solid var(--harbor-border-default);
+  color: var(--harbor-text-secondary);
+}
+
+.harbor-btn-secondary:hover:not(:disabled) {
+  background: var(--harbor-bg-overlay);
+  border-color: var(--harbor-border-strong);
+  color: var(--harbor-text-primary);
+}
+
+.harbor-btn-ghost {
+  background: transparent;
+  color: var(--harbor-text-secondary);
+}
+
+.harbor-btn-ghost:hover:not(:disabled) {
+  background: var(--harbor-bg-elevated);
+  color: var(--harbor-text-primary);
+}
+
+/* Icon button */
+.harbor-btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--harbor-bg-elevated);
+  border: 1px solid var(--harbor-border-default);
+  border-radius: var(--harbor-radius-md);
+  color: var(--harbor-text-secondary);
+}
+
+.harbor-btn-icon:hover {
+  background: var(--harbor-bg-overlay);
+  color: var(--harbor-text-primary);
+}
+
+/* ============================================
+   BADGES & TAGS
+   ============================================ */
+.harbor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--harbor-space-1);
+  padding: var(--harbor-space-1) var(--harbor-space-2);
+  background: var(--harbor-accent-glow);
+  border-radius: var(--harbor-radius-sm);
+  font-size: var(--harbor-text-xs);
+  font-weight: var(--harbor-weight-semibold);
+  color: var(--harbor-accent-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.harbor-badge-success {
+  background: var(--harbor-success-dim);
+  color: var(--harbor-success);
+}
+
+.harbor-badge-warning {
+  background: var(--harbor-warning-dim);
+  color: var(--harbor-warning);
+}
+
+.harbor-badge-error {
+  background: var(--harbor-error-dim);
+  color: var(--harbor-error);
+}
+
+.harbor-badge-info {
+  background: var(--harbor-info-dim);
+  color: var(--harbor-info);
+}
+
+/* Status dot */
+.harbor-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--harbor-text-muted);
+}
+
+.harbor-status-dot.success { background: var(--harbor-success); }
+.harbor-status-dot.warning { background: var(--harbor-warning); }
+.harbor-status-dot.error { background: var(--harbor-error); }
+.harbor-status-dot.info { background: var(--harbor-info); }
+
+/* ============================================
+   CODE BLOCKS
+   ============================================ */
+.harbor-code {
+  background: var(--harbor-bg-base);
+  border: 1px solid var(--harbor-border-subtle);
+  border-radius: var(--harbor-radius-md);
+  padding: var(--harbor-space-4);
+  font-family: var(--harbor-font-mono);
+  font-size: var(--harbor-text-xs);
+  line-height: var(--harbor-leading-relaxed);
+  color: var(--harbor-text-secondary);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* Syntax highlighting */
+.harbor-code .keyword { color: #c678dd; }
+.harbor-code .string { color: #98c379; }
+.harbor-code .comment { color: var(--harbor-text-muted); }
+.harbor-code .property { color: #e5c07b; }
+.harbor-code .method { color: #61afef; }
+.harbor-code .number { color: #d19a66; }
+
+/* ============================================
+   INPUTS
+   ============================================ */
+.harbor-input {
+  width: 100%;
+  padding: var(--harbor-space-3) var(--harbor-space-4);
+  background: var(--harbor-bg-elevated);
+  border: 1px solid var(--harbor-border-default);
+  border-radius: var(--harbor-radius-md);
+  font-family: var(--harbor-font-sans);
+  font-size: var(--harbor-text-sm);
+  color: var(--harbor-text-primary);
+  transition: all var(--harbor-transition-fast);
+}
+
+.harbor-input:focus {
+  outline: none;
+  border-color: var(--harbor-accent-primary);
+  box-shadow: 0 0 0 3px var(--harbor-accent-glow);
+}
+
+.harbor-input::placeholder {
+  color: var(--harbor-text-muted);
+}
+
+textarea.harbor-input {
+  resize: vertical;
+  min-height: 100px;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+/* Flex utilities */
+.harbor-flex { display: flex; }
+.harbor-flex-col { flex-direction: column; }
+.harbor-items-center { align-items: center; }
+.harbor-justify-center { justify-content: center; }
+.harbor-justify-between { justify-content: space-between; }
+.harbor-gap-2 { gap: var(--harbor-space-2); }
+.harbor-gap-3 { gap: var(--harbor-space-3); }
+.harbor-gap-4 { gap: var(--harbor-space-4); }
+
+/* Text utilities */
+.harbor-text-center { text-align: center; }
+.harbor-text-sm { font-size: var(--harbor-text-sm); }
+.harbor-text-muted { color: var(--harbor-text-muted); }
+
+/* Spacing utilities */
+.harbor-mt-4 { margin-top: var(--harbor-space-4); }
+.harbor-mt-6 { margin-top: var(--harbor-space-6); }
+.harbor-mt-8 { margin-top: var(--harbor-space-8); }
+.harbor-mb-4 { margin-bottom: var(--harbor-space-4); }
+.harbor-mb-6 { margin-bottom: var(--harbor-space-6); }
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes harbor-fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes harbor-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes harbor-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes harbor-slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.harbor-animate-fadeIn {
+  animation: harbor-fadeIn 0.3s ease forwards;
+}
+
+.harbor-animate-pulse {
+  animation: harbor-pulse 2s ease-in-out infinite;
+}
+
+/* Spinner */
+.harbor-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--harbor-border-default);
+  border-top-color: var(--harbor-accent-primary);
+  border-radius: 50%;
+  animation: harbor-spin 0.8s linear infinite;
+}
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--harbor-border-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--harbor-border-strong);
+}
+
+/* ============================================
+   DEMO-SPECIFIC: HEADER
+   ============================================ */
+.harbor-demo-header {
+  text-align: center;
+  margin-bottom: var(--harbor-space-12);
+}
+
+.harbor-demo-logo {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, var(--harbor-accent-primary), var(--harbor-accent-tertiary));
+  border-radius: var(--harbor-radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--harbor-space-5);
+  font-size: 24px;
+  box-shadow: var(--harbor-shadow-glow);
+}
+
+.harbor-demo-title {
+  font-size: var(--harbor-text-3xl);
+  margin-bottom: var(--harbor-space-3);
+}
+
+.harbor-demo-subtitle {
+  font-size: var(--harbor-text-lg);
+  color: var(--harbor-text-secondary);
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ============================================
+   DEMO-SPECIFIC: FOOTER
+   ============================================ */
+.harbor-demo-footer {
+  margin-top: auto;
+  padding-top: var(--harbor-space-12);
+  text-align: center;
+  font-size: var(--harbor-text-sm);
+  color: var(--harbor-text-muted);
+}
+
+.harbor-demo-footer a {
+  color: var(--harbor-text-secondary);
+}
+
+.harbor-demo-footer a:hover {
+  color: var(--harbor-accent-primary);
+}
+

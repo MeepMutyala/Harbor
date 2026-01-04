@@ -1,6 +1,6 @@
 {
   "name": "harbor-bridge",
-  "version": "0.1.0",
+  "version": "0.0.2",
   "description": "Native messaging bridge for Harbor Firefox extension",
   "type": "module",
   "main": "dist/main.js",
@@ -14,7 +14,17 @@
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "pkg": "pkg . --config pkg.config.json",
+    "pkg:macos": "pkg . --target node18-macos-arm64,node18-macos-x64 --output build/harbor-bridge"
+  },
+  "pkg": {
+    "scripts": "dist/**/*.js",
+    "assets": [
+      "node_modules/better-sqlite3/prebuilds/**/*",
+      "node_modules/better-sqlite3/build/**/*.node"
+    ],
+    "outputPath": "build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
@@ -25,7 +35,9 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.2",
+    "@yao-pkg/pkg": "^5.12.0",
     "drizzle-kit": "^0.31.8",
+    "esbuild": "^0.27.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.9"

@@ -57,3 +57,11 @@ htmlcov/
 # Logs
 *.log
 
+# Build credentials (DO NOT COMMIT)
+installer/credentials.env
+installer/macos/build/
+installer/macos/payload/
+
+# Signed extension artifacts
+*.xpi
+

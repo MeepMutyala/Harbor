@@ -1,8 +1,16 @@
 # Harbor - AI Agent Reference
 
+> This document is optimized for AI coding assistants. For human-readable documentation, see DEVELOPER_GUIDE.md and JS_AI_PROVIDER_API.md.
+
 Harbor is a Firefox extension + Node.js bridge enabling web pages to access AI models and MCP tools via window.ai and window.agent APIs.
 
-Human-readable docs: DEVELOPER_GUIDE.md, JS_AI_PROVIDER_API.md
+## Key Concepts
+
+1. Harbor injects `window.ai` and `window.agent` into web pages
+2. All API calls require user permission (per-origin)
+3. MCP tools are namespaced as `serverId/toolName`
+4. The extension communicates with a Node.js bridge via native messaging
+5. The bridge manages MCP servers, LLM providers, and chat orchestration
 
 ## Quick Start
 
@@ -225,5 +233,67 @@ async function main() {
     args: { content: output }
   });
 }
+```
+
+## Project File Reference
+
+Key source files for understanding Harbor:
+
+```
+extension/src/
+├── background.ts        # Native messaging, permission handling
+├── sidebar.ts           # UI for server management
+├── provider/
+│   ├── types.ts         # API type definitions
+│   ├── provider-bridge.ts # Message routing to extension
+│   └── provider-injected.ts # window.ai/agent injection
+
+bridge-ts/src/
+├── main.ts              # Bridge entry point
+├── handlers.ts          # All message handlers
+├── host/
+│   ├── permissions.ts   # Permission system
+│   ├── tool-registry.ts # Tool namespacing
+│   └── rate-limiter.ts  # Rate limiting
+├── chat/
+│   ├── orchestrator.ts  # Agent loop
+│   └── tool-router.ts   # Intelligent tool selection
+├── llm/
+│   ├── manager.ts       # LLM provider abstraction
+│   ├── ollama.ts        # Ollama provider
+│   └── llamafile.ts     # llamafile provider
+├── mcp/
+│   ├── manager.ts       # MCP connection management
+│   └── stdio-client.ts  # stdio transport
+└── installer/
+    ├── manager.ts       # Server installation
+    └── secrets.ts       # Credential storage
+```
+
+## Common Patterns
+
+```js
+// Check if Harbor is available
+if (typeof window.agent === 'undefined') {
+  // Harbor not installed
+}
+
+// Handle permission denial
+try {
+  await window.agent.tools.list();
+} catch (e) {
+  if (e.code === 'ERR_SCOPE_REQUIRED') {
+    await window.agent.requestPermissions({ scopes: ['mcp:tools.list'] });
+  }
+}
+
+// Streaming with abort
+const controller = new AbortController();
+for await (const e of window.agent.run({ task: '...', signal: controller.signal })) {
+  // controller.abort() to cancel
+}
+
+// Read page content
+const { url, title, text } = await window.agent.browser.activeTab.readability();
 ```
 

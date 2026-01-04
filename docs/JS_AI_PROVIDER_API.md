@@ -3,8 +3,6 @@
 This document describes the JavaScript APIs exposed by the Harbor browser extension to web pages. These APIs enable web applications to use AI models and MCP tools with user consent.
 
 > **For AI Agents:** See [LLMS.txt](./LLMS.txt) for a compact, token-efficient version of this documentation optimized for AI coding assistants.
->
-> **Quick Reference:** See [JS_AI_PROVIDER_API_COMPACT.md](./JS_AI_PROVIDER_API_COMPACT.md) for a condensed cheat-sheet version.
 
 ## Overview
 

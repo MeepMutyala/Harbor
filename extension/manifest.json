@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Harbor",
-  "version": "0.0.1",
+  "version": "0.260104.1528",
   "description": "Native messaging bridge for Harbor - AI agents with MCP tools",
   "permissions": [
     "nativeMessaging",

@@ -34,6 +34,7 @@ import {
 } from './chat/index.js';
 import { CURATED_SERVERS, getCuratedServer, type CuratedServerFull } from './directory/curated-servers.js';
 import { getDockerExec } from './installer/docker-exec.js';
+import { getDockerImageManager } from './installer/docker-images.js';
 import type { CuratedServer } from './types.js';
 import {
   startOAuthFlow,
@@ -3140,7 +3141,6 @@ const handleCheckDocker: MessageHandler = async (message) => {
     
     if (info.available) {
       // Get image status
-      const { getDockerImageManager } = await import('./installer/docker-images.js');
       const imageManager = getDockerImageManager();
       images = await imageManager.getImagesStatus();
       
@@ -3184,7 +3184,6 @@ const handleBuildDockerImages: MessageHandler = async (message) => {
   const imageType = message.image_type as string | undefined;
   
   try {
-    const { getDockerImageManager } = await import('./installer/docker-images.js');
     const imageManager = getDockerImageManager();
     
     if (imageType) {

@@ -15,6 +15,8 @@ const COMMON_PATHS = [
   // macOS Homebrew
   '/opt/homebrew/bin',
   '/usr/local/bin',
+  // Docker Desktop (macOS)
+  '/Applications/Docker.app/Contents/Resources/bin',
   // Linux common paths
   '/usr/bin',
   '/usr/local/bin',
