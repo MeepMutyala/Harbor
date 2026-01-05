@@ -108,6 +108,13 @@ export default defineConfig({
         );
         writeFileSync(resolve(__dirname, 'dist/welcome.html'), welcomeHtml);
 
+        // Copy welcome.js (external script for welcome page)
+        const welcomeJs = readFileSync(
+          resolve(__dirname, 'src/welcome.js'),
+          'utf-8'
+        );
+        writeFileSync(resolve(__dirname, 'dist/welcome.js'), welcomeJs);
+
         // Copy manifest.json
         const manifest = readFileSync(
           resolve(__dirname, 'manifest.json'),

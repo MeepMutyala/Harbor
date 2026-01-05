@@ -270,7 +270,8 @@ build_bridge() {
     # The bundle was built in bridge-ts/, so assets should be at bridge-ts/node_modules/...
     # We need to create that structure in the build dir
     
-    # Create package.json for pkg - use EXACT version for bundling
+    # Create package.json for pkg
+    # Note: pkg uses major version format (node20) not full version (node20.19.6)
     # assets relative to bridge-ts (where bundle was built)
     cat > build/package.json << EOF
 {
@@ -278,7 +279,7 @@ build_bridge() {
   "bin": "bundle.cjs",
   "pkg": {
     "assets": ["../node_modules/better-sqlite3/build/Release/better_sqlite3.node"],
-    "targets": ["node${BUNDLED_NODE_FULL}-macos-${BINARY_SUFFIX}"],
+    "targets": ["node${BUNDLED_NODE_MAJOR}-macos-${BINARY_SUFFIX}"],
     "outputPath": "."
   }
 }
@@ -563,14 +564,15 @@ EOF
     # Build for both architectures (JS binary is universal, but native module is not)
     cd build
     
-    echo "  Building for arm64 with Node $BUNDLED_NODE_FULL..."
+    # Note: pkg uses major version format (node20) not full version (node20.19.6)
+    echo "  Building for arm64 with Node $BUNDLED_NODE_MAJOR..."
     npx @yao-pkg/pkg pkg.json \
-        --target "node${BUNDLED_NODE_FULL}-macos-arm64" \
+        --target "node${BUNDLED_NODE_MAJOR}-macos-arm64" \
         --output "$BUILD_DIR/harbor-bridge-arm64" 2>&1 | grep -v "^> Warning" || true
     
-    echo "  Building for x64 with Node $BUNDLED_NODE_FULL..."
+    echo "  Building for x64 with Node $BUNDLED_NODE_MAJOR..."
     npx @yao-pkg/pkg pkg.json \
-        --target "node${BUNDLED_NODE_FULL}-macos-x64" \
+        --target "node${BUNDLED_NODE_MAJOR}-macos-x64" \
         --output "$BUILD_DIR/harbor-bridge-x64" 2>&1 | grep -v "^> Warning" || true
     
     cd ..
