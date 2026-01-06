@@ -20,7 +20,12 @@ import {
   ChatChunk,
 } from './provider.js';
 import { AnyLLMAdapter, createAnyLLMAdapter, getAnyLLMProviders } from './any-llm-adapter.js';
+import { getSecretStore } from '../installer/secrets.js';
+import { CredentialType } from '../types.js';
 import type { LLMProviderType, ProviderConfig } from 'any-llm-ts';
+
+// Special "server ID" for storing LLM API keys in the credential store
+const LLM_CREDENTIAL_NAMESPACE = '_llm_providers';
 
 // =============================================================================
 // Provider Configuration
@@ -82,8 +87,35 @@ export class LLMManager {
   private providerConfigs: Map<string, ProviderConfig> = new Map();
 
   constructor() {
+    // Load saved API keys from credential store
+    this.loadSavedApiKeys();
+    
     // Register local providers by default
     this.registerLocalProviders();
+  }
+  
+  /**
+   * Load saved API keys from the credential store.
+   */
+  private loadSavedApiKeys(): void {
+    try {
+      const secretStore = getSecretStore();
+      const credentials = secretStore.getCredentials(LLM_CREDENTIAL_NAMESPACE);
+      
+      for (const cred of credentials) {
+        this.apiKeys.set(cred.key, cred.value);
+        log(`[LLMManager] Loaded saved API key for: ${cred.key}`);
+      }
+      
+      // Register remote providers that have saved keys
+      for (const [providerId, apiKey] of this.apiKeys) {
+        if (REMOTE_PROVIDERS.includes(providerId as LLMProviderType)) {
+          this.registerProvider(providerId as LLMProviderType, { apiKey });
+        }
+      }
+    } catch (e) {
+      log(`[LLMManager] Failed to load saved API keys: ${e}`);
+    }
   }
 
   /**
@@ -122,9 +154,24 @@ export class LLMManager {
   /**
    * Set an API key for a remote provider.
    * This will register the provider if not already registered.
+   * The key is persisted to the credential store.
    */
   setApiKey(providerType: string, apiKey: string): void {
     this.apiKeys.set(providerType, apiKey);
+    
+    // Persist to credential store
+    try {
+      const secretStore = getSecretStore();
+      secretStore.setCredential(LLM_CREDENTIAL_NAMESPACE, {
+        key: providerType,
+        value: apiKey,
+        type: CredentialType.API_KEY,
+        setAt: Date.now(),
+      });
+      log(`[LLMManager] API key saved to credential store for: ${providerType}`);
+    } catch (e) {
+      log(`[LLMManager] Failed to save API key to credential store: ${e}`);
+    }
     
     // Re-register or register the provider with the new key
     const existingConfig = this.providerConfigs.get(providerType) || {};
@@ -138,9 +185,19 @@ export class LLMManager {
 
   /**
    * Remove an API key for a provider.
+   * Also removes from the credential store.
    */
   removeApiKey(providerType: string): void {
     this.apiKeys.delete(providerType);
+    
+    // Remove from credential store
+    try {
+      const secretStore = getSecretStore();
+      secretStore.deleteCredential(LLM_CREDENTIAL_NAMESPACE, providerType);
+      log(`[LLMManager] API key removed from credential store for: ${providerType}`);
+    } catch (e) {
+      log(`[LLMManager] Failed to remove API key from credential store: ${e}`);
+    }
     
     // Remove the provider if it's a remote one
     if (REMOTE_PROVIDERS.includes(providerType as LLMProviderType)) {

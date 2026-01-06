@@ -172,6 +172,52 @@ function updateThemeIcon(theme: string): void {
 // Initialize theme immediately
 initTheme();
 
+// =============================================================================
+// Dev Mode Detection
+// =============================================================================
+
+const devModeLink = document.getElementById('dev-mode-link') as HTMLAnchorElement;
+
+/**
+ * Check if running as a temporarily installed (development) extension.
+ * If so, show a link to the debugging page for quick reload/inspect.
+ */
+async function checkDevMode(): Promise<void> {
+  try {
+    const self = await browser.management.getSelf();
+    
+    // installType is 'development' for temporary add-ons in Firefox
+    if (self.installType === 'development') {
+      devModeLink.style.display = 'inline-block';
+      
+      // Handle click - open debugging page in current window
+      devModeLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          // Get the current active tab and update it to navigate to about:debugging
+          const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+          if (tabs[0]?.id) {
+            await browser.tabs.update(tabs[0].id, { url: 'about:debugging#/runtime/this-firefox' });
+          } else {
+            // Fallback: create a new tab
+            await browser.tabs.create({ url: 'about:debugging#/runtime/this-firefox' });
+          }
+        } catch (err) {
+          console.error('[Sidebar] Failed to open debugging page:', err);
+          // Last resort: copy URL to clipboard and show message
+          await navigator.clipboard.writeText('about:debugging#/runtime/this-firefox');
+          alert('Could not open debugging page. URL copied to clipboard - paste it in a new tab.');
+        }
+      });
+      
+      console.log('[Sidebar] Running in development mode');
+    }
+  } catch (err) {
+    // management API might not be available, silently ignore
+    console.log('[Sidebar] Could not check install type:', err);
+  }
+}
+
 
 // DOM Elements
 const statusIndicator = document.getElementById('status-indicator') as HTMLDivElement;
@@ -207,6 +253,8 @@ const llmProgressText = document.getElementById('llm-progress-text') as HTMLDivE
 const llmControlSection = document.getElementById('llm-control-section') as HTMLDivElement;
 const llmStartBtn = document.getElementById('llm-start-btn') as HTMLButtonElement;
 const llmStopBtn = document.getElementById('llm-stop-btn') as HTMLButtonElement;
+const llmDeleteBtn = document.getElementById('llm-delete-btn') as HTMLButtonElement;
+const llmDownloadedModelName = document.getElementById('llm-downloaded-model-name') as HTMLSpanElement;
 
 // Docker elements
 const dockerStatusIndicator = document.getElementById('docker-status-indicator') as HTMLDivElement;
@@ -825,10 +873,23 @@ async function startInstalledServer(
   document.querySelectorAll('.docker-fallback-inline').forEach(el => el.remove());
   clearServerProgress(serverId);
   
-  // Show initial progress if using Docker
-  if (useDocker) {
-    showServerProgress(serverId, 'Starting Docker...');
+  // Show immediate feedback - disable button and show connecting state
+  const serverCard = document.querySelector(`.installed-server-item[data-server-id="${serverId}"]`);
+  const startBtn = serverCard?.querySelector('.start-btn') as HTMLButtonElement;
+  const statusBadge = serverCard?.querySelector('.server-status-badge') as HTMLSpanElement;
+  
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = '⏳';
   }
+  if (statusBadge) {
+    statusBadge.className = 'server-status-badge connecting';
+    statusBadge.innerHTML = '<span class="connecting-spinner"></span> Starting...';
+  }
+  
+  // Show progress message
+  const progressMessage = useDocker ? 'Starting Docker container...' : 'Connecting to MCP server...';
+  showServerProgress(serverId, progressMessage);
   
   try {
     // Use mcp_connect to start and connect via stdio
@@ -906,6 +967,8 @@ async function startInstalledServer(
     console.error('[Sidebar] Failed to start server:', err);
     clearServerProgress(serverId);
     alert(`Failed to start server: ${err}`);
+    // Refresh to reset the UI state
+    await loadInstalledServers();
   }
 }
 
@@ -1335,9 +1398,7 @@ function renderLLMStatus(): void {
     
     detailsHtml += `<br><span class="text-xs text-muted mono">${llmStatus.runningUrl}</span>`;
     
-    if (llmStatus.activeModel) {
-      detailsHtml += `<br><span class="text-xs">Model: ${llmStatus.activeModel}</span>`;
-    }
+    // Note: Don't add model here - it's shown in the control section below
     
     // Add Ollama warning if present
     if (llmStatus.ollamaInfo?.warning) {
@@ -1348,35 +1409,45 @@ function renderLLMStatus(): void {
     
     llmDetails.innerHTML = detailsHtml;
     
-    // Hide download section, show controls if we started it
+    // Hide download section when LLM is running
     llmDownloadSection.style.display = 'none';
     llmProgressSection.style.display = 'none';
     
-    if (llmStatus.activeModel) {
-      // We started this LLM, show stop button
+    // Show controls for llamafile (we can stop it even if we didn't start it)
+    if (llmStatus.runningProvider === 'llamafile') {
       llmControlSection.style.display = 'block';
       llmStartBtn.style.display = 'none';
       llmStopBtn.style.display = 'flex';
+      llmDeleteBtn.style.display = 'none'; // Can't delete while running
+      llmDownloadedModelName.textContent = llmStatus.activeModel || llmStatus.downloadedModels[0] || 'llamafile';
     } else {
+      // External LLM (Ollama or other) - no stop button
       llmControlSection.style.display = 'none';
     }
     
   } else {
     // No LLM running
-    llmStatusIndicator.className = 'status-indicator disconnected';
-    llmStatusText.className = 'status-text disconnected';
-    llmStatusText.textContent = 'Not Available';
     llmDetails.textContent = '';
     
     // Check if we have downloaded models
     if (llmStatus.downloadedModels.length > 0) {
+      // Has downloaded models - ready to start
+      llmStatusIndicator.className = 'status-indicator warning';
+      llmStatusText.className = 'status-text warning';
+      llmStatusText.textContent = 'Ready to Start';
       llmDownloadSection.style.display = 'none';
       llmControlSection.style.display = 'block';
       llmStartBtn.style.display = 'flex';
       llmStopBtn.style.display = 'none';
-      llmDetails.textContent = `Downloaded: ${llmStatus.downloadedModels.join(', ')}`;
+      llmDeleteBtn.style.display = 'inline-flex';
+      llmDownloadedModelName.textContent = llmStatus.downloadedModels.join(', ');
+      llmDetails.textContent = '';
     } else {
-      // Show download section
+      // No models - needs configuration
+      llmStatusIndicator.className = 'status-indicator disconnected';
+      llmStatusText.className = 'status-text disconnected';
+      llmStatusText.textContent = 'Not Configured';
+      // Show setup options
       llmDownloadSection.style.display = 'block';
       llmControlSection.style.display = 'none';
     }
@@ -1393,9 +1464,14 @@ async function downloadLLMModel(): Promise<void> {
   llmDownloadBtn.disabled = true;
   llmDownloadSection.style.display = 'none';
   llmProgressSection.style.display = 'block';
-  llmDownloadModelName.textContent = modelOption.textContent || modelId;
-  llmProgressBar.style.width = '0%';
-  llmProgressText.textContent = 'Starting download...';
+  
+  // Extract just the model name (without size info)
+  const modelName = (modelOption.textContent || modelId).split('(')[0].trim();
+  llmDownloadModelName.textContent = modelName;
+  
+  // Use animated indeterminate progress bar
+  llmProgressBar.style.width = '100%';
+  llmProgressBar.classList.add('progress-bar-animated');
   
   try {
     // This is a long-running request - the bridge will stream progress
@@ -1405,9 +1481,17 @@ async function downloadLLMModel(): Promise<void> {
       model_id: modelId,
     }) as { type: string; success?: boolean; status?: LLMSetupStatus };
     
+    if (response.type === 'llm_download_model_result' && response.started) {
+      // Download started in background - keep showing progress
+      // Actual completion will come via status_update message
+      console.log('Download started in background');
+      return; // Don't hide progress section yet
+    }
+    
     if (response.type === 'llm_download_model_result' && response.success) {
+      llmProgressBar.classList.remove('progress-bar-animated');
       llmProgressBar.style.width = '100%';
-      llmProgressText.textContent = 'Download complete!';
+      llmProgressText.innerHTML = '✅ <strong>Download complete!</strong> Click "Start" to run the model.';
       
       if (response.status) {
         llmStatus = response.status;
@@ -1432,7 +1516,9 @@ async function downloadLLMModel(): Promise<void> {
     
   } catch (err) {
     console.error('Download failed:', err);
-    llmProgressText.textContent = `Error: ${err}`;
+    llmProgressBar.classList.remove('progress-bar-animated');
+    llmProgressBar.style.width = '0%';
+    llmProgressText.innerHTML = `❌ <strong>Download failed:</strong> ${err}`;
     
     setTimeout(() => {
       llmProgressSection.style.display = 'none';
@@ -1472,7 +1558,7 @@ async function startLocalLLM(): Promise<void> {
     alert(`Failed to start LLM: ${err}`);
   } finally {
     llmStartBtn.disabled = false;
-    llmStartBtn.textContent = '▶️ Start';
+    llmStartBtn.textContent = 'Start Local LLM';
   }
 }
 
@@ -1492,6 +1578,46 @@ async function stopLocalLLM(): Promise<void> {
   } finally {
     llmStopBtn.disabled = false;
     llmStopBtn.textContent = '⏹️ Stop';
+  }
+}
+
+async function deleteLocalLLM(): Promise<void> {
+  if (!llmStatus?.downloadedModels.length) return;
+  
+  const modelId = llmStatus.downloadedModels[0];
+  
+  // Confirm deletion
+  if (!confirm(`Delete the downloaded model "${modelId}"?\n\nYou can re-download it later if needed.`)) {
+    return;
+  }
+  
+  llmDeleteBtn.disabled = true;
+  
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'llm_delete_model',
+      model_id: modelId,
+    }) as { type: string; deleted?: boolean; success?: boolean; error?: string };
+    
+    console.log('[Sidebar] Delete response:', response);
+    
+    if (response.type === 'llm_delete_model_result' && response.deleted) {
+      console.log('Model deleted successfully');
+      // Clear local status and refresh
+      llmStatus = null;
+      await checkLLMStatus();
+      renderLLMStatus();
+    } else if (response.type === 'error') {
+      console.error('Failed to delete model:', response.error);
+      alert(`Failed to delete model: ${response.error || 'Unknown error'}`);
+    } else {
+      console.warn('Unexpected delete response:', response);
+    }
+  } catch (err) {
+    console.error('Failed to delete model:', err);
+    alert(`Failed to delete model: ${err}`);
+  } finally {
+    llmDeleteBtn.disabled = false;
   }
 }
 
@@ -1605,10 +1731,65 @@ function renderDockerStatus(): void {
 
 // Listen for state updates from background
 browser.runtime.onMessage.addListener((message: unknown) => {
-  const msg = message as { type: string; state?: ConnectionState; response?: BridgeResponse };
+  const msg = message as { 
+    type: string; 
+    state?: ConnectionState; 
+    response?: BridgeResponse;
+    category?: string;
+    status?: string;
+    percent?: number;
+    bytesDownloaded?: number;
+    totalBytes?: number;
+    modelId?: string;
+    error?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any;
+  };
+
+  // Debug: log ALL messages received by sidebar
+  console.log('[Sidebar] Received message:', msg.type, msg.category || '');
 
   if (msg.type === 'state_update' && msg.state) {
     updateConnectionUI(msg.state);
+  }
+  
+  // Handle LLM download progress updates
+  if (msg.type === 'catalog_status' && msg.category === 'llm_download') {
+    console.log('[Sidebar] LLM download progress:', msg.status, msg.percent, '% bytes:', msg.bytesDownloaded);
+    
+    if (msg.status === 'downloading' && typeof msg.percent === 'number') {
+      // Update progress bar
+      llmProgressBar.classList.remove('progress-bar-animated');
+      llmProgressBar.style.width = `${msg.percent}%`;
+      const mbDownloaded = Math.round((msg.bytesDownloaded || 0) / 1_000_000);
+      const mbTotal = Math.round((msg.totalBytes || 0) / 1_000_000);
+      llmProgressText.textContent = `${msg.percent}% (${mbDownloaded} MB / ${mbTotal} MB)`;
+    } else if (msg.status === 'complete') {
+      // Download complete
+      llmProgressBar.classList.remove('progress-bar-animated');
+      llmProgressBar.style.width = '100%';
+      llmProgressText.innerHTML = '✅ <strong>Download complete!</strong>';
+      isDownloading = false;
+      llmDownloadBtn.disabled = false;
+      
+      // Update status and UI after a brief delay
+      setTimeout(() => {
+        llmProgressSection.style.display = 'none';
+        checkLLMStatus();
+      }, 2000);
+    } else if (msg.status === 'error') {
+      // Download failed
+      llmProgressBar.classList.remove('progress-bar-animated');
+      llmProgressBar.style.width = '0%';
+      llmProgressText.innerHTML = `❌ <strong>Download failed:</strong> ${msg.error || 'Unknown error'}`;
+      isDownloading = false;
+      llmDownloadBtn.disabled = false;
+      
+      setTimeout(() => {
+        llmProgressSection.style.display = 'none';
+        llmDownloadSection.style.display = 'block';
+      }, 5000);
+    }
   }
 });
 
@@ -1934,6 +2115,9 @@ function updateServersStatusDot(): void {
 }
 
 async function init(): Promise<void> {
+  // Check if running as temporary/development extension
+  await checkDevMode();
+  
   // Initialize collapsible panels first
   initCollapsiblePanels();
   
@@ -2298,6 +2482,7 @@ document.addEventListener('keydown', (e) => {
 llmDownloadBtn.addEventListener('click', downloadLLMModel);
 llmStartBtn.addEventListener('click', startLocalLLM);
 llmStopBtn.addEventListener('click', stopLocalLLM);
+llmDeleteBtn.addEventListener('click', deleteLocalLLM);
 
 // =============================================================================
 // LLM Provider Settings
@@ -2669,13 +2854,17 @@ async function saveApiKey(): Promise<void> {
     }) as { type: string; success?: boolean; available?: boolean };
     
     if (response.type === 'llm_set_api_key_result' && response.success) {
+      // Save provider ID before closing modal (which clears it)
+      const savedProviderId = currentApiKeyProvider;
+      
       closeApiKeyModal();
       await loadLLMConfig();
       
       // If this provider is now available and not already selected, offer to select it
-      if (response.available && llmProviderSelect.value !== currentApiKeyProvider) {
-        if (confirm(`${PROVIDER_INFO[currentApiKeyProvider]?.name || currentApiKeyProvider} is now available. Use it as your LLM provider?`)) {
-          llmProviderSelect.value = currentApiKeyProvider;
+      if (response.available && savedProviderId && llmProviderSelect.value !== savedProviderId) {
+        const providerName = PROVIDER_INFO[savedProviderId]?.name || savedProviderId;
+        if (confirm(`${providerName} is now available. Use it as your LLM provider?`)) {
+          llmProviderSelect.value = savedProviderId;
           await onProviderChange();
         }
       }
