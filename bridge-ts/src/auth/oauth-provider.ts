@@ -103,6 +103,11 @@ export class OAuthProvider {
       grant_type: 'authorization_code',
     });
 
+    // Add client_secret if available (required for web/desktop apps)
+    if (this.config.clientSecret) {
+      body.set('client_secret', this.config.clientSecret);
+    }
+
     // Add PKCE verifier if we used it
     if (flow.codeVerifier) {
       body.set('code_verifier', flow.codeVerifier);

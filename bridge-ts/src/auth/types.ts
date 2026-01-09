@@ -23,6 +23,9 @@ export interface OAuthConfig {
   /** OAuth client ID (can be empty for user-provided) */
   clientId: string;
   
+  /** OAuth client secret (required for web/desktop apps) */
+  clientSecret?: string;
+  
   /** Required OAuth scopes */
   scopes: string[];
   

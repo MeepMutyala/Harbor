@@ -50,4 +50,22 @@ export {
   createGoogleOAuthConfig,
 } from './providers/google.js';
 
+// Harbor OAuth Broker
+export {
+  HarborOAuthBroker,
+  getHarborOAuthBroker,
+  initHarborOAuthBroker,
+  resetHarborOAuthBroker,
+  type StoredServerTokens,
+  type OAuthAuthResult,
+  type HarborOAuthConfig,
+} from './harbor-oauth.js';
+
+// Token Store
+export {
+  TokenStore,
+  getTokenStore,
+  resetTokenStore,
+} from './token-store.js';
+
 
