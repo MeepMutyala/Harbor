@@ -55,6 +55,84 @@ interface CredentialInfo {
   isExpired?: boolean;
 }
 
+// Manifest types
+interface McpManifest {
+  manifestVersion: string;
+  name: string;
+  description?: string;
+  repository?: string;
+  package: {
+    type: 'npm' | 'pypi' | 'docker' | 'binary';
+    name: string;
+  };
+  runtime?: {
+    hasNativeCode?: boolean;
+  };
+  execution?: {
+    transport?: 'stdio' | 'http' | 'sse';
+    dockerMode?: 'preferred' | 'optional' | 'incompatible' | 'required';
+  };
+  environment?: Array<{
+    name: string;
+    description: string;
+    required?: boolean;
+    type?: string;
+    default?: string;
+  }>;
+  secrets?: Array<{
+    name: string;
+    description: string;
+    required?: boolean;
+    helpUrl?: string;
+  }>;
+  oauth?: {
+    provider: string;
+    supportedSources: Array<'host' | 'user' | 'server'>;
+    preferredSource?: 'host' | 'user' | 'server';
+    scopes: string[];
+    description?: string;
+    apis?: Array<{
+      name: string;
+      displayName: string;
+      enableUrl?: string;
+    }>;
+    hostMode?: {
+      tokenEnvVar?: string;
+      refreshTokenEnvVar?: string;
+    };
+    userMode?: {
+      clientCredentialsPath?: string;
+      clientCredentialsEnvVar?: string;
+    };
+  };
+}
+
+interface ManifestInstallResult {
+  serverId: string;
+  server: InstalledServer;
+  needsOAuth: boolean;
+  oauthMode?: 'host' | 'user' | 'server';
+}
+
+interface OAuthCapabilityCheck {
+  required: boolean;
+  canHandle: boolean;
+  recommendedSource?: 'host' | 'user' | 'server';
+  hostModeAvailable?: boolean;
+  userModeAvailable?: boolean;
+  missingScopes?: string[];
+  missingApis?: string[];
+  reason?: string;
+}
+
+interface ManifestOAuthStatus {
+  required: boolean;
+  mode?: 'host' | 'user' | 'server';
+  hasTokens: boolean;
+  tokensValid: boolean;
+  needsRefresh: boolean;
+}
+
 // LLM types
 interface LLMModel {
   id: string;
@@ -260,6 +338,20 @@ const llmDownloadedModelName = document.getElementById('llm-downloaded-model-nam
 const dockerStatusIndicator = document.getElementById('docker-status-indicator') as HTMLDivElement;
 const dockerStatusText = document.getElementById('docker-status-text') as HTMLSpanElement;
 const dockerDetails = document.getElementById('docker-details') as HTMLDivElement;
+
+// Python elements
+const pythonStatusIndicator = document.getElementById('python-status-indicator') as HTMLDivElement;
+const pythonStatusText = document.getElementById('python-status-text') as HTMLSpanElement;
+const pythonDetails = document.getElementById('python-details') as HTMLDivElement;
+
+// Node.js elements
+const nodeStatusIndicator = document.getElementById('node-status-indicator') as HTMLDivElement;
+const nodeStatusText = document.getElementById('node-status-text') as HTMLSpanElement;
+const nodeDetails = document.getElementById('node-details') as HTMLDivElement;
+
+// Capabilities summary
+const capabilitiesSummary = document.getElementById('capabilities-summary') as HTMLDivElement;
+const capabilitiesMessages = document.getElementById('capabilities-messages') as HTMLDivElement;
 
 let servers: MCPServer[] = [];
 let selectedServerId: string | null = null;
@@ -507,18 +599,26 @@ function renderInstalledServers(): void {
   installedServerListEl.innerHTML = summaryHtml + serversHtml;
 
   // Add event listeners
-  installedServerListEl.querySelectorAll('.configure-btn').forEach(btn => {
+  console.log('[Sidebar] === ATTACHING EVENT LISTENERS ===');
+  console.log('[Sidebar] installedServerListEl:', installedServerListEl);
+  console.log('[Sidebar] innerHTML length:', installedServerListEl.innerHTML.length);
+  
+  const configBtns = installedServerListEl.querySelectorAll('.configure-btn');
+  console.log('[Sidebar] Found configure buttons:', configBtns.length);
+  configBtns.forEach(btn => {
     btn.addEventListener('click', () => openCredentialModal((btn as HTMLElement).dataset.serverId!));
   });
 
-  installedServerListEl.querySelectorAll('.start-btn').forEach(btn => {
-    console.log('[Sidebar] Adding click listener to start button for:', (btn as HTMLElement).dataset.serverId);
+  const startBtns = installedServerListEl.querySelectorAll('.start-btn');
+  console.log('[Sidebar] Found start buttons:', startBtns.length);
+  startBtns.forEach(btn => {
+    const serverId = (btn as HTMLElement).dataset.serverId;
+    console.log('[Sidebar] Adding click listener to start button for:', serverId);
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const serverId = (btn as HTMLElement).dataset.serverId!;
-      console.log('[Sidebar] Start button clicked for:', serverId);
-      startInstalledServer(serverId);
+      console.log('[Sidebar] *** START BUTTON CLICKED *** for:', serverId);
+      startInstalledServer(serverId!);
     });
   });
 
@@ -873,6 +973,13 @@ async function startInstalledServer(
   document.querySelectorAll('.docker-fallback-inline').forEach(el => el.remove());
   clearServerProgress(serverId);
   
+  // Check if OAuth is needed for this server (if it was installed via manifest)
+  const oauthReady = await checkAndPromptOAuth(serverId);
+  if (!oauthReady) {
+    console.log('[Sidebar] OAuth not ready, cannot start server');
+    return;
+  }
+  
   // Show immediate feedback - disable button and show connecting state
   const serverCard = document.querySelector(`.installed-server-item[data-server-id="${serverId}"]`);
   const startBtn = serverCard?.querySelector('.start-btn') as HTMLButtonElement;
@@ -892,13 +999,13 @@ async function startInstalledServer(
   showServerProgress(serverId, progressMessage);
   
   try {
-    // Use mcp_connect to start and connect via stdio
-    const response = await browser.runtime.sendMessage({
-      type: 'mcp_connect',
+    // Check if this server has a manifest (needs special handling for OAuth tokens)
+    const manifestCheck = await browser.runtime.sendMessage({
+      type: 'get_server_manifest',
       server_id: serverId,
-      skip_security_check: skipSecurityCheck,
-      use_docker: useDocker,
-    }) as { 
+    }) as { hasManifest?: boolean; manifest?: McpManifest } | undefined;
+    
+    let response: { 
       type: string; 
       connected?: boolean; 
       needs_security_approval?: boolean;
@@ -909,7 +1016,62 @@ async function startInstalledServer(
       running_in_docker?: boolean;
       security_instructions?: string;
       error?: string;
+      serverId?: string;
+      process?: { pid: number; state: string };
     };
+    
+    if (manifestCheck?.hasManifest && manifestCheck.manifest?.oauth) {
+      // Use start_manifest_server which injects OAuth tokens
+      console.log('[Sidebar] Using manifest-based start for OAuth server');
+      const manifestResponse = await browser.runtime.sendMessage({
+        type: 'start_manifest_server',
+        server_id: serverId,
+        use_docker: useDocker,
+      }) as {
+        type: string;
+        serverId?: string;
+        process?: { pid: number; state: string; errorMessage?: string };
+        docker_fallback_available?: boolean;
+        docker_fallback_message?: string;
+        error?: { message?: string };
+      };
+      
+      // Check if Docker fallback is being offered (macOS security issue)
+      if (manifestResponse?.docker_fallback_available) {
+        console.log('[Sidebar] Docker fallback available for manifest server');
+        response = {
+          type: 'mcp_connect_result',
+          connected: false,
+          docker_fallback_available: true,
+          docker_fallback_message: manifestResponse.docker_fallback_message || 
+            'This server has native dependencies that may cause issues on macOS. Would you like to run in Docker instead?',
+        };
+      }
+      // Convert manifest start response to mcp_connect format
+      else if (manifestResponse?.type === 'start_manifest_server_result') {
+        response = {
+          type: 'mcp_connect_result',
+          connected: manifestResponse.connected === true,
+          running_in_docker: manifestResponse.running_in_docker || useDocker,
+          error: manifestResponse.error,
+        };
+      } else if (manifestResponse?.type === 'error') {
+        response = {
+          type: 'error',
+          error: manifestResponse.error?.message || 'Failed to start server',
+        };
+      } else {
+        response = manifestResponse;
+      }
+    } else {
+      // Use regular mcp_connect for non-manifest servers
+      response = await browser.runtime.sendMessage({
+        type: 'mcp_connect',
+        server_id: serverId,
+        skip_security_check: skipSecurityCheck,
+        use_docker: useDocker,
+      });
+    }
 
     console.log('[Sidebar] Start response:', response);
     console.log('[Sidebar] docker_fallback_available:', response.docker_fallback_available);
@@ -1274,6 +1436,216 @@ async function uninstallServer(serverId: string): Promise<void> {
 
 
 // =============================================================================
+// Manifest-based Installation with OAuth
+// =============================================================================
+
+/**
+ * Install a server from a manifest with OAuth handling.
+ */
+async function installFromManifest(manifest: McpManifest): Promise<boolean> {
+  console.log('[Sidebar] Installing from manifest:', manifest.name);
+
+  try {
+    // First check if we can handle OAuth requirements
+    if (manifest.oauth) {
+      const oauthCheck = await browser.runtime.sendMessage({
+        type: 'check_manifest_oauth',
+        manifest,
+      }) as { type: string; error?: string } & OAuthCapabilityCheck;
+
+      if (oauthCheck.type === 'error') {
+        alert(`OAuth check failed: ${oauthCheck.error}`);
+        return false;
+      }
+
+      console.log('[Sidebar] OAuth check result:', oauthCheck);
+
+      // If user mode is required and host mode not available, warn the user
+      if (oauthCheck.required && !oauthCheck.hostModeAvailable && oauthCheck.userModeAvailable) {
+        const proceed = confirm(
+          `This server requires you to create your own OAuth application.\n\n` +
+          `Reason: ${oauthCheck.reason || 'Host mode not available'}\n\n` +
+          `Would you like to continue? You'll need to follow the setup instructions.`
+        );
+        if (!proceed) return false;
+      }
+    }
+
+    // Install the server
+    const result = await browser.runtime.sendMessage({
+      type: 'install_from_manifest',
+      manifest,
+    }) as { type: string; error?: string } & ManifestInstallResult;
+
+    if (result.type === 'error') {
+      alert(`Installation failed: ${result.error}`);
+      return false;
+    }
+
+    console.log('[Sidebar] Install result:', result);
+
+    // If OAuth is needed, start the flow
+    if (result.needsOAuth && result.oauthMode === 'host') {
+      const oauthStarted = await startManifestOAuthFlow(result.serverId, manifest);
+      if (!oauthStarted) {
+        console.warn('[Sidebar] OAuth flow not completed');
+        // Server is installed but OAuth not done - user can retry later
+      }
+    }
+
+    // Refresh server list
+    await loadInstalledServers();
+    
+    return true;
+  } catch (err) {
+    console.error('[Sidebar] Manifest installation failed:', err);
+    alert(`Installation failed: ${err}`);
+    return false;
+  }
+}
+
+/**
+ * Start OAuth flow for a manifest-installed server.
+ * Shows consent UI and opens browser for authentication.
+ */
+async function startManifestOAuthFlow(serverId: string, manifest: McpManifest): Promise<boolean> {
+  if (!manifest.oauth) return true;
+
+  // Show consent dialog
+  const scopes = manifest.oauth.scopes;
+  const description = manifest.oauth.description || 'Access to your account';
+  
+  const consent = confirm(
+    `${manifest.name} needs your permission:\n\n` +
+    `${description}\n\n` +
+    `Scopes requested:\n` +
+    scopes.map(s => `• ${formatScope(s)}`).join('\n') +
+    `\n\nClick OK to sign in with ${capitalizeFirst(manifest.oauth.provider)}.`
+  );
+
+  if (!consent) return false;
+
+  try {
+    // Start OAuth flow
+    const response = await browser.runtime.sendMessage({
+      type: 'manifest_oauth_start',
+      server_id: serverId,
+    }) as { type: string; authUrl?: string; state?: string; error?: string };
+
+    if (response.type === 'error' || !response.authUrl) {
+      alert(`Failed to start authorization: ${response.error || 'Unknown error'}`);
+      return false;
+    }
+
+    // Open auth URL in browser
+    window.open(response.authUrl, '_blank');
+
+    // Show waiting state
+    showOAuthWaiting(serverId, manifest.oauth.provider);
+
+    // Poll for completion
+    return await waitForOAuthCompletion(serverId);
+  } catch (err) {
+    console.error('[Sidebar] OAuth flow failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Show waiting state while OAuth is in progress.
+ */
+function showOAuthWaiting(serverId: string, provider: string): void {
+  // Find the server card and show waiting state
+  const serverCard = document.querySelector(`[data-server-id="${serverId}"]`);
+  if (serverCard) {
+    const statusEl = serverCard.querySelector('.server-status');
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <span class="status-indicator connecting"></span>
+        <span>Waiting for ${capitalizeFirst(provider)} authorization...</span>
+      `;
+    }
+  }
+}
+
+/**
+ * Wait for OAuth to complete by polling status.
+ */
+async function waitForOAuthCompletion(serverId: string, maxWaitMs: number = 5 * 60 * 1000): Promise<boolean> {
+  const startTime = Date.now();
+  const pollInterval = 2000; // 2 seconds
+
+  while (Date.now() - startTime < maxWaitMs) {
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+    const status = await browser.runtime.sendMessage({
+      type: 'manifest_oauth_status',
+      server_id: serverId,
+    }) as ManifestOAuthStatus;
+
+    if (status.hasTokens && status.tokensValid) {
+      console.log('[Sidebar] OAuth completed successfully');
+      await loadInstalledServers(); // Refresh to update UI
+      return true;
+    }
+  }
+
+  console.warn('[Sidebar] OAuth timed out');
+  return false;
+}
+
+/**
+ * Format an OAuth scope for display.
+ */
+function formatScope(scope: string): string {
+  // Extract the last part of the scope URL for readability
+  const parts = scope.split('/');
+  const lastPart = parts[parts.length - 1];
+  
+  // Make it more readable
+  return lastPart
+    .replace(/\./g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase();
+}
+
+/**
+ * Capitalize first letter.
+ */
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Check OAuth status and prompt for auth if needed.
+ */
+async function checkAndPromptOAuth(serverId: string): Promise<boolean> {
+  // Get the manifest for this server
+  const manifestResponse = await browser.runtime.sendMessage({
+    type: 'get_server_manifest',
+    server_id: serverId,
+  }) as { type: string; hasManifest: boolean; manifest?: McpManifest };
+
+  if (!manifestResponse.hasManifest || !manifestResponse.manifest?.oauth) {
+    return true; // No OAuth needed
+  }
+
+  // Check OAuth status
+  const status = await browser.runtime.sendMessage({
+    type: 'manifest_oauth_status',
+    server_id: serverId,
+  }) as ManifestOAuthStatus;
+
+  if (status.hasTokens && status.tokensValid) {
+    return true; // Already authenticated
+  }
+
+  // Need to authenticate
+  return await startManifestOAuthFlow(serverId, manifestResponse.manifest);
+}
+
+// =============================================================================
 // GitHub URL Install
 // =============================================================================
 
@@ -1545,9 +1917,10 @@ async function startLocalLLM(): Promise<void> {
     }) as { type: string; success?: boolean; url?: string };
     
     if (response.type === 'llm_start_local_result' && response.success) {
-      // Also trigger LLM detection so the LLM manager knows about it
+      // Trigger LLM detection and refresh all LLM UI components
       await browser.runtime.sendMessage({ type: 'llm_detect' });
       await checkLLMStatus();
+      await loadLLMConfig(); // Refresh provider dropdown so llamafile shows as available
     } else if (response.type === 'error') {
       const error = response as unknown as { error: { message: string } };
       alert(`Failed to start LLM: ${error.error.message}`);
@@ -1726,6 +2099,127 @@ function renderDockerStatus(): void {
     dockerStatusText.className = 'status-text disconnected';
     dockerStatusText.textContent = '🐳 Docker';
     dockerDetails.innerHTML = `<span class="text-xs text-muted">${dockerStatus.error || 'Not available'}</span>`;
+  }
+}
+
+// =============================================================================
+// Runtime Dependencies Check
+// =============================================================================
+
+interface RuntimeInfo {
+  type: string;
+  available: boolean;
+  version: string | null;
+  path: string | null;
+  runnerCmd: string | null;
+  installHint: string | null;
+}
+
+interface RuntimesResponse {
+  type: string;
+  runtimes: RuntimeInfo[];
+  canInstall: {
+    npm: boolean;
+    pypi: boolean;
+    oci: boolean;
+  };
+}
+
+let runtimesCache: RuntimesResponse | null = null;
+
+async function checkRuntimes(): Promise<void> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'check_runtimes',
+    }) as RuntimesResponse;
+
+    if (response.type === 'check_runtimes_result') {
+      runtimesCache = response;
+      renderRuntimeStatus();
+      updateCapabilitiesSummary();
+    }
+  } catch (err) {
+    console.error('Failed to check runtimes:', err);
+    // Set error state for Python and Node
+    pythonStatusIndicator.className = 'status-indicator disconnected';
+    pythonStatusText.textContent = 'Error';
+    nodeStatusIndicator.className = 'status-indicator disconnected';
+    nodeStatusText.textContent = 'Error';
+  }
+}
+
+function renderRuntimeStatus(): void {
+  if (!runtimesCache) return;
+
+  const pythonRuntime = runtimesCache.runtimes.find(r => r.type === 'python');
+  const nodeRuntime = runtimesCache.runtimes.find(r => r.type === 'node');
+
+  // Render Python status
+  if (pythonRuntime) {
+    if (pythonRuntime.available) {
+      pythonStatusIndicator.className = 'status-indicator connected';
+      pythonStatusText.className = 'status-text connected';
+      pythonStatusText.textContent = '🐍 Python';
+      
+      let details = `<strong>v${pythonRuntime.version || 'unknown'}</strong>`;
+      if (pythonRuntime.runnerCmd) {
+        details += `<br><span class="text-xs text-muted">Runner: ${escapeHtml(pythonRuntime.runnerCmd)}</span>`;
+      }
+      pythonDetails.innerHTML = details;
+    } else {
+      pythonStatusIndicator.className = 'status-indicator disconnected';
+      pythonStatusText.className = 'status-text disconnected';
+      pythonStatusText.textContent = '🐍 Python';
+      pythonDetails.innerHTML = `<span class="text-xs text-muted">Not installed</span>`;
+    }
+  }
+
+  // Render Node.js status
+  if (nodeRuntime) {
+    if (nodeRuntime.available) {
+      nodeStatusIndicator.className = 'status-indicator connected';
+      nodeStatusText.className = 'status-text connected';
+      nodeStatusText.textContent = '📦 Node.js';
+      
+      let details = `<strong>v${nodeRuntime.version || 'unknown'}</strong>`;
+      if (nodeRuntime.runnerCmd) {
+        details += `<br><span class="text-xs text-muted">Runner: ${escapeHtml(nodeRuntime.runnerCmd)}</span>`;
+      }
+      details += `<br><span class="text-xs text-muted" style="font-style: italic;">Bridge uses bundled Node.js</span>`;
+      nodeDetails.innerHTML = details;
+    } else {
+      nodeStatusIndicator.className = 'status-indicator warning';
+      nodeStatusText.className = 'status-text warning';
+      nodeStatusText.textContent = '📦 Node.js';
+      nodeDetails.innerHTML = `<span class="text-xs text-muted">External Node.js not found<br><span style="font-style: italic;">Bridge uses bundled Node.js</span></span>`;
+    }
+  }
+}
+
+function updateCapabilitiesSummary(): void {
+  if (!runtimesCache || !capabilitiesSummary || !capabilitiesMessages) return;
+
+  const messages: string[] = [];
+
+  const dockerRuntime = runtimesCache.runtimes.find(r => r.type === 'docker');
+  const pythonRuntime = runtimesCache.runtimes.find(r => r.type === 'python');
+  // Note: Node.js is always available via bundled bridge, so we don't warn about it
+
+  // Docker is the most important - it enables running ANY server securely
+  if (!dockerRuntime?.available && !dockerStatus?.available) {
+    messages.push('• <strong>Docker not available:</strong> Cannot run MCP servers with native dependencies or in sandboxed containers. <a href="https://docker.com/products/docker-desktop/" target="_blank" style="color: var(--color-accent-primary);">Install Docker Desktop</a>');
+  }
+
+  // Python is needed for Python-based MCP servers when not using Docker
+  if (!pythonRuntime?.available && !dockerRuntime?.available && !dockerStatus?.available) {
+    messages.push('• <strong>Python not available:</strong> Cannot run Python MCP servers natively. Install Python 3 or use Docker.');
+  }
+
+  if (messages.length > 0) {
+    capabilitiesSummary.style.display = 'block';
+    capabilitiesMessages.innerHTML = messages.join('<br style="margin-bottom: 4px;">');
+  } else {
+    capabilitiesSummary.style.display = 'none';
   }
 }
 
@@ -2142,6 +2636,10 @@ async function init(): Promise<void> {
   if (!skipDockerAutoCheck) {
     await checkDockerStatus();
   }
+  
+  // Check all runtime dependencies (Python, Node.js)
+  // This gives users visibility into what MCP server types they can run
+  await checkRuntimes();
   
   // Load LLM provider configuration
   await loadLLMConfig();
@@ -2566,6 +3064,7 @@ async function loadLLMConfig(): Promise<void> {
     
     if (detectResponse.type === 'llm_detect_result' && detectResponse.providers) {
       llmProviders = detectResponse.providers;
+      console.log('[Sidebar] LLM providers detected:', llmProviders.map(p => ({ id: p.id, available: p.available })));
     }
     
     // Get current config
@@ -2591,6 +3090,13 @@ async function loadLLMConfig(): Promise<void> {
  * Render LLM provider settings UI.
  */
 function renderLLMProviderSettings(activeProvider: string | null | undefined, activeModel: string | null | undefined): void {
+  console.log('[Sidebar] Rendering LLM settings:', { 
+    activeProvider, 
+    activeModel, 
+    localProviders: llmSupportedProviders.local,
+    llmProviders: llmProviders.map(p => ({ id: p.id, available: p.available }))
+  });
+  
   // Populate provider dropdown
   llmProviderSelect.innerHTML = '<option value="">-- Select Provider --</option>';
   

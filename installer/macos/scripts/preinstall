@@ -146,7 +146,69 @@ check_docker() {
 }
 
 # =============================================================================
-# Check 3: Existing Harbor Installation
+# Check 3: Python (OPTIONAL - for Python MCP servers)
+# =============================================================================
+check_python() {
+    echo -n "Checking for Python... "
+    
+    # Check for python3 first (preferred)
+    if command -v python3 &> /dev/null; then
+        PYTHON_VERSION=$(python3 --version 2>/dev/null || echo "unknown")
+        echo "✓ Found: $PYTHON_VERSION"
+        echo "Python found: $PYTHON_VERSION" >> "$LOG_FILE"
+        
+        # Check for uvx (preferred package runner)
+        if command -v uvx &> /dev/null; then
+            UVX_VERSION=$(uvx --version 2>/dev/null || echo "unknown")
+            echo "  └─ uvx available ✓ ($UVX_VERSION)"
+        elif command -v pipx &> /dev/null; then
+            echo "  └─ pipx available ✓"
+        fi
+        return 0
+    fi
+    
+    # Fall back to python
+    if command -v python &> /dev/null; then
+        PYTHON_VERSION=$(python --version 2>/dev/null || echo "unknown")
+        # Make sure it's not Python 2
+        if [[ "$PYTHON_VERSION" == *"Python 3"* ]]; then
+            echo "✓ Found: $PYTHON_VERSION"
+            echo "Python found: $PYTHON_VERSION" >> "$LOG_FILE"
+            return 0
+        fi
+    fi
+    
+    echo "✗ NOT FOUND"
+    echo "Python NOT found" >> "$LOG_FILE"
+    return 1
+}
+
+# =============================================================================
+# Check 4: Node.js/npm (OPTIONAL - for Node.js MCP servers)
+# =============================================================================
+check_node() {
+    echo -n "Checking for Node.js... "
+    
+    # Check for node
+    if command -v node &> /dev/null; then
+        NODE_VERSION=$(node --version 2>/dev/null || echo "unknown")
+        echo "✓ Found: $NODE_VERSION"
+        echo "Node.js found: $NODE_VERSION" >> "$LOG_FILE"
+        
+        # Check for npx
+        if command -v npx &> /dev/null; then
+            echo "  └─ npx available ✓"
+        fi
+        return 0
+    fi
+    
+    echo "✗ NOT FOUND"
+    echo "Node.js NOT found" >> "$LOG_FILE"
+    return 1
+}
+
+# =============================================================================
+# Check 5: Existing Harbor Installation
 # =============================================================================
 check_existing_install() {
     echo -n "Checking for existing Harbor installation... "
@@ -204,6 +266,8 @@ echo ""
 
 FIREFOX_OK=0
 DOCKER_OK=0
+PYTHON_OK=0
+NODE_OK=0
 DOCKER_WARNING=""
 UPGRADE_MODE=0
 
@@ -221,6 +285,20 @@ if [ $DOCKER_STATUS -eq 0 ]; then
     DOCKER_OK=1
 elif [ $DOCKER_STATUS -eq 2 ]; then
     DOCKER_WARNING="Docker is installed but not running. Please start Docker Desktop before using Harbor."
+fi
+
+echo ""
+
+# Check Python (optional)
+if check_python; then
+    PYTHON_OK=1
+fi
+
+echo ""
+
+# Check Node.js (optional)
+if check_node; then
+    NODE_OK=1
 fi
 
 echo ""
@@ -262,6 +340,39 @@ elif [ -n "$DOCKER_WARNING" ]; then
     echo "⚠️  $DOCKER_WARNING"
     echo ""
 fi
+
+# =============================================================================
+# Runtime Capabilities Summary
+# =============================================================================
+
+echo "📦 Runtime Capabilities:"
+echo ""
+
+# Explain what each runtime enables
+if [ $DOCKER_OK -eq 1 ]; then
+    echo "   ✓ Docker: Can run ANY MCP server (sandboxed, secure)"
+else
+    echo "   ✗ Docker: Cannot run servers with native dependencies"
+fi
+
+if [ $PYTHON_OK -eq 1 ]; then
+    echo "   ✓ Python: Can run Python MCP servers natively"
+else
+    echo "   ✗ Python: Cannot run Python servers (need Docker or Python 3)"
+fi
+
+if [ $NODE_OK -eq 1 ]; then
+    echo "   ✓ Node.js: Can run JavaScript MCP servers natively"
+else
+    echo "   ✗ Node.js: Cannot run JS servers natively (but bridge is bundled)"
+fi
+
+echo ""
+
+# Note: Harbor bundles Node.js in the bridge binary
+echo "   ℹ️  Note: Harbor's bridge includes bundled Node.js for core functionality."
+echo "      External Node.js is optional but enables native npx execution."
+echo ""
 
 # Upgrade mode notification
 if [ $UPGRADE_MODE -eq 1 ]; then

@@ -124,13 +124,21 @@
         
         <h2>Requirements</h2>
         <ul>
-            <li><span class="emoji">🦊</span>Firefox 109 or later</li>
-            <li><span class="emoji">🐳</span>Docker Desktop (for MCP servers)</li>
+            <li><span class="emoji">🦊</span>Firefox 109 or later <strong>(required)</strong></li>
+            <li><span class="emoji">🐳</span>Docker Desktop <em>(recommended)</em></li>
+        </ul>
+        
+        <h2>Optional Runtimes</h2>
+        <ul>
+            <li><span class="emoji">🐍</span>Python 3 — for Python MCP servers</li>
+            <li><span class="emoji">📦</span>Node.js — for native JavaScript execution</li>
         </ul>
         
         <div class="note">
-            <strong>Note:</strong> The installer will check for Firefox and Docker. 
-            You can proceed without them, but some features won't work until they're installed.
+            <strong>Note:</strong> The installer will check your system and report which 
+            MCP server types you can run. Docker is recommended as it enables running 
+            any server securely. Without Docker, you'll need Python or Node.js installed 
+            to run servers of those types.
         </div>
     </div>
 </body>

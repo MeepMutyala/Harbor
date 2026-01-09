@@ -354,6 +354,61 @@
             color: var(--color-text-secondary);
         }
 
+        /* Runtime status grid */
+        .runtime-grid {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+            margin: var(--space-4) 0;
+        }
+
+        .runtime-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3);
+            background: var(--color-bg-subtle);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--color-border-default);
+        }
+
+        .runtime-icon {
+            font-size: var(--text-xl);
+        }
+
+        .runtime-name {
+            font-weight: var(--weight-semibold);
+            color: var(--color-text-primary);
+            flex: 1;
+        }
+
+        .runtime-status {
+            font-size: var(--text-xs);
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-sm);
+            font-weight: var(--weight-medium);
+        }
+
+        .runtime-status.checking {
+            background: var(--color-bg-subtle);
+            color: var(--color-text-muted);
+        }
+
+        .runtime-status.available {
+            background: var(--color-success-subtle);
+            color: var(--color-success);
+        }
+
+        .runtime-status.unavailable {
+            background: var(--color-error-subtle);
+            color: var(--color-error);
+        }
+
+        .runtime-status.optional {
+            background: var(--color-warning-subtle);
+            color: var(--color-warning);
+        }
+
         @media (max-width: 600px) {
             .header h1 { font-size: var(--text-2xl); }
             .provider-grid { grid-template-columns: 1fr 1fr; }
@@ -372,24 +427,73 @@
             <span class="version-badge" id="version-badge">v0.0.0</span>
         </header>
 
+        <!-- Runtime Status Check -->
+        <section class="setup-section" id="runtime-check-section">
+            <h2 class="section-title">
+                <span class="number">✓</span>
+                System Capabilities
+            </h2>
+            <div class="card">
+                <h3>🔧 What can Harbor do on your system?</h3>
+                <p>
+                    Harbor checks for runtimes to determine which MCP servers you can run.
+                    Here's what we found:
+                </p>
+                
+                <div id="runtime-status-grid" class="runtime-grid">
+                    <div class="runtime-item" id="runtime-docker">
+                        <span class="runtime-icon">🐳</span>
+                        <span class="runtime-name">Docker</span>
+                        <span class="runtime-status checking" id="docker-status-badge">Checking...</span>
+                    </div>
+                    <div class="runtime-item" id="runtime-python">
+                        <span class="runtime-icon">🐍</span>
+                        <span class="runtime-name">Python</span>
+                        <span class="runtime-status checking" id="python-status-badge">Checking...</span>
+                    </div>
+                    <div class="runtime-item" id="runtime-node">
+                        <span class="runtime-icon">📦</span>
+                        <span class="runtime-name">Node.js</span>
+                        <span class="runtime-status checking" id="node-status-badge">Checking...</span>
+                    </div>
+                </div>
+                
+                <div id="capabilities-message" class="highlight-box" style="display: none;">
+                    <h4 id="capabilities-title">💡 Your Setup</h4>
+                    <p id="capabilities-text"></p>
+                </div>
+                
+                <div id="missing-warning" class="warning-box" style="display: none;">
+                    <h4>⚠️ Limited Capabilities</h4>
+                    <p id="missing-warning-text"></p>
+                </div>
+            </div>
+        </section>
+
         <!-- Step 1: Docker -->
-        <section class="setup-section">
+        <section class="setup-section" id="docker-section">
             <h2 class="section-title">
                 <span class="number">1</span>
                 Start Docker Desktop
             </h2>
             <div class="card">
-                <h3>🐳 Docker is Required for MCP Servers</h3>
+                <h3>🐳 Docker is Recommended for MCP Servers</h3>
                 <p>
-                    MCP servers run in Docker containers for security and isolation. 
-                    Make sure Docker Desktop is running before you continue.
+                    MCP servers can run in Docker containers for security and isolation. 
+                    Docker gives you access to the widest range of MCP servers.
                 </p>
-                <div class="warning-box">
-                    <h4>⚠️ Don't have Docker?</h4>
+                <div class="warning-box" id="docker-install-prompt" style="display: none;">
+                    <h4>⚠️ Docker not detected</h4>
                     <p>
                         Download Docker Desktop from 
                         <a href="https://www.docker.com/products/docker-desktop/" target="_blank">docker.com</a>. 
                         It's free for personal use.
+                    </p>
+                </div>
+                <div class="highlight-box" id="docker-ready-message" style="display: none;">
+                    <h4>✓ Docker is ready!</h4>
+                    <p>
+                        You can run any MCP server, including those with native dependencies.
                     </p>
                 </div>
             </div>
@@ -519,7 +623,7 @@
         <footer class="footer">
             <p>
                 Harbor is open source software under the MIT license.<br>
-                <span style="font-size: var(--text-xs); opacity: 0.7;">© 2026 Raffi Krikorian</span>
+                <span style="font-size: var(--text-xs); opacity: 0.7;">© 2025-2026 Raffi Krikorian</span>
             </p>
         </footer>
     </div>

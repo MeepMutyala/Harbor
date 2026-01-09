@@ -168,6 +168,7 @@ setMessageCallback((response) => {
 export interface LLMChatOptions {
   messages: Array<{ role: string; content: string }>;
   model?: string;
+  provider?: string;  // Specify which LLM provider to use
   temperature?: number;
   tools?: unknown[];
   max_tokens?: number;
@@ -193,6 +194,7 @@ export async function llmChat(options: LLMChatOptions): Promise<LLMChatResponse>
     messages: options.messages,
     tools: options.tools,
     model: options.model,
+    provider: options.provider,
     max_tokens: options.max_tokens,
     temperature: options.temperature,
     system_prompt: options.system_prompt,
@@ -609,6 +611,14 @@ browser.runtime.onMessage.addListener(
       });
     }
     
+    // Runtime dependency check (Python, Node.js, Docker)
+    if (msg.type === 'check_runtimes') {
+      return sendToBridge({
+        type: 'check_runtimes',
+        request_id: generateRequestId(),
+      });
+    }
+    
     if (msg.type === 'reconnect_orphaned_containers') {
       console.log('[Background] Reconnecting orphaned Docker containers...');
       return sendToBridge({
@@ -759,6 +769,60 @@ browser.runtime.onMessage.addListener(
       return sendToBridge({
         type: 'list_oauth_providers',
         request_id: generateRequestId(),
+      });
+    }
+
+    // Manifest-based OAuth messages
+    if (msg.type === 'get_server_manifest') {
+      console.log('[Background] get_server_manifest for:', msg.server_id);
+      return sendToBridge({
+        type: 'get_server_manifest',
+        request_id: generateRequestId(),
+        server_id: msg.server_id,
+      });
+    }
+
+    if (msg.type === 'manifest_oauth_status') {
+      console.log('[Background] manifest_oauth_status for:', msg.server_id);
+      return sendToBridge({
+        type: 'manifest_oauth_status',
+        request_id: generateRequestId(),
+        server_id: msg.server_id,
+      });
+    }
+
+    if (msg.type === 'manifest_oauth_start') {
+      console.log('[Background] manifest_oauth_start for:', msg.server_id);
+      return sendToBridge({
+        type: 'manifest_oauth_start',
+        request_id: generateRequestId(),
+        server_id: msg.server_id,
+      }).then(async (result) => {
+        if (result?.type === 'manifest_oauth_start_result' && result.auth_url) {
+          // Open the OAuth URL in a new window
+          try {
+            await browser.windows.create({
+              url: result.auth_url as string,
+              type: 'popup',
+              width: 600,
+              height: 700,
+            });
+          } catch (err) {
+            // Fallback to opening in a tab if popup fails
+            await browser.tabs.create({ url: result.auth_url as string });
+          }
+        }
+        return result;
+      });
+    }
+
+    if (msg.type === 'start_manifest_server') {
+      console.log('[Background] start_manifest_server for:', msg.server_id);
+      return sendToBridge({
+        type: 'start_manifest_server',
+        request_id: generateRequestId(),
+        server_id: msg.server_id,
+        use_docker: msg.use_docker,
       });
     }
 
@@ -1058,6 +1122,33 @@ browser.runtime.onMessage.addListener(
 // Connect on startup
 connectToNative();
 sendHello();
+
+// Chrome: Open side panel when action button is clicked
+// The sidePanel API is Chrome-specific and not in webextension-polyfill
+declare const chrome: {
+  sidePanel?: {
+    open(options: { windowId: number }): Promise<void>;
+    setOptions(options: { path?: string; enabled?: boolean }): Promise<void>;
+  };
+  action?: {
+    onClicked: {
+      addListener(callback: (tab: { windowId: number }) => void): void;
+    };
+  };
+};
+
+if (typeof chrome !== 'undefined' && chrome.sidePanel) {
+  // Enable the side panel for all tabs
+  chrome.sidePanel.setOptions({ enabled: true }).catch(() => {});
+  
+  // Open side panel when toolbar action is clicked
+  chrome.action?.onClicked.addListener((tab) => {
+    if (tab.windowId) {
+      chrome.sidePanel?.open({ windowId: tab.windowId }).catch(console.error);
+    }
+  });
+  console.log('[Harbor] Chrome side panel support enabled');
+}
 
 // Check for first run and open welcome page
 async function checkFirstRun(): Promise<void> {
