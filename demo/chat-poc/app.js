@@ -1,10 +1,10 @@
 /**
- * Harbor Chat Demo - Example Code
+ * Web Agent API Chat Demo - Example Code
  * 
- * This demonstrates using the window.ai and window.agent APIs that Harbor
- * provides to any website when the extension is installed.
+ * This demonstrates using the Web Agent API (window.ai and window.agent)
+ * that implementations like Harbor provide to web pages.
  * 
- * DEVELOPER REFERENCE:
+ * WEB AGENT API REFERENCE:
  * 
  * window.ai - Text generation API
  *   .createTextSession(options?) → TextSession
@@ -27,7 +27,7 @@
  * relevant tools based on your task. This helps local LLMs perform better
  * by not overwhelming them with too many tool options.
  * 
- * See README.md for more details.
+ * See README.md and the Web Agent API spec for more details.
  */
 
 // =============================================================================
@@ -98,17 +98,17 @@ function toggleTheme() {
 // =============================================================================
 
 /**
- * Check if the Harbor extension is installed and APIs are available
+ * Check if the Web Agent API is available
  */
 function checkExtension() {
   if (typeof window.ai !== 'undefined' && typeof window.agent !== 'undefined') {
     extensionStatus.classList.add('success');
-    extensionStatusText.textContent = 'Harbor installed';
+    extensionStatusText.textContent = 'Web Agent API available';
     return true;
   }
   
   extensionStatus.classList.add('error');
-  extensionStatusText.textContent = 'Extension not found';
+  extensionStatusText.textContent = 'API not found';
   return false;
 }
 
@@ -374,9 +374,9 @@ async function sendMessage() {
   const content = messageInput.value.trim();
   if (!content || isProcessing) return;
   
-  // Check if extension is available
+  // Check if Web Agent API is available
   if (!window.ai || !window.agent) {
-    addMessageUI('system', 'Harbor extension not detected. Please install the extension and reload.');
+    addMessageUI('system', 'Web Agent API not detected. Please install Harbor (or another implementation) and reload.');
     return;
   }
   
@@ -712,11 +712,11 @@ async function init() {
   }
   
   // Log API availability for developers
-  console.log('[Harbor Chat Demo]');
+  console.log('[Web Agent API Chat Demo]');
   console.log('  window.ai:', typeof window.ai !== 'undefined' ? '✓' : '✕');
   console.log('  window.agent:', typeof window.agent !== 'undefined' ? '✓' : '✕');
   console.log('');
-  console.log('Available APIs:');
+  console.log('Web Agent API available:');
   console.log('  window.ai.createTextSession() - Create a text generation session');
   console.log('  window.agent.tools.list() - List available MCP tools');
   console.log('  window.agent.tools.call({tool, args}) - Call an MCP tool');

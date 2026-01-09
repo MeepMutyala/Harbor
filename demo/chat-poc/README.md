@@ -1,10 +1,10 @@
-# Harbor Chat Demo
+# Web Agent API Chat Demo
 
-A complete example showing how to use the Harbor JS AI Provider APIs (`window.ai` and `window.agent`) in any website.
+A complete example showing how to use the Web Agent API (`window.ai` and `window.agent`) in any website.
 
 ## Quick Start
 
-1. **Install the Harbor extension** (see main README)
+1. **Install a Web Agent API implementation** (e.g., Harbor - see main README)
 
 2. **Serve this demo**:
    ```bash
@@ -148,21 +148,21 @@ type RunEvent =
 
 ## Troubleshooting
 
-**"Extension not found"**
-- Install the Harbor extension
+**"Web Agent API not found"**
+- Install Harbor (or another Web Agent API implementation)
 - Reload the page after installation
 - Check that the extension is enabled in your browser
 
 **"LLM Error"**  
 - Make sure Ollama is running: `ollama serve`
-- Or start a local LLM via the Harbor sidebar
+- Or start a local LLM via your implementation's settings
 
 **"No tools available"**
-- Connect MCP servers in the Harbor sidebar
+- Connect MCP servers via your implementation's settings
 - Start servers before using tools
 
 **Permission denied**
-- Click "Connect to Harbor" to request permissions
+- Request permissions using `window.agent.requestPermissions()`
 - Check extension settings if previously denied
 
 ## Files

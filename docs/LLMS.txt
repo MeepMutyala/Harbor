@@ -1,22 +1,22 @@
-# Harbor - AI Agent Reference
+# Web Agent API - AI Agent Reference
 
 > This document is optimized for AI coding assistants. For human-readable documentation, see DEVELOPER_GUIDE.md and JS_AI_PROVIDER_API.md.
 
-Harbor is a Firefox extension + Node.js bridge enabling web pages to access AI models and MCP tools via window.ai and window.agent APIs.
+The Web Agent API is a specification for AI agent capabilities in web pages. Harbor is the reference implementation (Firefox extension + Node.js bridge).
 
 ## Key Concepts
 
-1. Harbor injects `window.ai` and `window.agent` into web pages
+1. Web Agent API exposes `window.ai` and `window.agent` to web pages
 2. All API calls require user permission (per-origin)
 3. MCP tools are namespaced as `serverId/toolName`
-4. The extension communicates with a Node.js bridge via native messaging
+4. Harbor implements this via extension + native messaging bridge
 5. The bridge manages MCP servers, LLM providers, and chat orchestration
 
 ## Quick Start
 
 ```js
 // Check availability
-if (window.agent) { /* Harbor installed */ }
+if (window.agent) { /* Web Agent API available */ }
 
 // Request permissions (required before any API use)
 await window.agent.requestPermissions({
@@ -145,7 +145,7 @@ llm_detect, llm_list_providers, llm_set_active, llm_list_models, llm_chat
 chat_create_session, chat_send_message, chat_get_session, chat_list_sessions,
 chat_delete_session, chat_update_session, chat_clear_messages
 
-## Architecture
+## Architecture (Harbor Implementation)
 
 Web Page (window.ai/agent) ←postMessage→ Content Script ←runtime→ Background
     ↓ native messaging (stdio JSON)
@@ -205,7 +205,7 @@ interface Citation { source: 'tab' | 'tool'; ref: string; excerpt: string; }
 ```js
 async function main() {
   // 1. Check availability
-  if (!window.agent) throw new Error('Harbor not installed');
+  if (!window.agent) throw new Error('Web Agent API not available');
 
   // 2. Request permissions
   const perm = await window.agent.requestPermissions({
@@ -273,9 +273,9 @@ bridge-ts/src/
 ## Common Patterns
 
 ```js
-// Check if Harbor is available
+// Check if Web Agent API is available
 if (typeof window.agent === 'undefined') {
-  // Harbor not installed
+  // Web Agent API not available
 }
 
 // Handle permission denial

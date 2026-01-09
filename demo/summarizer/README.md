@@ -1,10 +1,10 @@
 # Page Summarizer Demo
 
-A simple demonstration of the Harbor JavaScript API that summarizes any webpage using AI.
+A simple demonstration of the Web Agent API that summarizes any webpage using AI.
 
 ## How It Works
 
-This demo showcases the minimal Harbor API needed to:
+This demo showcases the minimal Web Agent API usage needed to:
 
 1. **Request Permissions** — Ask for access to the AI model and browser tab
 2. **Read Page Content** — Extract readable text from the active tab
@@ -43,7 +43,7 @@ await session.destroy();
 
 2. Open `http://localhost:8000/summarizer/` in Firefox
 
-3. Make sure the Harbor extension is installed and a bridge is running
+3. Make sure a Web Agent API implementation (like Harbor) is installed and running
 
 4. Navigate to any webpage, then click "Summarize Current Page"
 

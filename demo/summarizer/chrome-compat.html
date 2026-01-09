@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Page Summarizer (Chrome API) — Harbor Demo</title>
+  <title>Page Summarizer (Chrome API) — Web Agent API Demo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -256,7 +256,7 @@
       <div class="requirements">
         <div class="requirement">
           <span class="requirement-icon">⚓</span>
-          <span>Requires Harbor extension</span>
+          <span>Requires Web Agent API (e.g., Harbor)</span>
         </div>
         <div class="requirement">
           <span class="requirement-icon">🔵</span>
@@ -299,7 +299,7 @@
 <span class="comment">// That's it! Permissions are auto-requested.</span></pre>
 
       <p style="color: var(--harbor-text-muted); font-size: var(--harbor-text-sm); margin-top: var(--harbor-space-4);">
-        <strong style="color: var(--harbor-text-secondary);">No explicit permission request needed!</strong> Harbor automatically shows the permission dialog when <code>languageModel.create()</code> is called.
+        <strong style="color: var(--harbor-text-secondary);">No explicit permission request needed!</strong> Web Agent API implementations automatically show the permission dialog when <code>languageModel.create()</code> is called.
       </p>
     </div>
 
@@ -310,7 +310,7 @@
       </div>
       
       <p style="color: var(--harbor-text-secondary); font-size: var(--harbor-text-sm); margin-bottom: var(--harbor-space-4);">
-        Harbor supports both Chrome's API and its own extended API:
+        The Web Agent API supports both Chrome's API and its own extended API:
       </p>
       
       <div class="comparison">
@@ -342,7 +342,7 @@
 
       <a href="index.html" class="link-other">
         <span>🔮</span>
-        <span>See the Harbor-style version →</span>
+        <span>See the Web Agent API style version →</span>
       </a>
     </div>
 
@@ -378,9 +378,9 @@
     // The actual bookmarklet code - Chrome API compatible version
     const bookmarkletCode = `
 (async function() {
-  // Check Harbor availability
+  // Check Web Agent API availability
   if (!window.ai || !window.ai.languageModel) {
-    alert('Harbor extension not installed or not detected on this page.\\n\\nMake sure:\\n1. Harbor extension is installed\\n2. Refresh this page');
+    alert('Web Agent API not detected on this page.\\n\\nMake sure:\\n1. Harbor (or another implementation) is installed\\n2. Refresh this page');
     return;
   }
 

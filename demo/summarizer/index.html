@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Page Summarizer — Harbor Demo</title>
+  <title>Page Summarizer — Web Agent API Demo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -231,7 +231,7 @@
     <header class="harbor-demo-header">
       <div class="harbor-demo-logo">📄</div>
       <h1 class="harbor-demo-title harbor-text-gradient">Page Summarizer</h1>
-      <p class="harbor-demo-subtitle">A bookmarklet that summarizes any webpage using Harbor AI</p>
+      <p class="harbor-demo-subtitle">A bookmarklet that summarizes any webpage using the Web Agent API</p>
     </header>
 
     <div class="harbor-card harbor-mb-6">
@@ -277,7 +277,7 @@
       <div class="requirements">
         <div class="requirement">
           <span class="requirement-icon">⚓</span>
-          <span>Requires Harbor extension</span>
+          <span>Requires Web Agent API (e.g., Harbor)</span>
         </div>
         <div class="requirement">
           <span class="requirement-icon">🤖</span>
@@ -306,7 +306,7 @@
       </div>
       
       <p style="color: var(--harbor-text-secondary); font-size: var(--harbor-text-sm); margin-bottom: var(--harbor-space-2);">
-        Harbor supports two coding styles. The <strong style="color: var(--harbor-text-primary);">Chrome-compatible</strong> way auto-handles permissions:
+        The Web Agent API supports two coding styles. The <strong style="color: var(--harbor-text-primary);">Chrome-compatible</strong> way auto-handles permissions:
       </p>
       
       <pre class="harbor-code"><span class="comment">// Chrome-compatible style (auto-permissions)</span>
@@ -320,10 +320,10 @@
 <span class="keyword">const</span> summary = <span class="keyword">await</span> session.<span class="method">prompt</span>(text);</pre>
       
       <p style="color: var(--harbor-text-secondary); font-size: var(--harbor-text-sm); margin: var(--harbor-space-4) 0 var(--harbor-space-2);">
-        Or the <strong style="color: var(--harbor-text-primary);">explicit Harbor style</strong> with fine-grained control:
+        Or the <strong style="color: var(--harbor-text-primary);">explicit Web Agent API style</strong> with fine-grained control:
       </p>
       
-      <pre class="harbor-code"><span class="comment">// Explicit Harbor style (full control)</span>
+      <pre class="harbor-code"><span class="comment">// Explicit Web Agent API style (full control)</span>
 <span class="keyword">await</span> window.<span class="property">agent</span>.<span class="method">requestPermissions</span>({
   <span class="property">scopes</span>: [<span class="string">'model:prompt'</span>, <span class="string">'browser:activeTab.read'</span>],
   <span class="property">reason</span>: <span class="string">'Summarize the current page'</span>
@@ -379,9 +379,9 @@
     // The actual bookmarklet code
     const bookmarkletCode = `
 (async function() {
-  // Check Harbor availability
+  // Check Web Agent API availability
   if (!window.agent || !window.ai) {
-    alert('Harbor extension not installed or not detected on this page.\\n\\nMake sure:\\n1. Harbor extension is installed\\n2. Refresh this page');
+    alert('Web Agent API not detected on this page.\\n\\nMake sure:\\n1. Harbor (or another implementation) is installed\\n2. Refresh this page');
     return;
   }
 

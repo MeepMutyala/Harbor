@@ -1,12 +1,14 @@
-# Harbor JS AI Provider API Reference
+# Web Agent API Reference
 
-This document describes the JavaScript APIs exposed by the Harbor browser extension to web pages. These APIs enable web applications to use AI models and MCP tools with user consent.
+This document is a detailed reference for the **[Web Agent API](../spec/)** — the JavaScript APIs exposed to web pages for AI agent capabilities.
 
-> **For AI Agents:** See [LLMS.txt](./LLMS.txt) for a compact, token-efficient version of this documentation optimized for AI coding assistants.
+Harbor is the reference implementation. For the formal specification, see [spec/explainer.md](../spec/explainer.md).
+
+> **For AI Agents:** See [LLMS.txt](./LLMS.txt) for a compact, token-efficient version of this documentation.
 
 ## Overview
 
-When the Harbor extension is installed, two global objects are available on any web page:
+When the Web Agent API is available (e.g., via Harbor), two global objects are exposed on web pages:
 
 - `window.ai` - Text generation API (Chrome Prompt API compatible)
 - `window.agent` - Tools, browser access, and autonomous agent capabilities
@@ -14,14 +16,14 @@ When the Harbor extension is installed, two global objects are available on any 
 ## Availability
 
 ```javascript
-// Check if Harbor is installed
+// Check if Web Agent API is available
 if (typeof window.agent !== 'undefined') {
-  console.log('Harbor is available');
+  console.log('Web Agent API is available');
 }
 
-// Wait for the provider to be ready
+// Wait for the provider to be ready (Harbor-specific)
 window.addEventListener('harbor-provider-ready', () => {
-  console.log('Harbor APIs are ready');
+  console.log('Harbor is ready');
 });
 ```
 
@@ -37,6 +39,7 @@ All API calls require permission from the user. Permissions are scoped per-origi
 |-------|-------------|--------------|
 | `model:prompt` | Generate text using AI models | `ai.createTextSession()` |
 | `model:tools` | Use AI with tool calling | `agent.run()` |
+| `model:list` | List configured AI providers | `ai.providers.list()`, `ai.providers.getActive()` |
 | `mcp:tools.list` | List available MCP tools | `agent.tools.list()` |
 | `mcp:tools.call` | Execute MCP tools | `agent.tools.call()` |
 | `browser:activeTab.read` | Read content from active tab | `agent.browser.activeTab.readability()` |
@@ -270,6 +273,7 @@ Run an autonomous agent task with access to tools. Returns an async iterator of 
 agent.run(options: {
   task: string;
   tools?: string[];
+  provider?: string;
   useAllTools?: boolean;
   requireCitations?: boolean;
   maxToolCalls?: number;
@@ -280,6 +284,7 @@ agent.run(options: {
 **Parameters:**
 - `task` - The task description / user request
 - `tools` - Optional array of allowed tool names (overrides the router)
+- `provider` - Optional LLM provider to use (e.g., 'openai', 'anthropic')
 - `useAllTools` - If true, disable the tool router and use all available tools
 - `requireCitations` - If true, include source citations in final output
 - `maxToolCalls` - Maximum tool invocations (default: 5)
@@ -387,11 +392,17 @@ ai.createTextSession(options?: TextSessionOptions): Promise<TextSession>
 ```typescript
 interface TextSessionOptions {
   model?: string;        // Model identifier (default: "default")
+  provider?: string;     // Provider identifier (e.g., 'openai', 'anthropic', 'ollama')
   temperature?: number;  // Sampling temperature 0.0-2.0
   top_p?: number;        // Nucleus sampling 0.0-1.0
   systemPrompt?: string; // System prompt for the session
 }
 ```
+
+**Provider Selection:**
+- If `provider` is not specified, the default (active) provider is used
+- Use `ai.providers.list()` to see available providers
+- Use `ai.providers.getActive()` to see the current default
 
 **Returns:**
 ```typescript
@@ -411,6 +422,99 @@ const session = await window.ai.createTextSession({
 });
 
 console.log('Session created:', session.sessionId);
+```
+
+**Example with specific provider:**
+```javascript
+// Use a specific LLM provider
+const session = await window.ai.createTextSession({
+  provider: 'anthropic',
+  model: 'claude-3-5-sonnet-20241022',
+  systemPrompt: 'You are Claude, a helpful AI assistant.',
+});
+
+const response = await session.prompt('Explain quantum computing');
+```
+
+---
+
+### ai.providers.list()
+
+List all configured LLM providers and their availability.
+
+**Requires:** `model:list` permission
+
+**Signature:**
+```typescript
+ai.providers.list(): Promise<LLMProviderInfo[]>
+```
+
+**Returns:**
+```typescript
+interface LLMProviderInfo {
+  id: string;           // e.g., 'openai', 'anthropic', 'ollama'
+  name: string;         // Human-readable name
+  available: boolean;   // Whether the provider is currently accessible
+  baseUrl?: string;     // API endpoint
+  models?: string[];    // Available model IDs
+  isDefault: boolean;   // Whether this is the active provider
+  supportsTools?: boolean; // Whether it supports tool calling
+}
+```
+
+**Example:**
+```javascript
+// First request the permission
+await window.agent.requestPermissions({
+  scopes: ['model:list'],
+  reason: 'To show available AI providers',
+});
+
+// List all providers
+const providers = await window.ai.providers.list();
+
+console.log('Available providers:');
+for (const provider of providers) {
+  const status = provider.available ? '✓' : '✗';
+  const defaultMark = provider.isDefault ? ' (default)' : '';
+  console.log(`  ${status} ${provider.name}${defaultMark}`);
+  
+  if (provider.models) {
+    console.log(`    Models: ${provider.models.join(', ')}`);
+  }
+}
+```
+
+---
+
+### ai.providers.getActive()
+
+Get the currently active (default) provider and model.
+
+**Requires:** `model:list` permission
+
+**Signature:**
+```typescript
+ai.providers.getActive(): Promise<ActiveLLMConfig>
+```
+
+**Returns:**
+```typescript
+interface ActiveLLMConfig {
+  provider: string | null;  // Active provider ID
+  model: string | null;     // Active model ID
+}
+```
+
+**Example:**
+```javascript
+const active = await window.ai.providers.getActive();
+
+if (active.provider) {
+  console.log(`Using ${active.provider} with model ${active.model}`);
+} else {
+  console.log('No LLM provider configured');
+}
 ```
 
 ---
@@ -561,10 +665,10 @@ try {
 ### Initialize with Permissions
 
 ```javascript
-async function initHarbor() {
-  // Check if Harbor is available
+async function initWebAgentAPI() {
+  // Check if Web Agent API is available
   if (typeof window.agent === 'undefined') {
-    throw new Error('Harbor extension not installed');
+    throw new Error('Web Agent API not available');
   }
   
   // Request all needed permissions upfront
@@ -737,6 +841,10 @@ declare global {
   interface Window {
     ai: {
       createTextSession(options?: TextSessionOptions): Promise<TextSession>;
+      providers: {
+        list(): Promise<LLMProviderInfo[]>;
+        getActive(): Promise<ActiveLLMConfig>;
+      };
     };
     agent: {
       requestPermissions(options: {
@@ -763,6 +871,7 @@ declare global {
 type PermissionScope =
   | 'model:prompt'
   | 'model:tools'
+  | 'model:list'
   | 'mcp:tools.list'
   | 'mcp:tools.call'
   | 'browser:activeTab.read'
@@ -799,9 +908,25 @@ interface ActiveTabReadability {
 
 interface TextSessionOptions {
   model?: string;
+  provider?: string;
   temperature?: number;
   top_p?: number;
   systemPrompt?: string;
+}
+
+interface LLMProviderInfo {
+  id: string;
+  name: string;
+  available: boolean;
+  baseUrl?: string;
+  models?: string[];
+  isDefault: boolean;
+  supportsTools?: boolean;
+}
+
+interface ActiveLLMConfig {
+  provider: string | null;
+  model: string | null;
 }
 
 interface TextSession {
@@ -820,6 +945,7 @@ interface StreamToken {
 interface AgentRunOptions {
   task: string;
   tools?: string[];
+  provider?: string;          // Specify which LLM provider to use
   useAllTools?: boolean;      // Disable tool router, use all tools
   requireCitations?: boolean;
   maxToolCalls?: number;
@@ -851,5 +977,5 @@ interface ApiError {
 
 ## Version
 
-This document describes **Harbor JS AI Provider v1**.
+This document describes **Web Agent API v1.0** as implemented by **Harbor v1**.
 

@@ -1,6 +1,8 @@
-# Harbor Demos
+# Web Agent API Demos
 
-Example code showing how web pages can use the Harbor JS AI Provider to interact with AI models and MCP tools.
+Example code showing how web pages can use the **Web Agent API** (`window.ai` and `window.agent`) to interact with AI models and MCP tools.
+
+These demos require **Harbor**, the reference implementation of the Web Agent API.
 
 ## Available Demos
 
@@ -26,10 +28,10 @@ Example code showing how web pages can use the Harbor JS AI Provider to interact
    - Chat POC: `http://localhost:8000/chat-poc/`
    - Page Summarizer: `http://localhost:8000/summarizer/`
 
-4. **Connect to Harbor**:
-   - Click "Connect to Harbor" 
+4. **Grant Permissions**:
+   - The demo will request Web Agent API permissions
    - Select the permissions you want to grant
-   - The extension will show a permission prompt
+   - Harbor will show a permission prompt
 
 5. **Start chatting**:
    - Type a message and hit Enter
@@ -82,8 +84,8 @@ console.log(tab.title, tab.text);
 
 ## Troubleshooting
 
-**"Extension not detected"**
-- Make sure the Harbor extension is installed and enabled
+**"Web Agent API not detected"**
+- Make sure Harbor (or another Web Agent API implementation) is installed
 - Reload the page after installing the extension
 - Check `about:debugging` to verify the extension is loaded
 

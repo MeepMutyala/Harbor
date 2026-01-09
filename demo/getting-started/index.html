@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Getting Started — Harbor Demo</title>
+  <title>Getting Started — Web Agent API Demo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -298,8 +298,8 @@
         <span class="dot"></span>
         <span>Interactive Walkthrough</span>
       </div>
-      <h1 class="harbor-demo-title harbor-text-gradient">Getting Started with Harbor</h1>
-      <p class="harbor-demo-subtitle">Step through the basics: connect, get permission, and make your first AI-powered tool call.</p>
+      <h1 class="harbor-demo-title harbor-text-gradient">Getting Started with the Web Agent API</h1>
+      <p class="harbor-demo-subtitle">Step through the basics: detect the API, get permission, and make your first AI-powered tool call.</p>
     </header>
 
     <div class="progress-bar">
@@ -310,11 +310,11 @@
       <div class="step waiting" data-step="0">
         <div class="step-icon">1</div>
         <div class="step-content">
-          <div class="step-title">Detect Harbor Extension</div>
-          <div class="step-description">Check if the Harbor APIs are injected into the page</div>
-          <pre class="step-code"><span class="comment">// Check for Harbor's injected APIs</span>
+          <div class="step-title">Detect Web Agent API</div>
+          <div class="step-description">Check if the Web Agent API is available in the page</div>
+          <pre class="step-code"><span class="comment">// Check for Web Agent API availability</span>
 <span class="keyword">if</span> (window.<span class="property">ai</span> && window.<span class="property">agent</span>) {
-  console.<span class="method">log</span>(<span class="string">'Harbor is ready!'</span>);
+  console.<span class="method">log</span>(<span class="string">'Web Agent API is ready!'</span>);
 }</pre>
         </div>
       </div>
@@ -399,11 +399,11 @@ console.<span class="method">log</span>(response);</pre>
   <script>
     const steps = [
       {
-        title: 'Detect Harbor Extension',
+        title: 'Detect Web Agent API',
         run: async () => {
           await delay(500);
           if (!window.ai || !window.agent) {
-            throw new Error('Harbor extension not detected.\n\nMake sure:\n• Harbor extension is installed\n• This page is allowed access');
+            throw new Error('Web Agent API not detected.\n\nMake sure:\n• Harbor (or another implementation) is installed\n• This page is allowed access');
           }
           return '✓ window.ai\n✓ window.agent';
         }
@@ -413,7 +413,7 @@ console.<span class="method">log</span>(response);</pre>
         run: async () => {
           const result = await window.agent.requestPermissions({
             scopes: ['model:prompt', 'model:tools', 'mcp:tools.list', 'mcp:tools.call'],
-            reason: 'Getting Started demo - to show how Harbor works'
+            reason: 'Getting Started demo - to show how the Web Agent API works'
           });
           
           if (!result.granted) {
