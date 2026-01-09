@@ -4,10 +4,12 @@ Welcome to Harbor! This guide will help you install, configure, and start using 
 
 ## What is Harbor?
 
-Harbor is a Firefox browser extension that lets websites access AI models and MCP (Model Context Protocol) tools with your permission. Think of it like a bridge between web applications and local AI capabilities.
+Harbor is a Firefox browser extension that implements the **Web Agent API** — a proposed standard for bringing AI agent capabilities to web applications.
+
+**The Web Agent API** lets websites use AI models and tools (with your permission). Harbor is the reference implementation that makes it work in Firefox.
 
 **With Harbor, you can:**
-- Use AI-powered features on websites that support Harbor
+- Use AI-powered features on websites that support the Web Agent API
 - Run local AI models (like Ollama or llamafile) without sending data to the cloud
 - Connect MCP servers to extend AI capabilities with tools (file access, GitHub, databases, etc.)
 - Control exactly which sites can access which capabilities
@@ -145,7 +147,7 @@ MCP servers give the AI tools like file access, memory, or web search.
 
 ### On Websites
 
-When you visit a website that uses Harbor, it may request permissions:
+When you visit a website that uses the Web Agent API, it may request permissions:
 
 1. **Permission Prompt**: A Harbor popup appears asking for access
 2. **Review Scopes**: See what capabilities the site is requesting:

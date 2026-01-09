@@ -33,7 +33,7 @@ The MCP Host is responsible for:
 └──────────────────────┼────────────────────────────────────────┘
                        │
 ┌──────────────────────┼────────────────────────────────────────┐
-│                 Node.js Bridge                                │
+│                 Node.js Bridge (Main Process)                 │
 │                      │                                        │
 │  ┌───────────────────┴───────────────────┐                   │
 │  │              MCP Host                  │                   │
@@ -48,17 +48,26 @@ The MCP Host is responsible for:
 │  ┌───────────────────┴───────────────────┐                   │
 │  │         MCP Client Manager             │                   │
 │  │  ┌────────────┐  ┌────────────────┐   │                   │
-│  │  │ Stdio      │  │ HTTP/SSE       │   │                   │
-│  │  │ Client     │  │ Client         │   │                   │
+│  │  │ Stdio/     │  │ HTTP/SSE       │   │                   │
+│  │  │ Runner     │  │ Client         │   │                   │
+│  │  │ Client     │  │                │   │                   │
 │  │  └─────┬──────┘  └───────┬────────┘   │                   │
 │  └────────┼─────────────────┼────────────┘                   │
-│           │                 │                                 │
+│           │ IPC (isolated)  │                                 │
 └───────────┼─────────────────┼─────────────────────────────────┘
             │                 │
-     ┌──────┴──────┐   ┌──────┴──────┐
-     │ MCP Server  │   │ Remote MCP  │
-     │ (stdio)     │   │ (HTTP/SSE)  │
-     └─────────────┘   └─────────────┘
+┌───────────┴───────────┐     │
+│    MCP Runner         │     │
+│    (forked process)   │     │
+│  ┌─────────────────┐  │     │
+│  │ StdioMcpClient  │  │     │
+│  └────────┬────────┘  │     │
+│           │ stdio     │     │
+│  ┌────────┴────────┐  │     │
+│  │   MCP Server    │  │   ┌─┴───────────┐
+│  │   (npx/uvx)     │  │   │ Remote MCP  │
+│  └─────────────────┘  │   │ (HTTP/SSE)  │
+└───────────────────────┘   └─────────────┘
 ```
 
 ## Components
@@ -279,6 +288,76 @@ mcpManager.setOnServerFailed((serverId, error) => {
   console.log(`Server ${serverId} failed permanently: ${error}`);
 });
 ```
+
+## Process Isolation
+
+MCP servers run third-party code from npm, PyPI, or GitHub. Harbor provides optional process isolation to protect the main bridge from buggy or malicious servers.
+
+### Why Isolate?
+
+Without isolation, a problematic server could:
+- Crash the entire bridge process
+- Cause memory leaks that affect all servers
+- Potentially access data from other server connections
+
+### How It Works
+
+When process isolation is enabled:
+
+1. **Forked Runners**: Each server runs in a forked Node.js process (MCP Runner)
+2. **IPC Communication**: Main bridge communicates with runners via IPC
+3. **Crash Isolation**: If a runner crashes, only that server is affected
+4. **PKG Compatibility**: Uses `process.execPath` fork pattern for packaged binaries
+
+### Enabling Isolation
+
+```bash
+# Enable via environment variable
+export HARBOR_MCP_ISOLATION=1
+```
+
+Or in code:
+
+```typescript
+import { setProcessIsolation } from './mcp/index.js';
+setProcessIsolation(true);
+```
+
+### Runner Architecture
+
+Each MCP Runner process manages a single server:
+
+| Component | Location |
+|-----------|----------|
+| Runner process | `mcp/runner.ts` |
+| Runner client | `mcp/runner-client.ts` |
+| Entry point flag | `--mcp-runner <serverId>` |
+
+The runner handles commands via IPC:
+
+```typescript
+interface RunnerCommand {
+  type: 'connect' | 'disconnect' | 'list_tools' | 'call_tool' | 'shutdown';
+  // ... command-specific fields
+}
+```
+
+### Isolation Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Direct** (default) | Server runs as child process of bridge | Development, trusted servers |
+| **Isolated** | Server runs in forked runner process | Production, untrusted servers |
+| **Docker** | Server runs in Docker container | Maximum isolation |
+
+### Performance Considerations
+
+Process isolation adds some overhead:
+- **Startup**: ~50-100ms additional for fork
+- **Communication**: IPC adds ~1-5ms per message
+- **Memory**: Each runner has its own Node.js runtime
+
+For most use cases, this overhead is negligible compared to tool execution time.
 
 ## Message Protocol
 

@@ -1,10 +1,13 @@
 # Harbor Architecture
 
-This document describes the architecture of Harbor, a Firefox extension that brings AI and MCP (Model Context Protocol) capabilities to web applications.
+This document describes the architecture of Harbor, the reference implementation of the **[Web Agent API](spec/)**.
+
+Harbor is a Firefox extension that implements the Web Agent API specification, bringing AI and MCP (Model Context Protocol) capabilities to web applications.
 
 > **Related Documentation:**
+> - [Web Agent API Spec](spec/) — The API specification Harbor implements
 > - [User Guide](docs/USER_GUIDE.md) — Installation and usage
-> - [Developer Guide](docs/DEVELOPER_GUIDE.md) — API reference
+> - [Developer Guide](docs/DEVELOPER_GUIDE.md) — Building apps with the Web Agent API
 > - [Contributing](CONTRIBUTING.md) — Development setup
 > - [MCP Host](docs/MCP_HOST.md) — Execution environment details
 
@@ -12,13 +15,13 @@ This document describes the architecture of Harbor, a Firefox extension that bri
 
 ## Overview
 
-Harbor provides:
+Harbor implements the Web Agent API, providing:
 
 | Capability | Description |
 |------------|-------------|
-| **JS AI Provider** | `window.ai` and `window.agent` APIs for web pages |
+| **Web Agent API** | `window.ai` and `window.agent` APIs for web pages |
 | **MCP Server Management** | Install, run, and connect to MCP servers |
-| **LLM Integration** | Local model support (Ollama, llamafile) |
+| **LLM Integration** | Local model support (Ollama, llamafile) + cloud providers |
 | **Permission System** | Per-origin capability grants with user consent |
 | **Chat Orchestration** | Agent loop with tool calling |
 
@@ -57,7 +60,7 @@ Harbor provides:
                                     │ Native Messaging (stdin/stdout JSON)
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            NODE.JS BRIDGE                                    │
+│                            NODE.JS BRIDGE (Main Process)                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
@@ -79,17 +82,27 @@ Harbor provides:
 │  │  • Secrets      │  │  • Model select │  │  • Session management   │      │
 │  └────────┬────────┘  └────────┬────────┘  └────────────┬────────────┘      │
 │           │                    │                        │                    │
+│           │ IPC (fork)         │                        │                    │
 └───────────┼────────────────────┼────────────────────────┼────────────────────┘
-            │ stdio (JSON-RPC)   │ HTTP (OpenAI)          │
+            │                    │ HTTP (OpenAI)          │
             ▼                    ▼                        │
-┌─────────────────────┐ ┌─────────────────────┐          │
-│    MCP Servers      │ │    LLM Provider     │◄─────────┘
-│  (local / Docker)   │ │  (Ollama, etc.)     │
-│                     │ │                     │
-│  • filesystem       │ │  • chat/completions │
-│  • memory           │ │  • tool calling     │
-│  • github           │ │  • streaming        │
-└─────────────────────┘ └─────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ISOLATED PROCESSES (Forked)                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐       │
+│  │ MCP Runner 1      │  │ MCP Runner 2      │  │ Catalog Worker    │       │
+│  │ (server: github)  │  │ (server: memory)  │  │ (background sync) │       │
+│  │                   │  │                   │  │                   │       │
+│  │  Crash Isolated   │  │  Crash Isolated   │  │  DB Writes Only   │       │
+│  └─────────┬─────────┘  └─────────┬─────────┘  └───────────────────┘       │
+│            │ stdio                │ stdio                                    │
+│            ▼                      ▼                                          │
+│  ┌─────────────────┐    ┌─────────────────┐                                 │
+│  │ MCP Server      │    │ MCP Server      │    ┌─────────────────────┐     │
+│  │ (npx/uvx/bin)   │    │ (npx/uvx/bin)   │    │    LLM Provider     │     │
+│  └─────────────────┘    └─────────────────┘    │  (Ollama, etc.)     │     │
+│                                                 └─────────────────────┘     │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -176,12 +189,96 @@ User: "Find my recent GitHub PRs and summarize them"
 | Directory | Purpose |
 |-----------|---------|
 | `host/` | MCP execution environment (permissions, rate limiting, tool registry) |
-| `mcp/` | MCP protocol implementation (stdio client, connection management) |
+| `mcp/` | MCP protocol implementation (stdio client, connection management, process isolation) |
 | `llm/` | LLM provider abstraction (Ollama, llamafile) |
 | `chat/` | Chat orchestration (agent loop, session management, tool routing) |
 | `installer/` | Server installation (npm, pypi, docker, secrets) |
 | `catalog/` | Server directory (official registry, GitHub awesome list) |
 | `auth/` | OAuth and credential management |
+
+---
+
+## Process Isolation Architecture
+
+Harbor uses a multi-process architecture for crash isolation and security when running third-party MCP servers.
+
+### Why Process Isolation?
+
+MCP servers are third-party code downloaded from npm, PyPI, or GitHub. Without isolation:
+- A buggy server could crash the entire bridge
+- Memory leaks in one server affect all servers
+- A malicious server could potentially access data from other servers
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     MAIN BRIDGE PROCESS                           │
+│  - Native messaging (Firefox communication)                      │
+│  - Permission enforcement                                        │
+│  - Rate limiting                                                 │
+│  - Tool registry                                                 │
+│  - LLM communication                                             │
+└──────────────────┬────────────────────────────────┬──────────────┘
+                   │ IPC (fork)                     │ IPC (fork)
+                   ▼                                ▼
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│       MCP RUNNER PROCESS     │  │       MCP RUNNER PROCESS     │
+│       (one per server)       │  │       (one per server)       │
+│                              │  │                              │
+│  - Manages single server     │  │  - Manages single server     │
+│  - Crash isolated            │  │  - Crash isolated            │
+│  - Communicates via IPC      │  │  - Communicates via IPC      │
+│                              │  │                              │
+│  ┌────────────────────────┐  │  │  ┌────────────────────────┐  │
+│  │ stdio subprocess       │  │  │  │ stdio subprocess       │  │
+│  │ (npx, uvx, binary)     │  │  │  │ (npx, uvx, binary)     │  │
+│  └────────────────────────┘  │  │  └────────────────────────┘  │
+└──────────────────────────────┘  └──────────────────────────────┘
+```
+
+### Enabling Process Isolation
+
+Process isolation is opt-in. Enable it via environment variable:
+
+```bash
+export HARBOR_MCP_ISOLATION=1
+```
+
+### How It Works
+
+1. **Fork Pattern**: When connecting to a server, the bridge forks itself with a special flag (`--mcp-runner <serverId>`)
+2. **IPC Communication**: The main bridge sends commands to runners via Node.js IPC
+3. **Crash Recovery**: If a runner crashes, only that server is affected; the bridge survives and can restart it
+4. **PKG Compatibility**: The fork pattern works in pkg-compiled binaries (uses `process.execPath`)
+
+### Runner Commands
+
+The runner process handles these operations via IPC:
+
+| Command | Description |
+|---------|-------------|
+| `connect` | Spawn the MCP server and establish connection |
+| `disconnect` | Stop the server process |
+| `list_tools` | Get tools from the server |
+| `call_tool` | Execute a tool |
+| `list_resources` | Get resources from the server |
+| `read_resource` | Read a resource |
+| `get_prompt` | Get a prompt |
+| `shutdown` | Terminate the runner |
+
+### Catalog Worker
+
+A similar isolation pattern is used for the catalog system:
+
+- **Main bridge**: Only reads from the catalog database
+- **Catalog worker**: Separate process that handles network fetches and database writes
+- **Enabled via**: `HARBOR_CATALOG_WORKER=1`
+
+```bash
+# Enable catalog worker isolation
+export HARBOR_CATALOG_WORKER=1
+```
 
 ---
 

@@ -1,8 +1,10 @@
 # Harbor Developer Guide
 
-**Build web applications with AI and MCP tools using Harbor's JavaScript APIs.**
+**Build web applications using the Web Agent API.**
 
-This guide is for developers who want to integrate Harbor capabilities into their web applications. If you're looking to install and use Harbor as an end user, see [User Guide](USER_GUIDE.md). If you're contributing to Harbor itself, see [Contributing](../CONTRIBUTING.md).
+This guide is for developers who want to build web applications using the **[Web Agent API](../spec/)** — the JavaScript APIs (`window.ai` and `window.agent`) that enable AI agent capabilities in web pages.
+
+Harbor is the reference implementation of the Web Agent API. If you're looking to install Harbor as an end user, see [User Guide](USER_GUIDE.md). If you're contributing to Harbor itself, see [Contributing](../CONTRIBUTING.md).
 
 ---
 
@@ -10,16 +12,17 @@ This guide is for developers who want to integrate Harbor capabilities into thei
 
 | Resource | Description |
 |----------|-------------|
+| [Web Agent API Spec](../spec/) | The specification this guide helps you use |
 | [LLMS.txt](./LLMS.txt) | Token-efficient version for AI coding assistants |
-| [JS AI Provider API](./JS_AI_PROVIDER_API.md) | Detailed `window.ai` and `window.agent` reference |
+| [JS API Reference](./JS_AI_PROVIDER_API.md) | Detailed `window.ai` and `window.agent` reference |
 | [Demo Code](../demo/) | Working examples you can run locally |
-| [Architecture](../ARCHITECTURE.md) | System design overview |
+| [Architecture](../ARCHITECTURE.md) | Harbor's system design |
 
 ---
 
 ## What You Can Build
 
-With Harbor, your web application can:
+With the Web Agent API, your web application can:
 
 - **Generate text** with local AI models (Ollama, llamafile)
 - **Call MCP tools** like file access, GitHub, databases, web search
@@ -62,6 +65,12 @@ Harbor consists of three main components:
 │    Firefox Extension    │ ◄─────────────► │    Node.js Bridge        │
 │    (background.ts)      │   (stdio JSON)  │    (bridge-ts)           │
 └─────────────────────────┘                   └───────────┬──────────────┘
+                                                          │ IPC (fork)
+                                                          ▼
+                                              ┌──────────────────────────┐
+                                              │   MCP Runners (optional) │
+                                              │   (crash isolated)       │
+                                              └───────────┬──────────────┘
                                                           │ MCP Protocol
                                                           ▼
                                               ┌──────────────────────────┐
@@ -69,6 +78,9 @@ Harbor consists of three main components:
                                               │  (stdio, HTTP, Docker)   │
                                               └──────────────────────────┘
 ```
+
+> **Note:** MCP Runners are optional forked processes that provide crash isolation.
+> Enable with `HARBOR_MCP_ISOLATION=1`. See [MCP Host](./MCP_HOST.md) for details.
 
 ### Data Flow
 
@@ -152,19 +164,19 @@ if (window.agent) {
 
 ## Web Page APIs
 
-Harbor exposes two global objects to web pages: `window.ai` for text generation and `window.agent` for tools and agent capabilities.
+The Web Agent API exposes two global objects to web pages: `window.ai` for text generation and `window.agent` for tools and agent capabilities.
 
-### Detecting Harbor
+### Detecting the Web Agent API
 
 ```javascript
-// Check if Harbor is installed
+// Check if Web Agent API is available
 if (typeof window.agent !== 'undefined') {
-  console.log('Harbor is available');
+  console.log('Web Agent API is available');
 }
 
-// Wait for provider to be ready
+// Wait for provider to be ready (Harbor-specific event)
 window.addEventListener('harbor-provider-ready', () => {
-  console.log('Harbor APIs are ready to use');
+  console.log('Harbor is ready to use');
 });
 ```
 
@@ -585,6 +597,11 @@ The MCP Host manages server connections, tool registration, permissions, and rat
    - Logs tool calls without exposing payload content
    - Records metrics: duration, success/failure, error codes
 
+5. **Process Isolation** (`mcp/runner.ts`, `mcp/runner-client.ts`)
+   - Optional crash isolation for MCP servers
+   - Each server runs in a forked process
+   - Enable with `HARBOR_MCP_ISOLATION=1`
+
 ### Usage Example
 
 ```typescript
@@ -630,6 +647,19 @@ The catalog aggregates MCP server listings from multiple sources.
 - **TTL**: 1 hour
 - **Storage**: SQLite database (`~/.harbor/catalog.db`)
 - **Background refresh**: Stale cache triggers background update
+
+### Catalog Worker (Optional)
+
+For improved isolation, the catalog system can run in a separate process:
+
+```bash
+export HARBOR_CATALOG_WORKER=1
+```
+
+When enabled:
+- Main bridge only reads from the catalog database
+- Worker process handles network fetches and database writes
+- Crash in catalog refresh doesn't affect the main bridge
 
 ### Enrichment
 
@@ -791,6 +821,25 @@ const { runtimes, canInstall } = await manager.checkRuntimes();
 console.log('Can install npm:', canInstall.npm);
 console.log('Can install pypi:', canInstall.pypi);
 console.log('Docker available:', canInstall.oci);
+```
+
+### Process Isolation Modes
+
+Servers can run in different isolation modes:
+
+| Mode | Environment Variable | Description |
+|------|---------------------|-------------|
+| Direct | (default) | Server runs as child of bridge |
+| Isolated | `HARBOR_MCP_ISOLATION=1` | Server runs in forked process |
+| Docker | Use `useDocker: true` option | Server runs in container |
+
+```typescript
+// Enable isolation globally
+process.env.HARBOR_MCP_ISOLATION = '1';
+
+// Or via API
+import { setProcessIsolation } from './mcp/index.js';
+setProcessIsolation(true);
 ```
 
 ### Server Installation
@@ -1006,5 +1055,5 @@ All data is stored in `~/.harbor/`:
 
 ## Version
 
-This document describes **Harbor v1**.
+This document describes **Harbor v1**, implementing **Web Agent API v1.0**.
 
