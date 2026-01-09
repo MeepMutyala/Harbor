@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Agent API Example: Agent with Tools</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #0a0a0a;
+      color: #eee;
+      min-height: 100vh;
+    }
+    h1 { margin-bottom: 10px; color: #fff; }
+    .subtitle { color: #888; margin-bottom: 20px; }
+    .panel {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .panel h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 15px;
+    }
+    .tools-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tool-badge {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    .input-area {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input {
+      flex: 1;
+      padding: 14px 18px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #111;
+      color: #fff;
+      font-size: 16px;
+    }
+    input:focus { outline: none; border-color: #00ff88; }
+    button {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 8px;
+      background: #00ff88;
+      color: #000;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #00cc6a; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #abort { background: #ff4444; color: #fff; display: none; }
+    .output {
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      min-height: 200px;
+      font-family: monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .event {
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+    .event.status { background: #1a1a2e; color: #88f; }
+    .event.tool_call { background: #1a2e1a; color: #8f8; }
+    .event.tool_result { background: #2e2e1a; color: #ff8; }
+    .event.token { display: inline; background: none; padding: 0; }
+    .event.error { background: #2e1a1a; color: #f88; }
+    .event.final { background: #1a2e2e; color: #8ff; margin-top: 20px; padding: 15px; }
+    .permissions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .perm {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    .perm.granted { background: #0d2e0d; color: #8f8; }
+    .perm.denied { background: #2e0d0d; color: #f88; }
+    .perm.pending { background: #2e2e0d; color: #ff8; }
+  </style>
+</head>
+<body>
+  <h1>🤖 Web Agent API: Agent with Tools</h1>
+  <p class="subtitle">Run autonomous tasks that can use MCP tools</p>
+  
+  <div class="panel">
+    <h2>Permissions</h2>
+    <div id="permissions" class="permissions">
+      <span class="perm pending">Checking...</span>
+    </div>
+  </div>
+  
+  <div class="panel">
+    <h2>Available Tools</h2>
+    <div id="tools" class="tools-list">
+      <span class="tool-badge">Loading...</span>
+    </div>
+  </div>
+  
+  <div class="input-area">
+    <input type="text" id="task" placeholder="Enter a task (e.g., 'Search for news about AI')" disabled>
+    <button id="run" disabled>Run Agent</button>
+    <button id="abort">Cancel</button>
+  </div>
+  
+  <div class="panel">
+    <h2>Agent Output</h2>
+    <div id="output" class="output">Ready to run a task...</div>
+  </div>
+
+  <script type="module">
+    const permsEl = document.getElementById('permissions');
+    const toolsEl = document.getElementById('tools');
+    const taskEl = document.getElementById('task');
+    const runBtn = document.getElementById('run');
+    const abortBtn = document.getElementById('abort');
+    const outputEl = document.getElementById('output');
+    
+    let abortController = null;
+    
+    // Required permissions
+    const REQUIRED_SCOPES = ['model:tools', 'mcp:tools.list', 'mcp:tools.call'];
+    
+    async function init() {
+      // Check if Web Agent API is available
+      if (typeof window.agent === 'undefined') {
+        permsEl.innerHTML = '<span class="perm denied">Web Agent API not available</span>';
+        return;
+      }
+      
+      // Check current permissions
+      const status = await window.agent.permissions.list();
+      updatePermissionDisplay(status.scopes);
+      
+      // Request permissions
+      const result = await window.agent.requestPermissions({
+        scopes: REQUIRED_SCOPES,
+        reason: 'This demo shows how agent tasks work with MCP tools.'
+      });
+      
+      updatePermissionDisplay(result.scopes);
+      
+      if (!result.granted) {
+        toolsEl.innerHTML = '<span class="tool-badge">Permission denied</span>';
+        return;
+      }
+      
+      // Load available tools
+      try {
+        const tools = await window.agent.tools.list();
+        if (tools.length === 0) {
+          toolsEl.innerHTML = '<span class="tool-badge">No MCP servers connected</span>';
+        } else {
+          toolsEl.innerHTML = tools.map(t => 
+            `<span class="tool-badge" title="${t.description || ''}">${t.name}</span>`
+          ).join('');
+        }
+        
+        taskEl.disabled = false;
+        runBtn.disabled = false;
+        taskEl.focus();
+      } catch (err) {
+        toolsEl.innerHTML = `<span class="tool-badge">Error: ${err.message}</span>`;
+      }
+    }
+    
+    function updatePermissionDisplay(scopes) {
+      permsEl.innerHTML = REQUIRED_SCOPES.map(scope => {
+        const grant = scopes[scope];
+        const granted = grant === 'granted-once' || grant === 'granted-always';
+        return `<span class="perm ${granted ? 'granted' : 'denied'}">${scope}</span>`;
+      }).join('');
+    }
+    
+    async function runAgent() {
+      const task = taskEl.value.trim();
+      if (!task) return;
+      
+      outputEl.innerHTML = '';
+      runBtn.style.display = 'none';
+      abortBtn.style.display = 'inline-block';
+      taskEl.disabled = true;
+      
+      abortController = new AbortController();
+      
+      try {
+        for await (const event of window.agent.run({
+          task,
+          maxToolCalls: 5,
+          signal: abortController.signal
+        })) {
+          const div = document.createElement('div');
+          div.className = `event ${event.type}`;
+          
+          switch (event.type) {
+            case 'status':
+              div.textContent = `[STATUS] ${event.message}`;
+              break;
+            case 'tool_call':
+              div.textContent = `[TOOL CALL] ${event.tool}\n  args: ${JSON.stringify(event.args, null, 2)}`;
+              break;
+            case 'tool_result':
+              const resultPreview = JSON.stringify(event.result).slice(0, 200);
+              div.textContent = `[TOOL RESULT] ${event.tool}\n  ${resultPreview}${resultPreview.length >= 200 ? '...' : ''}`;
+              break;
+            case 'token':
+              div.textContent = event.token;
+              break;
+            case 'final':
+              div.textContent = `\n═══════════════════════════════════\nFINAL ANSWER:\n${event.output}`;
+              if (event.citations) {
+                div.textContent += `\n\nCitations: ${event.citations.map(c => c.ref).join(', ')}`;
+              }
+              break;
+            case 'error':
+              div.textContent = `[ERROR] ${event.error.message}`;
+              break;
+          }
+          
+          outputEl.appendChild(div);
+          outputEl.scrollTop = outputEl.scrollHeight;
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          const div = document.createElement('div');
+          div.className = 'event error';
+          div.textContent = '[CANCELLED] Agent run was aborted';
+          outputEl.appendChild(div);
+        } else {
+          const div = document.createElement('div');
+          div.className = 'event error';
+          div.textContent = `[ERROR] ${err.message}`;
+          outputEl.appendChild(div);
+        }
+      } finally {
+        runBtn.style.display = 'inline-block';
+        abortBtn.style.display = 'none';
+        taskEl.disabled = false;
+        abortController = null;
+      }
+    }
+    
+    // Event listeners
+    runBtn.addEventListener('click', runAgent);
+    abortBtn.addEventListener('click', () => abortController?.abort());
+    taskEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') runAgent();
+    });
+    
+    // Start
+    init();
+  </script>
+</body>
+</html>
+

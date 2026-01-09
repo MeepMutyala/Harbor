@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Agent API Example: Basic Chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+    }
+    h1 { margin-bottom: 20px; color: #fff; }
+    .status {
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .status.available { background: #0d4d0d; }
+    .status.unavailable { background: #4d0d0d; }
+    .chat {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 20px;
+      min-height: 300px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    .message {
+      margin-bottom: 15px;
+      padding: 10px 15px;
+      border-radius: 8px;
+    }
+    .message.user {
+      background: #0f3460;
+      margin-left: 40px;
+    }
+    .message.assistant {
+      background: #1a1a2e;
+      margin-right: 40px;
+    }
+    .message .role {
+      font-size: 11px;
+      text-transform: uppercase;
+      opacity: 0.6;
+      margin-bottom: 5px;
+    }
+    .input-area {
+      display: flex;
+      gap: 10px;
+    }
+    input {
+      flex: 1;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #16213e;
+      color: #fff;
+      font-size: 16px;
+    }
+    input:focus { outline: 2px solid #e94560; }
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      background: #e94560;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #ff6b6b; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .code { font-family: monospace; background: #0f3460; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>💬 Web Agent API: Basic Chat</h1>
+  
+  <div id="status" class="status unavailable">
+    Checking Web Agent API availability...
+  </div>
+  
+  <div id="chat" class="chat">
+    <div class="message assistant">
+      <div class="role">Assistant</div>
+      <div>Hello! I'm ready to chat. Type a message below.</div>
+    </div>
+  </div>
+  
+  <div class="input-area">
+    <input type="text" id="input" placeholder="Type a message..." disabled>
+    <button id="send" disabled>Send</button>
+  </div>
+
+  <script type="module">
+    const statusEl = document.getElementById('status');
+    const chatEl = document.getElementById('chat');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    
+    let session = null;
+    
+    // Initialize
+    async function init() {
+      // Check if Web Agent API is available
+      if (typeof window.agent === 'undefined') {
+        statusEl.textContent = '❌ Web Agent API not available';
+        return;
+      }
+      
+      // Request permission
+      const result = await window.agent.requestPermissions({
+        scopes: ['model:prompt'],
+        reason: 'This demo needs AI to chat with you.'
+      });
+      
+      if (!result.granted) {
+        statusEl.textContent = '❌ Permission denied';
+        return;
+      }
+      
+      // Create session
+      try {
+        session = await window.ai.createTextSession({
+          systemPrompt: 'You are a friendly assistant. Be concise but helpful.'
+        });
+        
+        statusEl.className = 'status available';
+        statusEl.textContent = '✓ Web Agent API connected';
+        inputEl.disabled = false;
+        sendBtn.disabled = false;
+        inputEl.focus();
+      } catch (err) {
+        statusEl.textContent = '❌ Error: ' + err.message;
+      }
+    }
+    
+    // Send message
+    async function sendMessage() {
+      const message = inputEl.value.trim();
+      if (!message || !session) return;
+      
+      inputEl.value = '';
+      sendBtn.disabled = true;
+      
+      // Add user message
+      addMessage('user', message);
+      
+      // Add placeholder for assistant
+      const assistantDiv = addMessage('assistant', '');
+      
+      try {
+        // Stream the response
+        for await (const event of session.promptStreaming(message)) {
+          if (event.type === 'token') {
+            assistantDiv.querySelector('.content').textContent += event.token;
+            chatEl.scrollTop = chatEl.scrollHeight;
+          } else if (event.type === 'error') {
+            assistantDiv.querySelector('.content').textContent = 'Error: ' + event.error.message;
+          }
+        }
+      } catch (err) {
+        assistantDiv.querySelector('.content').textContent = 'Error: ' + err.message;
+      }
+      
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+    
+    function addMessage(role, content) {
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      div.innerHTML = `
+        <div class="role">${role}</div>
+        <div class="content">${content}</div>
+      `;
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      return div;
+    }
+    
+    // Event listeners
+    sendBtn.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+    
+    // Start
+    init();
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Agent API Example: Provider Selection</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #eee;
+      min-height: 100vh;
+    }
+    h1 { margin-bottom: 10px; }
+    .subtitle { color: #888; margin-bottom: 30px; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+      margin-bottom: 15px;
+    }
+    .provider {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 15px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .provider:hover { background: rgba(0,0,0,0.3); }
+    .provider.selected { border: 2px solid #00ff88; }
+    .provider.unavailable { opacity: 0.5; cursor: not-allowed; }
+    .provider-icon {
+      width: 40px;
+      height: 40px;
+      background: #333;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .provider-info { flex: 1; }
+    .provider-name { font-weight: 600; margin-bottom: 4px; }
+    .provider-meta { font-size: 12px; color: #888; }
+    .provider-status {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .provider-status.available { background: #0d4d0d; color: #8f8; }
+    .provider-status.unavailable { background: #4d0d0d; color: #f88; }
+    .provider-status.default { background: #0d0d4d; color: #88f; }
+    .models {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .model {
+      padding: 4px 10px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: monospace;
+    }
+    .active-config {
+      background: linear-gradient(135deg, #0f3460, #16213e);
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .active-label { font-size: 12px; color: #888; margin-bottom: 8px; }
+    .active-value { font-size: 18px; font-weight: 600; color: #00ff88; }
+    .test-area {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      background: rgba(0,0,0,0.2);
+      color: #fff;
+      font-size: 14px;
+    }
+    input:focus { outline: none; border-color: #00ff88; }
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      background: #00ff88;
+      color: #000;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #00cc6a; }
+    button:disabled { opacity: 0.5; }
+    .response {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 15px;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 60px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔄 Provider Selection</h1>
+  <p class="subtitle">Choose which AI provider to use</p>
+  
+  <div class="card">
+    <h2>Current Configuration</h2>
+    <div class="active-config">
+      <div class="active-label">Active Provider / Model</div>
+      <div id="active" class="active-value">Loading...</div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>Available Providers</h2>
+    <div id="providers">
+      <div class="provider">
+        <div class="provider-icon">⏳</div>
+        <div class="provider-info">
+          <div class="provider-name">Loading providers...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>Test Selected Provider</h2>
+    <div class="test-area">
+      <input type="text" id="prompt" placeholder="Enter a test prompt..." value="Say hello in 3 words">
+      <button id="test">Test</button>
+    </div>
+    <div id="response" class="response">Response will appear here...</div>
+  </div>
+
+  <script type="module">
+    const activeEl = document.getElementById('active');
+    const providersEl = document.getElementById('providers');
+    const promptEl = document.getElementById('prompt');
+    const testBtn = document.getElementById('test');
+    const responseEl = document.getElementById('response');
+    
+    let selectedProvider = null;
+    let providers = [];
+    
+    async function init() {
+      if (typeof window.agent === 'undefined') {
+        activeEl.textContent = 'Web Agent API not available';
+        return;
+      }
+      
+      // Request permissions
+      const result = await window.agent.requestPermissions({
+        scopes: ['model:prompt', 'model:list'],
+        reason: 'This demo shows how to select AI providers.'
+      });
+      
+      if (!result.granted) {
+        activeEl.textContent = 'Permission denied';
+        return;
+      }
+      
+      // Load providers
+      await loadProviders();
+    }
+    
+    async function loadProviders() {
+      try {
+        // Get active config
+        const active = await window.ai.providers.getActive();
+        activeEl.textContent = `${active.provider || 'None'} / ${active.model || 'default'}`;
+        
+        // Get all providers
+        providers = await window.ai.providers.list();
+        
+        if (providers.length === 0) {
+          providersEl.innerHTML = `
+            <div class="provider unavailable">
+              <div class="provider-icon">❌</div>
+              <div class="provider-info">
+                <div class="provider-name">No providers configured</div>
+                <div class="provider-meta">Configure an AI provider in your implementation settings</div>
+              </div>
+            </div>
+          `;
+          return;
+        }
+        
+        // Render providers
+        providersEl.innerHTML = providers.map(p => {
+          const icon = getProviderIcon(p.id);
+          const statusClass = p.available ? 'available' : 'unavailable';
+          const statusText = p.isDefault ? 'Default' : (p.available ? 'Available' : 'Unavailable');
+          const statusBadgeClass = p.isDefault ? 'default' : statusClass;
+          
+          return `
+            <div class="provider ${!p.available ? 'unavailable' : ''}" data-id="${p.id}">
+              <div class="provider-icon">${icon}</div>
+              <div class="provider-info">
+                <div class="provider-name">${p.name}</div>
+                <div class="provider-meta">
+                  ${p.baseUrl || 'Local'} 
+                  ${p.supportsTools ? '• Supports tools' : ''}
+                </div>
+                ${p.models?.length ? `
+                  <div class="models">
+                    ${p.models.slice(0, 5).map(m => `<span class="model">${m}</span>`).join('')}
+                    ${p.models.length > 5 ? `<span class="model">+${p.models.length - 5} more</span>` : ''}
+                  </div>
+                ` : ''}
+              </div>
+              <span class="provider-status ${statusBadgeClass}">${statusText}</span>
+            </div>
+          `;
+        }).join('');
+        
+        // Add click handlers
+        providersEl.querySelectorAll('.provider:not(.unavailable)').forEach(el => {
+          el.addEventListener('click', () => selectProvider(el.dataset.id));
+        });
+        
+        // Select default provider
+        const defaultProvider = providers.find(p => p.isDefault);
+        if (defaultProvider) {
+          selectProvider(defaultProvider.id);
+        }
+        
+      } catch (err) {
+        providersEl.innerHTML = `
+          <div class="provider unavailable">
+            <div class="provider-icon">❌</div>
+            <div class="provider-info">
+              <div class="provider-name">Error loading providers</div>
+              <div class="provider-meta">${err.message}</div>
+            </div>
+          </div>
+        `;
+      }
+    }
+    
+    function getProviderIcon(id) {
+      const icons = {
+        'ollama': '🦙',
+        'openai': '🤖',
+        'anthropic': '🧠',
+        'groq': '⚡',
+        'local': '💻',
+      };
+      return icons[id] || '🔮';
+    }
+    
+    function selectProvider(id) {
+      selectedProvider = id;
+      
+      // Update UI
+      providersEl.querySelectorAll('.provider').forEach(el => {
+        el.classList.toggle('selected', el.dataset.id === id);
+      });
+    }
+    
+    async function testProvider() {
+      if (!selectedProvider) {
+        responseEl.textContent = 'Please select a provider first';
+        return;
+      }
+      
+      const prompt = promptEl.value.trim();
+      if (!prompt) return;
+      
+      testBtn.disabled = true;
+      responseEl.textContent = 'Generating...';
+      
+      try {
+        // Create session with selected provider
+        const session = await window.ai.createTextSession({
+          provider: selectedProvider,
+          systemPrompt: 'Be very concise.'
+        });
+        
+        // Get response
+        const response = await session.prompt(prompt);
+        responseEl.textContent = response;
+        
+        await session.destroy();
+      } catch (err) {
+        responseEl.textContent = `Error: ${err.message}`;
+      } finally {
+        testBtn.disabled = false;
+      }
+    }
+    
+    // Event listeners
+    testBtn.addEventListener('click', testProvider);
+    promptEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') testProvider();
+    });
+    
+    // Start
+    init();
+  </script>
+</body>
+</html>
+
