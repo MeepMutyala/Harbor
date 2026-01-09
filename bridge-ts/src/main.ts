@@ -8,6 +8,11 @@
  * Architecture:
  * - Main bridge handles: Native messaging, MCP connections, LLM, Chat
  * - Catalog worker (separate process): Scraping, enrichment, database writes
+ * - MCP runners (separate processes): Isolated MCP server connections
+ * 
+ * Special Modes (for pkg binary compatibility):
+ * - --catalog-worker: Run as catalog worker process (forked by main bridge)
+ * - --mcp-runner <serverId>: Run as isolated MCP server runner (forked by main bridge)
  * 
  * Enable worker architecture with: HARBOR_CATALOG_WORKER=1
  */
@@ -20,6 +25,13 @@ import { getCatalogClient } from './catalog/client.js';
 
 const VERSION = '0.1.0';
 const USE_WORKER = process.env.HARBOR_CATALOG_WORKER === '1';
+
+// Check for special worker modes (pkg binary compatibility)
+const args = process.argv.slice(2);
+const isCatalogWorker = args.includes('--catalog-worker');
+const mcpRunnerIndex = args.indexOf('--mcp-runner');
+const isMcpRunner = mcpRunnerIndex !== -1;
+const mcpServerId = isMcpRunner ? args[mcpRunnerIndex + 1] : null;
 
 async function runBridge(): Promise<void> {
   log(`Harbor Bridge v${VERSION} starting...`);
@@ -107,8 +119,34 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Run the bridge
-runBridge().catch((error) => {
+// ===========================================================================
+// Entry Point - Handle different modes
+// ===========================================================================
+
+async function main(): Promise<void> {
+  // Mode 1: Catalog Worker (forked by main bridge for pkg compatibility)
+  if (isCatalogWorker) {
+    log('[Main] Running in catalog worker mode');
+    // Dynamically import and run the catalog worker
+    const { runCatalogWorker } = await import('./catalog/worker.js');
+    await runCatalogWorker();
+    return;
+  }
+
+  // Mode 2: MCP Runner (forked by main bridge for process isolation)
+  if (isMcpRunner && mcpServerId) {
+    log(`[Main] Running in MCP runner mode for server: ${mcpServerId}`);
+    // Dynamically import and run the MCP runner
+    const { runMcpRunner } = await import('./mcp/runner.js');
+    await runMcpRunner(mcpServerId);
+    return;
+  }
+
+  // Mode 3: Main Bridge (default)
+  await runBridge();
+}
+
+main().catch((error) => {
   log(`Fatal error: ${error}`);
   process.exit(1);
 });

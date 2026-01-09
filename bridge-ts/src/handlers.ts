@@ -32,7 +32,7 @@ import {
   OrchestrationResult,
   OrchestrationStep,
 } from './chat/index.js';
-import { CURATED_SERVERS, getCuratedServer, type CuratedServerFull } from './directory/curated-servers.js';
+import { CURATED_SERVERS, CURATED_SERVERS_FULL, getCuratedServer, type CuratedServerFull } from './directory/curated-servers.js';
 import { getDockerExec } from './installer/docker-exec.js';
 import { getDockerImageManager } from './installer/docker-images.js';
 import type { CuratedServer } from './types.js';
@@ -43,7 +43,15 @@ import {
   getOAuthStatus,
   isProviderConfigured,
   getConfiguredProviders,
+  getHarborOAuthBroker,
 } from './auth/index.js';
+import {
+  McpManifest,
+  validateManifest,
+  parseManifest,
+  checkOAuthCapabilities,
+  fetchManifestFromGitHub,
+} from './installer/manifest.js';
 import {
   getMcpHost,
   GrantType,
@@ -525,7 +533,39 @@ const handleInstallServer: MessageHandler = async (message, _store, _client, _ca
   }
 
   try {
-    // If no package info, try to resolve from GitHub
+    // First, check if the repo has a manifest file (manifest-first approach)
+    const repoUrl = catalogEntry.repositoryUrl || catalogEntry.homepageUrl || '';
+    const githubMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/\#\?]+)/);
+    
+    if (githubMatch) {
+      const [, owner, repo] = githubMatch;
+      const cleanRepo = repo.replace(/\.git$/, '');
+      
+      log(`[handleInstallServer] Checking for manifest in ${owner}/${cleanRepo}`);
+      const manifest = await fetchManifestFromGitHub(owner, cleanRepo);
+      
+      if (manifest) {
+        log(`[handleInstallServer] Found manifest, using manifest-based installation`);
+        
+        // Use manifest-based installation
+        const result = await installer.installFromManifest(manifest);
+        
+        if (!result.success) {
+          return makeError(requestId, 'install_error', result.error || 'Manifest installation failed');
+        }
+        
+        return makeResult('install_server', requestId, { 
+          server: result.server,
+          hasManifest: true,
+          needsOAuth: result.needsOAuth,
+          oauthMode: result.oauthMode,
+        });
+      }
+      
+      log(`[handleInstallServer] No manifest found, falling back to best-effort installation`);
+    }
+
+    // Fall back to best-effort installation (no manifest found)
     let entryWithPackage = catalogEntry;
     const hasPackageInfo = catalogEntry.packages && 
                            catalogEntry.packages.length > 0 && 
@@ -574,7 +614,10 @@ const handleInstallServer: MessageHandler = async (message, _store, _client, _ca
     }
 
     const server = await installer.install(entryWithPackage, packageIndex);
-    return makeResult('install_server', requestId, { server });
+    return makeResult('install_server', requestId, { 
+      server,
+      hasManifest: false,
+    });
   } catch (e) {
     log(`Failed to install server: ${e}`);
     return makeError(requestId, 'install_error', String(e));
@@ -982,6 +1025,357 @@ const handleGetServerStatus: MessageHandler = async (message, _store, _client, _
     log(`Failed to get server status: ${e}`);
     return makeError(requestId, 'status_error', String(e));
   }
+};
+
+// =============================================================================
+// Manifest-based Installation Handlers
+// =============================================================================
+
+/**
+ * Install a server from a manifest.
+ * This is the new declarative way to install MCP servers.
+ */
+const handleInstallFromManifest: MessageHandler = async (message, _store, _client, _catalog, installer) => {
+  const requestId = message.request_id || '';
+  const manifestData = message.manifest as McpManifest;
+
+  if (!manifestData) {
+    return makeError(requestId, 'invalid_request', 'Missing manifest');
+  }
+
+  // Validate manifest
+  const validation = validateManifest(manifestData);
+  if (!validation.valid) {
+    return makeError(requestId, 'invalid_manifest', 
+      `Invalid manifest: ${validation.errors?.join(', ')}`);
+  }
+
+  try {
+    const result = await installer.installFromManifest(manifestData);
+    
+    if (!result.success) {
+      return makeError(requestId, 'install_error', result.error || 'Installation failed');
+    }
+
+    return makeResult('install_from_manifest', requestId, {
+      serverId: result.serverId,
+      server: result.server,
+      needsOAuth: result.needsOAuth,
+      oauthMode: result.oauthMode,
+    });
+  } catch (e) {
+    log(`Failed to install from manifest: ${e}`);
+    return makeError(requestId, 'install_error', String(e));
+  }
+};
+
+/**
+ * Check if Harbor can handle OAuth for a manifest.
+ */
+const handleCheckManifestOAuth: MessageHandler = async (message, _store, _client, _catalog, installer) => {
+  const requestId = message.request_id || '';
+  const manifestData = message.manifest as McpManifest;
+
+  if (!manifestData) {
+    return makeError(requestId, 'invalid_request', 'Missing manifest');
+  }
+
+  if (!manifestData.oauth) {
+    return makeResult('check_manifest_oauth', requestId, {
+      required: false,
+      canHandle: true,
+    });
+  }
+
+  const broker = getHarborOAuthBroker();
+  const capabilities = broker.getCapabilities();
+  const check = checkOAuthCapabilities(manifestData.oauth, capabilities);
+
+  return makeResult('check_manifest_oauth', requestId, {
+    required: true,
+    canHandle: check.canHandle,
+    recommendedSource: check.recommendedSource,
+    hostModeAvailable: check.hostModeAvailable,
+    userModeAvailable: check.userModeAvailable,
+    missingScopes: check.missingScopes,
+    missingApis: check.missingApis,
+    reason: check.reason,
+  });
+};
+
+/**
+ * Start OAuth flow for a manifest-installed server.
+ */
+const handleManifestOAuthStart: MessageHandler = async (message, _store, _client, _catalog, installer) => {
+  const requestId = message.request_id || '';
+  const serverId = message.server_id as string || '';
+
+  if (!serverId) {
+    return makeError(requestId, 'invalid_request', 'Missing server_id');
+  }
+
+  try {
+    const result = await installer.startOAuthFlow(serverId);
+    
+    if ('error' in result) {
+      return makeError(requestId, 'oauth_error', result.error);
+    }
+
+    return makeResult('manifest_oauth_start', requestId, {
+      authUrl: result.authUrl,
+      state: result.state,
+    });
+  } catch (e) {
+    log(`Failed to start OAuth flow: ${e}`);
+    return makeError(requestId, 'oauth_error', String(e));
+  }
+};
+
+/**
+ * Get OAuth status for a manifest-installed server.
+ */
+const handleManifestOAuthStatus: MessageHandler = async (message, _store, _client, _catalog, installer) => {
+  const requestId = message.request_id || '';
+  const serverId = message.server_id as string || '';
+
+  if (!serverId) {
+    return makeError(requestId, 'invalid_request', 'Missing server_id');
+  }
+
+  try {
+    const status = installer.getOAuthStatus(serverId);
+    return makeResult('manifest_oauth_status', requestId, status);
+  } catch (e) {
+    log(`Failed to get OAuth status: ${e}`);
+    return makeError(requestId, 'oauth_error', String(e));
+  }
+};
+
+/**
+ * Check if an error looks like a macOS security/Gatekeeper issue.
+ */
+function isSecurityRelatedError(errorMsg: string): boolean {
+  const lower = errorMsg.toLowerCase();
+  return (
+    lower.includes('permission') ||
+    lower.includes('blocked') ||
+    lower.includes('gatekeeper') ||
+    lower.includes('security') ||
+    lower.includes('sigkill') ||
+    lower.includes('code signature') ||
+    lower.includes('cannot be opened') ||
+    lower.includes('quarantine') ||
+    lower.includes('eperm') ||
+    lower.includes('eacces')
+  );
+}
+
+/**
+ * Start a manifest-installed server (with OAuth token injection).
+ * 
+ * This uses mcpManager.connect() which handles both process startup AND MCP protocol connection.
+ * OAuth tokens from the manifest are injected as environment variables.
+ * 
+ * Resilient startup logic:
+ * 1. If manifest says hasNativeCode=true and Docker available, use Docker
+ * 2. If native start fails with security error, automatically retry with Docker
+ * 3. Remember Docker preference for future starts
+ */
+const handleStartManifestServer: MessageHandler = async (message, _store, _client, _catalog, installer, mcpManager) => {
+  const requestId = message.request_id || '';
+  const serverId = message.server_id as string || '';
+  let useDocker = message.use_docker as boolean | undefined;
+
+  if (!serverId) {
+    return makeError(requestId, 'invalid_request', 'Missing server_id');
+  }
+
+  const server = installer.getServer(serverId);
+  if (!server) {
+    return makeError(requestId, 'not_found', `Server not installed: ${serverId}`);
+  }
+  
+  const manifest = installer.getManifest(serverId);
+  const isMacOS = process.platform === 'darwin';
+  
+  // Check if we previously learned this server needs Docker
+  const previouslyNeededDocker = server.useDocker;
+  
+  // Smart Docker detection on macOS
+  if (isMacOS && useDocker === undefined) {
+    const dockerCheck = await installer.checkDockerAvailable();
+    
+    if (dockerCheck.available) {
+      // Use Docker if: manifest says native code, or we learned it needs Docker
+      if (manifest?.runtime?.hasNativeCode || previouslyNeededDocker) {
+        log(`[handleStartManifestServer] Using Docker: ${manifest?.runtime?.hasNativeCode ? 'manifest indicates native code' : 'previously needed Docker'}`);
+        useDocker = true;
+      }
+    }
+  }
+
+  // Build environment variables: secrets + OAuth tokens
+  const secretStore = getSecretStore();
+  const envVars: Record<string, string> = secretStore.getAll(serverId);
+  
+  // Inject OAuth tokens if this server needs them
+  if (manifest?.oauth) {
+    const oauthEnvVars = installer.getOAuthEnvVars(serverId);
+    if (oauthEnvVars) {
+      Object.assign(envVars, oauthEnvVars);
+      log(`[handleStartManifestServer] Injected OAuth tokens: ${Object.keys(oauthEnvVars).join(', ')}`);
+    } else {
+      return makeError(requestId, 'oauth_required', 'OAuth authentication required. Please authenticate first.');
+    }
+  }
+
+  // Progress callback
+  const onProgress = (msg: string) => sendProgressUpdate(serverId, msg);
+
+  try {
+    log(`[handleStartManifestServer] Connecting to ${serverId} (useDocker: ${useDocker})`);
+    const result = await mcpManager.connect(server, envVars, { useDocker, onProgress });
+    
+    if (result.success) {
+      log(`[handleStartManifestServer] Connected: ${result.tools?.length || 0} tools`);
+      return makeResult('start_manifest_server', requestId, {
+        serverId,
+        connected: true,
+        tools: result.tools,
+        resources: result.resources,
+        prompts: result.prompts,
+        running_in_docker: useDocker,
+      });
+    }
+    
+    // Connection failed - check if we should auto-retry with Docker
+    const errorMsg = result.error || 'Connection failed';
+    
+    if (isMacOS && !useDocker && isSecurityRelatedError(errorMsg)) {
+      const dockerCheck = await installer.checkDockerAvailable();
+      if (dockerCheck.available) {
+        log(`[handleStartManifestServer] Native failed with security error - auto-retrying with Docker`);
+        
+        // Remember that this server needs Docker
+        await installer.updateServerConfig(serverId, { useDocker: true });
+        
+        const retryResult = await mcpManager.connect(server, envVars, { useDocker: true, onProgress });
+        
+        if (retryResult.success) {
+          return makeResult('start_manifest_server', requestId, {
+            serverId,
+            connected: true,
+            tools: retryResult.tools,
+            resources: retryResult.resources,
+            prompts: retryResult.prompts,
+            running_in_docker: true,
+            auto_docker_retry: true,
+          });
+        }
+        
+        return makeError(requestId, 'connection_failed', `Native failed: ${errorMsg}. Docker retry: ${retryResult.error}`);
+      }
+    }
+    
+    return makeError(requestId, 'connection_failed', errorMsg);
+    
+  } catch (e) {
+    const errorMsg = String(e);
+    log(`Failed to start manifest server: ${errorMsg}`);
+    
+    // On macOS, auto-retry with Docker for security errors
+    if (isMacOS && !useDocker && isSecurityRelatedError(errorMsg)) {
+      const dockerCheck = await installer.checkDockerAvailable();
+      if (dockerCheck.available) {
+        log(`[handleStartManifestServer] Exception was security-related - auto-retrying with Docker`);
+        
+        try {
+          await installer.updateServerConfig(serverId, { useDocker: true });
+          
+          const retryResult = await mcpManager.connect(server, envVars, { useDocker: true, onProgress });
+          
+          if (retryResult.success) {
+            return makeResult('start_manifest_server', requestId, {
+              serverId,
+              connected: true,
+              tools: retryResult.tools,
+              resources: retryResult.resources,
+              prompts: retryResult.prompts,
+              running_in_docker: true,
+              auto_docker_retry: true,
+            });
+          }
+          
+          return makeError(requestId, 'connection_failed', `Native failed: ${errorMsg}. Docker: ${retryResult.error}`);
+        } catch (retryError) {
+          return makeError(requestId, 'start_error', `Native: ${errorMsg}. Docker: ${retryError}`);
+        }
+      }
+    }
+    
+    return makeError(requestId, 'start_error', errorMsg);
+  }
+};
+
+/**
+ * Get the manifest for an installed server.
+ * First checks stored manifests, then falls back to embedded manifests from curated servers.
+ */
+const handleGetServerManifest: MessageHandler = async (message, _store, _client, _catalog, installer) => {
+  const requestId = message.request_id || '';
+  const serverId = message.server_id as string || '';
+
+  if (!serverId) {
+    return makeError(requestId, 'invalid_request', 'Missing server_id');
+  }
+
+  // First check for stored manifest
+  let manifest = installer.getManifest(serverId);
+  
+  // If not found, check if this server came from a curated entry with embedded manifest
+  if (!manifest) {
+    const server = installer.getServer(serverId);
+    if (server) {
+      // Try to find a curated server that matches this package
+      const curated = CURATED_SERVERS_FULL.find(c => {
+        if (c.manifest?.package.name === server.packageId) return true;
+        if (c.packageId === server.packageId) return true;
+        if (c.install.type === 'npm' && (c.install as { package: string }).package === server.packageId) return true;
+        return false;
+      });
+      
+      if (curated?.manifest) {
+        log(`[handleGetServerManifest] Found embedded manifest from curated server: ${curated.id}`);
+        
+        // Store the manifest for future use
+        installer.storeManifest(serverId, curated.manifest);
+        manifest = curated.manifest;
+      }
+    }
+  }
+  
+  if (!manifest) {
+    return makeResult('get_server_manifest', requestId, { 
+      hasManifest: false,
+      manifest: null,
+    });
+  }
+
+  return makeResult('get_server_manifest', requestId, {
+    hasManifest: true,
+    manifest,
+  });
+};
+
+/**
+ * Get Harbor's OAuth capabilities.
+ */
+const handleGetOAuthCapabilities: MessageHandler = async (message, _store, _client, _catalog, installer) => {
+  const requestId = message.request_id || '';
+  
+  const capabilities = installer.getOAuthCapabilities();
+  
+  return makeResult('get_oauth_capabilities', requestId, { capabilities });
 };
 
 // =============================================================================
@@ -2051,13 +2445,14 @@ const handleLlmListModels: MessageHandler = async (message, _store, _client, _ca
 };
 
 /**
- * Send a chat message to the active LLM.
+ * Send a chat message to the active LLM (or specified provider).
  */
 const handleLlmChat: MessageHandler = async (message, _store, _client, _catalog, _installer, _mcpManager, llmManager) => {
   const requestId = message.request_id || '';
   const messages = message.messages as ChatMessage[] | undefined;
   const tools = message.tools as ToolDefinition[] | undefined;
   const model = message.model as string | undefined;
+  const provider = message.provider as string | undefined;
   const maxTokens = message.max_tokens as number | undefined;
   const temperature = message.temperature as number | undefined;
   const systemPrompt = message.system_prompt as string | undefined;
@@ -2067,24 +2462,49 @@ const handleLlmChat: MessageHandler = async (message, _store, _client, _catalog,
   }
 
   try {
-    const active = llmManager.getActiveId();
-    if (!active) {
+    // If provider is specified, temporarily switch to it
+    const originalProviderId = llmManager.getActiveId();
+    let usedProvider = originalProviderId;
+    
+    if (provider && provider !== originalProviderId) {
+      // Check if the specified provider is available
+      const providerStatus = llmManager.getStatus(provider);
+      if (!providerStatus?.available) {
+        return makeError(requestId, 'llm_error', `Provider "${provider}" is not available`);
+      }
+      // Temporarily set the active provider
+      if (!llmManager.setActive(provider, model)) {
+        return makeError(requestId, 'llm_error', `Failed to switch to provider "${provider}"`);
+      }
+      usedProvider = provider;
+      log(`[LLMChat] Temporarily using provider: ${provider}`);
+    }
+    
+    if (!usedProvider) {
       return makeError(requestId, 'llm_error', 'No active LLM provider. Run llm_detect first.');
     }
     
-    const response = await llmManager.chat({
-      messages,
-      tools,
-      model,
-      maxTokens,
-      temperature,
-      systemPrompt,
-    });
-    
-    return makeResult('llm_chat', requestId, { 
-      response,
-      provider: active,
-    });
+    try {
+      const response = await llmManager.chat({
+        messages,
+        tools,
+        model,
+        maxTokens,
+        temperature,
+        systemPrompt,
+      });
+      
+      return makeResult('llm_chat', requestId, { 
+        response,
+        provider: usedProvider,
+      });
+    } finally {
+      // Restore original provider if we switched
+      if (provider && provider !== originalProviderId && originalProviderId) {
+        llmManager.setActive(originalProviderId);
+        log(`[LLMChat] Restored original provider: ${originalProviderId}`);
+      }
+    }
   } catch (e) {
     log(`Failed to chat with LLM: ${e}`);
     return makeError(requestId, 'llm_error', String(e));
@@ -2288,7 +2708,10 @@ const handleLlmSetupStatus: MessageHandler = async (message, _store, _client, _c
 
 /**
  * Download a llamafile model.
- * Note: Progress updates are sent as separate messages during download.
+ * 
+ * IMPORTANT: This is a non-blocking handler. It immediately responds that
+ * the download has started, then runs the download in the background.
+ * Progress and completion are sent as separate push messages.
  */
 const handleLlmDownloadModel: MessageHandler = async (message, _store, _client, _catalog, _installer) => {
   const requestId = message.request_id || '';
@@ -2301,27 +2724,48 @@ const handleLlmDownloadModel: MessageHandler = async (message, _store, _client, 
   try {
     const setupManager = getLLMSetupManager();
     
-    // Start download - this is async and takes a while
-    // For now, we just wait for it to complete
-    // In the future, we could stream progress updates
-    await setupManager.downloadModel(modelId, (progress) => {
-      // Log progress - in a real implementation we'd stream this to the extension
-      if (progress.percent % 10 === 0 || progress.status !== 'downloading') {
-        log(`[Download] ${modelId}: ${progress.percent}% (${Math.round(progress.bytesDownloaded / 1_000_000)}MB)`);
+    // Start download in background (don't await!)
+    // This allows the bridge to continue handling other messages
+    log(`[Download] ${modelId}: Starting download...`);
+    
+    setupManager.downloadModel(modelId, (progress) => {
+      // Send progress updates to extension - every 1% for better UX
+      log(`[Download] ${modelId}: ${progress.status} ${progress.percent}% (${Math.round(progress.bytesDownloaded / 1_000_000)}MB / ${Math.round(progress.totalBytes / 1_000_000)}MB)`);
+      
+      // Push progress update to extension
+      pushStatus('llm_download', progress.status, {
+        modelId,
+        percent: progress.percent,
+        bytesDownloaded: progress.bytesDownloaded,
+        totalBytes: progress.totalBytes,
+      });
+    }).then(async () => {
+      // Download complete - push completion message
+      log(`[Download] ${modelId}: Complete!`);
+      try {
+        const status = await setupManager.getStatus();
+        pushStatus('llm_download', 'complete', { modelId, status });
+      } catch (statusErr) {
+        log(`[Download] ${modelId}: Complete but failed to get status - ${statusErr}`);
+        pushStatus('llm_download', 'complete', { modelId });
       }
-    });
-    
-    const status = await setupManager.getStatus();
-    
-    return makeResult('llm_download_model', requestId, { 
-      success: true,
-      modelId,
-      status,
+    }).catch((e) => {
+      // Download failed - push error message
+      log(`[Download] ${modelId}: Failed - ${e}`);
+      pushStatus('llm_download', 'error', { modelId, error: String(e) });
     });
   } catch (e) {
-    log(`Failed to download model: ${e}`);
-    return makeError(requestId, 'download_error', String(e));
+    // Unexpected error starting download - still respond gracefully
+    log(`[Download] ${modelId}: Failed to start - ${e}`);
+    return makeError(requestId, 'download_error', `Failed to start download: ${e}`);
   }
+  
+  // Immediately respond that download has started
+  return makeResult('llm_download_model', requestId, { 
+    started: true,
+    modelId,
+    message: 'Download started. Progress updates will be sent separately.',
+  });
 };
 
 /**
@@ -2805,6 +3249,39 @@ const handleInstallCurated: MessageHandler = async (message, _store, _client, _c
   try {
     log(`[handleInstallCurated] Installing ${curated.name} (${curated.id})`);
     
+    // Check if curated server has an embedded manifest
+    let manifest = curated.manifest;
+    
+    // If no embedded manifest, try to fetch from the repo
+    if (!manifest && curated.repository) {
+      log(`[handleInstallCurated] No embedded manifest, trying to fetch from repo: ${curated.repository}`);
+      const repoMatch = curated.repository.match(/github\.com\/([^/]+)\/([^/]+)/);
+      if (repoMatch) {
+        const [, owner, repo] = repoMatch;
+        const fetched = await fetchManifestFromGitHub(owner, repo.replace(/\.git$/, ''));
+        if (fetched) {
+          manifest = fetched;
+          log(`[handleInstallCurated] Found manifest in repo for ${curated.name}`);
+        }
+      }
+    }
+    
+    if (manifest) {
+      log(`[handleInstallCurated] Using manifest for ${curated.name}`);
+      const result = await installer.installFromManifest(manifest);
+      
+      return makeResult('install_curated', requestId, {
+        server: result.server,
+        manifestFound: true,
+        manifest: manifest,
+        needsOAuth: result.needsOAuth,
+        oauthMode: result.oauthMode,
+      });
+    }
+    
+    // No manifest available - use legacy flow
+    log(`[handleInstallCurated] No manifest for ${curated.name}, using legacy flow`);
+    
     // Build a catalog entry from the curated server
     const catalogEntry: CatalogServer = {
       id: curated.id,
@@ -2873,6 +3350,7 @@ const handleInstallCurated: MessageHandler = async (message, _store, _client, _c
     
     return makeResult('install_curated', requestId, { 
       server,
+      manifestFound: false,
     });
   } catch (e) {
     log(`Failed to install curated server: ${e}`);
@@ -3337,6 +3815,14 @@ const HANDLERS: Record<string, MessageHandler> = {
   set_server_secrets: handleSetServerSecrets,
   update_server_args: handleUpdateServerArgs,
   get_server_status: handleGetServerStatus,
+  // Manifest-based installation handlers
+  install_from_manifest: handleInstallFromManifest,
+  check_manifest_oauth: handleCheckManifestOAuth,
+  manifest_oauth_start: handleManifestOAuthStart,
+  manifest_oauth_status: handleManifestOAuthStatus,
+  start_manifest_server: handleStartManifestServer,
+  get_server_manifest: handleGetServerManifest,
+  get_oauth_capabilities: handleGetOAuthCapabilities,
   // MCP stdio handlers (for locally installed servers)
   mcp_connect: handleMcpConnect,
   mcp_disconnect: handleMcpDisconnect,

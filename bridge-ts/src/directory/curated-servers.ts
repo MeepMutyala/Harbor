@@ -6,6 +6,7 @@
  */
 
 import { CuratedServer } from '../types.js';
+import { McpManifest } from '../installer/manifest.js';
 
 /**
  * Extended curated server with installation details.
@@ -26,12 +27,16 @@ export interface CuratedServerFull extends CuratedServer {
   // If true, this server must NOT run in Docker (needs host filesystem access)
   // This is a technical constraint for servers that access local resources
   noDocker?: boolean;
+  // Embedded manifest for servers that don't have one in their repo yet.
+  // This lets Harbor handle OAuth and other advanced features without
+  // requiring a PR to the upstream repository.
+  manifest?: McpManifest;
 }
 
 /**
  * Full curated server definitions with installation details.
  */
-const CURATED_SERVERS_FULL: CuratedServerFull[] = [
+export const CURATED_SERVERS_FULL: CuratedServerFull[] = [
   {
     id: 'curated-filesystem',
     name: 'Filesystem',
@@ -129,6 +134,23 @@ const CURATED_SERVERS_FULL: CuratedServerFull[] = [
       type: 'npm',
       package: '@modelcontextprotocol/server-fetch',
     },
+  },
+  {
+    id: 'curated-gmail',
+    name: 'Gmail',
+    description: 'Read, search, send emails, manage labels and filters via Gmail API.',
+    icon: '📧',
+    packageType: 'npm',
+    packageId: '@gongrzhe/server-gmail-autoauth-mcp',
+    tags: ['email', 'google', 'productivity'],
+    homepageUrl: 'https://github.com/r/Gmail-MCP-Server',
+    homepage: 'https://github.com/r/Gmail-MCP-Server',
+    repository: 'https://github.com/r/Gmail-MCP-Server',
+    install: {
+      type: 'npm',
+      package: '@gongrzhe/server-gmail-autoauth-mcp',
+    },
+    // Manifest will be fetched from the repo (has mcp-manifest.json)
   },
 ];
 

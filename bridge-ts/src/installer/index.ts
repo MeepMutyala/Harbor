@@ -44,3 +44,18 @@ export {
   getDockerRunner,
   type DockerRunnerOptions,
 } from './docker-runner.js';
+export {
+  fetchManifestFromGitHub,
+  getDockerRecommendation,
+  requiresUserOAuthSetup,
+  getMissingConfig,
+  toLegacyEnvVars,
+  type McpManifest,
+  type ManifestPackage,
+  type ManifestRuntime,
+  type ManifestExecution,
+  type ManifestEnvVar,
+  type ManifestSecret,
+  type ManifestOAuth,
+  type ManifestApi,
+} from './manifest.js';

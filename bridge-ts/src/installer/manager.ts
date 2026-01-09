@@ -13,16 +13,56 @@ import { getSecretStore, SecretStore } from './secrets.js';
 import { downloadBinary, removeBinary, isBinaryDownloaded } from './binary-downloader.js';
 import { getDockerRunner, DockerRunner } from './docker-runner.js';
 import { getDockerExec } from './docker-exec.js';
+import { 
+  McpManifest, 
+  getDockerRecommendation, 
+  checkOAuthCapabilities,
+  getOAuthEnvVars,
+  OAuthSource,
+} from './manifest.js';
+import { 
+  getHarborOAuthBroker, 
+  HarborOAuthBroker,
+  StoredServerTokens,
+} from '../auth/harbor-oauth.js';
+import { getTokenStore, TokenStore } from '../auth/token-store.js';
 
 const CONFIG_DIR = join(homedir(), '.harbor');
 const INSTALLED_FILE = join(CONFIG_DIR, 'installed_servers.json');
 
+/**
+ * Extended server info that includes manifest data.
+ */
+export interface InstalledServerWithManifest extends InstalledServer {
+  /** The original manifest (if installed via manifest) */
+  manifest?: McpManifest;
+  /** OAuth mode used for this server */
+  oauthMode?: OAuthSource;
+  /** Provider name if OAuth is used */
+  oauthProvider?: string;
+}
+
+/**
+ * Result of manifest-based installation.
+ */
+export interface ManifestInstallResult {
+  success: boolean;
+  serverId?: string;
+  server?: InstalledServerWithManifest;
+  needsOAuth?: boolean;
+  oauthMode?: OAuthSource;
+  error?: string;
+}
+
 export class InstalledServerManager {
   private servers: Map<string, InstalledServer> = new Map();
+  private manifests: Map<string, McpManifest> = new Map();
   private runtimeManager: RuntimeManager;
   private runner: PackageRunner;
   private dockerRunner: DockerRunner;
   private secrets: SecretStore;
+  private oauthBroker: HarborOAuthBroker;
+  private tokenStore: TokenStore;
 
   constructor() {
     mkdirSync(CONFIG_DIR, { recursive: true });
@@ -30,7 +70,11 @@ export class InstalledServerManager {
     this.runner = getPackageRunner();
     this.dockerRunner = getDockerRunner();
     this.secrets = getSecretStore();
+    this.oauthBroker = getHarborOAuthBroker();
+    this.tokenStore = getTokenStore();
     this.load();
+    this.loadManifests();
+    this.loadOAuthTokens();
   }
 
   private load(): void {
@@ -273,6 +317,36 @@ export class InstalledServerManager {
 
   getServer(serverId: string): InstalledServer | undefined {
     return this.servers.get(serverId);
+  }
+
+  /**
+   * Update configuration for an installed server.
+   * Used to remember learned preferences (e.g., needs Docker).
+   */
+  async updateServerConfig(
+    serverId: string, 
+    updates: Partial<Pick<InstalledServer, 'useDocker' | 'noDocker' | 'args'>>
+  ): Promise<void> {
+    const server = this.servers.get(serverId);
+    if (!server) {
+      throw new Error(`Server not installed: ${serverId}`);
+    }
+    
+    // Apply updates
+    if (updates.useDocker !== undefined) {
+      server.useDocker = updates.useDocker;
+    }
+    if (updates.noDocker !== undefined) {
+      server.noDocker = updates.noDocker;
+    }
+    if (updates.args !== undefined) {
+      server.args = updates.args;
+    }
+    
+    this.servers.set(serverId, server);
+    this.save();
+    
+    log(`[InstalledServerManager] Updated config for ${serverId}: ${JSON.stringify(updates)}`);
   }
 
   getAllServers(): InstalledServer[] {
@@ -565,6 +639,380 @@ export class InstalledServerManager {
         oci: runtimes.some(r => r.available && r.type === 'docker'),
       },
     };
+  }
+
+  // ===========================================================================
+  // Manifest-based Installation
+  // ===========================================================================
+
+  /**
+   * Load stored manifests from disk.
+   */
+  private loadManifests(): void {
+    const manifestFile = join(CONFIG_DIR, 'manifests.json');
+    if (existsSync(manifestFile)) {
+      try {
+        const data = JSON.parse(readFileSync(manifestFile, 'utf-8'));
+        for (const [serverId, manifest] of Object.entries(data.manifests || {})) {
+          this.manifests.set(serverId, manifest as McpManifest);
+        }
+        log(`[InstalledServerManager] Loaded ${this.manifests.size} manifests`);
+      } catch (e) {
+        log(`[InstalledServerManager] Failed to load manifests: ${e}`);
+      }
+    }
+  }
+
+  /**
+   * Save manifests to disk.
+   */
+  private saveManifests(): void {
+    const manifestFile = join(CONFIG_DIR, 'manifests.json');
+    try {
+      const data = {
+        version: 1,
+        manifests: Object.fromEntries(this.manifests),
+      };
+      writeFileSync(manifestFile, JSON.stringify(data, null, 2));
+    } catch (e) {
+      log(`[InstalledServerManager] Failed to save manifests: ${e}`);
+    }
+  }
+
+  /**
+   * Load OAuth tokens into the broker.
+   */
+  private loadOAuthTokens(): void {
+    const tokens = this.tokenStore.getAllTokens();
+    if (tokens.length > 0) {
+      this.oauthBroker.loadTokens(tokens);
+    }
+  }
+
+  /**
+   * Install a server from a manifest.
+   * This is the main entry point for manifest-based installation.
+   */
+  async installFromManifest(manifest: McpManifest): Promise<ManifestInstallResult> {
+    const serverId = this.generateServerId(manifest);
+    log(`[InstalledServerManager] Installing from manifest: ${manifest.name} (${serverId})`);
+
+    try {
+      // 1. Determine Docker mode
+      const dockerRec = getDockerRecommendation(manifest);
+      const useDocker = dockerRec.shouldUseDocker;
+
+      // 2. Check OAuth requirements
+      let oauthMode: OAuthSource | undefined;
+      let needsOAuth = false;
+      
+      if (manifest.oauth) {
+        const capabilities = this.oauthBroker.getCapabilities();
+        const oauthCheck = checkOAuthCapabilities(manifest.oauth, capabilities);
+        oauthMode = oauthCheck.recommendedSource;
+        
+        if (oauthMode === 'host') {
+          // Check if we already have tokens
+          if (!this.oauthBroker.hasValidTokens(serverId)) {
+            needsOAuth = true;
+          }
+        } else if (oauthMode === 'user') {
+          // For user mode, we'll need to prompt for credentials
+          needsOAuth = true; // We'll handle this separately
+        }
+        
+        log(`[InstalledServerManager] OAuth mode: ${oauthMode}, needsOAuth: ${needsOAuth}`);
+      }
+
+      // 3. Create the installed server record
+      // For git packages, use URL; for others use name
+      const packageId = manifest.package.type === 'git' 
+        ? manifest.package.url 
+        : manifest.package.name;
+        
+      const server: InstalledServerWithManifest = {
+        id: serverId,
+        name: manifest.name,
+        packageType: manifest.package.type,
+        packageId: packageId || serverId,
+        autoStart: false,
+        args: [],
+        requiredEnvVars: [
+          ...(manifest.environment || []).map(e => ({
+            name: e.name,
+            description: e.description,
+            isSecret: false,
+          })),
+          ...(manifest.secrets || []).map(s => ({
+            name: s.name,
+            description: s.description,
+            isSecret: true,
+          })),
+        ],
+        installedAt: Date.now(),
+        catalogSource: 'manifest',
+        homepageUrl: manifest.repository || null,
+        description: manifest.description || null,
+        useDocker,
+        noDocker: false, // Determined at runtime if needed
+        manifest,
+        oauthMode,
+        oauthProvider: manifest.oauth?.provider,
+      };
+
+      // 4. Store manifest and server
+      this.manifests.set(serverId, manifest);
+      this.servers.set(serverId, server);
+      this.save();
+      this.saveManifests();
+
+      log(`[InstalledServerManager] Manifest installation complete: ${serverId}`);
+
+      return {
+        success: true,
+        serverId,
+        server,
+        needsOAuth,
+        oauthMode,
+      };
+
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      log(`[InstalledServerManager] Manifest installation failed: ${error}`);
+      return {
+        success: false,
+        error,
+      };
+    }
+  }
+
+  /**
+   * Generate a server ID from a manifest.
+   */
+  private generateServerId(manifest: McpManifest): string {
+    // Use package name or URL as base, cleaned up
+    let source: string;
+    if (manifest.package.type === 'git' && manifest.package.url) {
+      // Extract repo name from git URL (e.g., "https://github.com/user/repo.git" -> "user-repo")
+      source = manifest.package.url
+        .replace(/\.git$/, '')
+        .replace(/^https?:\/\//, '')
+        .replace(/github\.com\//, '');
+    } else {
+      source = manifest.package.name || manifest.name;
+    }
+    
+    let baseId = source
+      .replace(/^@/, '') // Remove @ prefix
+      .replace(/\//g, '-') // Replace / with -
+      .replace(/[^a-zA-Z0-9-]/g, '-') // Clean special chars
+      .toLowerCase();
+
+    // Ensure uniqueness
+    let id = baseId;
+    let counter = 2;
+    while (this.servers.has(id)) {
+      id = `${baseId}-${counter}`;
+      counter++;
+    }
+
+    return id;
+  }
+
+  /**
+   * Start OAuth flow for a server that needs it.
+   * Returns the auth URL to open in browser.
+   */
+  async startOAuthFlow(serverId: string): Promise<{ authUrl: string; state: string } | { error: string }> {
+    const manifest = this.manifests.get(serverId);
+    if (!manifest?.oauth) {
+      return { error: 'Server does not require OAuth' };
+    }
+
+    const result = await this.oauthBroker.startAuthFlow(serverId, manifest.oauth);
+    
+    if ('error' in result) {
+      log(`[InstalledServerManager] OAuth flow start failed: ${result.error}`);
+    } else {
+      log(`[InstalledServerManager] OAuth flow started for ${serverId}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Check OAuth status for a server.
+   */
+  getOAuthStatus(serverId: string): {
+    required: boolean;
+    mode?: OAuthSource;
+    hasTokens: boolean;
+    tokensValid: boolean;
+    needsRefresh: boolean;
+  } {
+    const manifest = this.manifests.get(serverId);
+    if (!manifest?.oauth) {
+      return {
+        required: false,
+        hasTokens: false,
+        tokensValid: false,
+        needsRefresh: false,
+      };
+    }
+
+    const capabilities = this.oauthBroker.getCapabilities();
+    const check = checkOAuthCapabilities(manifest.oauth, capabilities);
+
+    return {
+      required: true,
+      mode: check.recommendedSource,
+      hasTokens: this.oauthBroker.hasValidTokens(serverId),
+      tokensValid: this.oauthBroker.hasValidTokens(serverId),
+      needsRefresh: this.tokenStore.needsRefresh(serverId),
+    };
+  }
+
+  /**
+   * Get the manifest for an installed server.
+   */
+  getManifest(serverId: string): McpManifest | undefined {
+    return this.manifests.get(serverId);
+  }
+
+  /**
+   * Store a manifest for an existing server.
+   * Used when associating a curated server's embedded manifest with an already-installed server.
+   */
+  storeManifest(serverId: string, manifest: McpManifest): void {
+    this.manifests.set(serverId, manifest);
+    this.saveManifests();
+    log(`[InstalledServerManager] Stored manifest for ${serverId}`);
+  }
+
+  /**
+   * Start a server installed via manifest.
+   * Automatically handles OAuth token injection.
+   */
+  async startWithManifest(
+    serverId: string,
+    options?: { useDocker?: boolean; onProgress?: (message: string) => void }
+  ): Promise<ServerProcess> {
+    const server = this.servers.get(serverId);
+    const manifest = this.manifests.get(serverId);
+
+    if (!server) {
+      throw new Error(`Server not installed: ${serverId}`);
+    }
+
+    // Build environment variables
+    const envVars: Record<string, string> = { ...this.secrets.getAll(serverId) };
+
+    // If we have a manifest with OAuth in host mode, inject tokens
+    if (manifest?.oauth) {
+      const oauthStatus = this.getOAuthStatus(serverId);
+      
+      if (oauthStatus.mode === 'host') {
+        // Refresh tokens if needed
+        if (oauthStatus.needsRefresh) {
+          await this.oauthBroker.refreshIfNeeded(serverId, manifest.oauth);
+        }
+
+        // Get tokens and inject as env vars
+        const tokens = this.oauthBroker.getEnvVarsForServer(serverId, manifest.oauth);
+        if (tokens) {
+          Object.assign(envVars, tokens);
+          log(`[InstalledServerManager] Injected OAuth tokens for ${serverId}`);
+          log(`[InstalledServerManager] Env vars being injected: ${Object.keys(tokens).join(', ')}`);
+        } else {
+          throw new Error('OAuth tokens not available. Please authenticate first.');
+        }
+      } else if (oauthStatus.mode === 'user' && manifest.oauth.userMode) {
+        // For user mode, inject the paths as env vars
+        const userModeEnv = getOAuthEnvVars(manifest.oauth, 'user');
+        Object.assign(envVars, userModeEnv);
+      }
+    }
+
+    // Check required secrets
+    const missing = this.secrets.getMissingSecrets(serverId, server.requiredEnvVars);
+    if (missing.length > 0) {
+      const names = missing.map(m => m.name);
+      throw new Error(`Missing required secrets: ${names.join(', ')}`);
+    }
+
+    // Determine Docker usage
+    const useDocker = options?.useDocker ?? server.useDocker ?? false;
+
+    if (useDocker) {
+      log(`[InstalledServerManager] Starting ${serverId} with manifest in Docker mode`);
+      return this.dockerRunner.startServer(
+        serverId,
+        server.packageType,
+        server.packageId,
+        {
+          env: envVars,
+          args: server.args.length > 0 ? server.args : undefined,
+          volumes: server.dockerVolumes,
+          onProgress: options?.onProgress,
+        }
+      );
+    }
+
+    log(`[InstalledServerManager] Starting ${serverId} with manifest natively`);
+    return this.runner.startServer(
+      serverId,
+      server.packageType,
+      server.packageId,
+      envVars,
+      server.args.length > 0 ? server.args : undefined
+    );
+  }
+
+  /**
+   * Check if Harbor can handle OAuth for a manifest.
+   */
+  canHandleOAuth(manifest: McpManifest): boolean {
+    if (!manifest.oauth) return true; // No OAuth needed
+    return this.oauthBroker.canHandle(manifest.oauth);
+  }
+
+  /**
+   * Get Harbor's OAuth capabilities.
+   */
+  getOAuthCapabilities() {
+    return this.oauthBroker.getCapabilities();
+  }
+
+  /**
+   * Get OAuth environment variables for a server.
+   * Returns the tokens formatted for injection into the server's environment.
+   */
+  getOAuthEnvVars(serverId: string): Record<string, string> | null {
+    const manifest = this.getManifest(serverId);
+    if (!manifest?.oauth) return null;
+    
+    return this.oauthBroker.getEnvVarsForServer(serverId, manifest.oauth);
+  }
+
+  /**
+   * Clean up OAuth tokens for a server when uninstalling.
+   */
+  private cleanupOAuth(serverId: string): void {
+    this.oauthBroker.removeTokens(serverId);
+    this.tokenStore.deleteTokens(serverId);
+  }
+
+  /**
+   * Uninstall a server that was installed via manifest.
+   */
+  uninstallWithManifest(serverId: string): boolean {
+    const result = this.uninstall(serverId);
+    if (result) {
+      this.manifests.delete(serverId);
+      this.saveManifests();
+      this.cleanupOAuth(serverId);
+    }
+    return result;
   }
 }
 

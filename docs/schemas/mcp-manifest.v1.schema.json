@@ -1,0 +1,347 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://harbor.dev/schemas/mcp-manifest.v1.json",
+  "title": "MCP Server Manifest",
+  "description": "Declarative schema describing what an MCP server supports and needs for automated installation",
+  "type": "object",
+  "required": ["manifestVersion", "name", "package"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema URL for validation"
+    },
+    "manifestVersion": {
+      "type": "string",
+      "description": "Manifest format version (semver)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["1.0.0"]
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name for the server"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of what the server does"
+    },
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "description": "Source repository URL"
+    },
+    "package": {
+      "$ref": "#/definitions/Package"
+    },
+    "runtime": {
+      "$ref": "#/definitions/Runtime"
+    },
+    "execution": {
+      "$ref": "#/definitions/Execution"
+    },
+    "environment": {
+      "type": "array",
+      "description": "Non-secret environment variables",
+      "items": {
+        "$ref": "#/definitions/EnvVar"
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "description": "Secret credentials (API keys, tokens)",
+      "items": {
+        "$ref": "#/definitions/Secret"
+      }
+    },
+    "oauth": {
+      "$ref": "#/definitions/OAuth"
+    }
+  },
+  "definitions": {
+    "Package": {
+      "type": "object",
+      "description": "Package installation info",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["npm", "pypi", "docker", "binary", "git"],
+          "description": "Registry/package type"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "For git packages: repository URL"
+        },
+        "name": {
+          "type": "string",
+          "description": "Package identifier (e.g., '@scope/package' for npm)"
+        },
+        "image": {
+          "type": "string",
+          "description": "For docker: full image reference"
+        },
+        "binaryUrl": {
+          "type": "string",
+          "description": "For binary: download URL pattern (use {os} and {arch} placeholders)"
+        },
+        "alternatives": {
+          "type": "array",
+          "description": "Alternative packages (lower priority)",
+          "items": {
+            "type": "object",
+            "required": ["type", "name"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["npm", "pypi", "docker", "binary", "git"]
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "name": {
+                "type": "string"
+              },
+              "image": {
+                "type": "string"
+              },
+              "binaryUrl": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "Runtime": {
+      "type": "object",
+      "description": "Runtime characteristics",
+      "properties": {
+        "hasNativeCode": {
+          "type": "boolean",
+          "description": "Does this package include native/compiled code? If true, Docker may be preferred."
+        },
+        "minimumVersion": {
+          "type": "string",
+          "description": "Minimum runtime version (e.g., '18.0.0' for Node)"
+        }
+      }
+    },
+    "Execution": {
+      "type": "object",
+      "description": "Execution preferences",
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": ["stdio", "http", "sse"],
+          "default": "stdio",
+          "description": "MCP transport type"
+        },
+        "defaultPort": {
+          "type": "integer",
+          "description": "For http/sse: default port"
+        }
+      }
+    },
+    "EnvVar": {
+      "type": "object",
+      "description": "Non-secret environment variable",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Variable name (e.g., 'LOG_LEVEL')"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether required to start"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["string", "path", "url", "number", "boolean"],
+          "default": "string",
+          "description": "Value type for UI rendering"
+        },
+        "default": {
+          "type": "string",
+          "description": "Default value"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed values (renders as dropdown)"
+        }
+      }
+    },
+    "Secret": {
+      "type": "object",
+      "description": "Secret credential (API key, token)",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Environment variable name (e.g., 'OPENAI_API_KEY')"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description"
+        },
+        "required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether required to start"
+        },
+        "helpUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL where user can obtain this credential"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Validation regex pattern"
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Placeholder text for input"
+        }
+      }
+    },
+    "OAuth": {
+      "type": "object",
+      "description": "OAuth requirements - declares what the server supports and needs",
+      "required": ["provider", "supportedSources", "scopes"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["google", "github", "microsoft", "slack", "custom"],
+          "description": "OAuth provider"
+        },
+        "supportedSources": {
+          "type": "array",
+          "description": "Which OAuth modes does this server support? The host will choose based on its capabilities.",
+          "items": {
+            "type": "string",
+            "enum": ["host", "user", "server"]
+          },
+          "minItems": 1,
+          "examples": [["host", "user"], ["user"], ["server"]]
+        },
+        "preferredSource": {
+          "type": "string",
+          "enum": ["host", "user", "server"],
+          "description": "Preferred source if the host supports multiple. Defaults to the first item in supportedSources."
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required OAuth scopes"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what access is needed"
+        },
+        "apis": {
+          "type": "array",
+          "description": "APIs that must be enabled (e.g., in Google Cloud Console)",
+          "items": {
+            "$ref": "#/definitions/Api"
+          }
+        },
+        "hostMode": {
+          "$ref": "#/definitions/OAuthHostMode"
+        },
+        "userMode": {
+          "$ref": "#/definitions/OAuthUserMode"
+        },
+        "endpoints": {
+          "type": "object",
+          "description": "For custom providers: OAuth endpoints",
+          "required": ["authorization", "token"],
+          "properties": {
+            "authorization": {
+              "type": "string",
+              "format": "uri"
+            },
+            "token": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        }
+      }
+    },
+    "OAuthHostMode": {
+      "type": "object",
+      "description": "Configuration for host mode - how the server receives tokens from the host",
+      "properties": {
+        "tokenEnvVar": {
+          "type": "string",
+          "description": "Env var for the access token (e.g., 'GMAIL_ACCESS_TOKEN')"
+        },
+        "refreshTokenEnvVar": {
+          "type": "string",
+          "description": "Env var for the refresh token (e.g., 'GMAIL_REFRESH_TOKEN')"
+        },
+        "clientIdEnvVar": {
+          "type": "string",
+          "description": "Env var for the client ID (if server needs it for refresh)"
+        },
+        "clientSecretEnvVar": {
+          "type": "string",
+          "description": "Env var for the client secret (if server needs it for refresh)"
+        }
+      }
+    },
+    "OAuthUserMode": {
+      "type": "object",
+      "description": "Configuration for user mode - how the server handles user-provided credentials",
+      "properties": {
+        "clientCredentialsPath": {
+          "type": "string",
+          "description": "Path where user downloads client_secret.json"
+        },
+        "clientCredentialsEnvVar": {
+          "type": "string",
+          "description": "Env var name for clientCredentialsPath"
+        },
+        "tokenStoragePath": {
+          "type": "string",
+          "description": "Path where server stores tokens after authentication"
+        },
+        "tokenStorageEnvVar": {
+          "type": "string",
+          "description": "Env var name for tokenStoragePath"
+        }
+      }
+    },
+    "Api": {
+      "type": "object",
+      "description": "An API that must be enabled",
+      "required": ["name", "displayName"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Service name (e.g., 'gmail.googleapis.com')"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Human-readable name (e.g., 'Gmail API')"
+        },
+        "enableUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Direct link to enable this API"
+        }
+      }
+    }
+  }
+}
