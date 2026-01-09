@@ -34,6 +34,7 @@ export interface ApiError {
 export type PermissionScope =
   | 'model:prompt'      // Basic text generation
   | 'model:tools'       // Model can call tools during generation
+  | 'model:list'        // List configured LLM providers
   | 'mcp:tools.list'    // List available MCP tools
   | 'mcp:tools.call'    // Call MCP tools
   | 'browser:activeTab.read'  // Read content from active tab
@@ -97,9 +98,44 @@ export interface ActiveTabReadability {
 
 export interface TextSessionOptions {
   model?: string;           // Model identifier, default: "default"
+  provider?: string;        // Provider identifier (openai, anthropic, ollama, etc.)
   temperature?: number;     // 0.0 - 2.0
   top_p?: number;           // 0.0 - 1.0
   systemPrompt?: string;    // Optional system prompt
+}
+
+// =============================================================================
+// LLM Provider Types
+// =============================================================================
+
+/**
+ * Information about an available LLM provider.
+ */
+export interface LLMProviderInfo {
+  /** Provider ID (e.g., 'openai', 'anthropic', 'ollama') */
+  id: string;
+  /** Human-readable name */
+  name: string;
+  /** Whether the provider is currently available */
+  available: boolean;
+  /** Base URL for the provider's API */
+  baseUrl?: string;
+  /** Available models for this provider */
+  models?: string[];
+  /** Whether this is the currently active (default) provider */
+  isDefault: boolean;
+  /** Whether the provider supports tool calling */
+  supportsTools?: boolean;
+}
+
+/**
+ * Current active LLM configuration.
+ */
+export interface ActiveLLMConfig {
+  /** Active provider ID */
+  provider: string | null;
+  /** Active model ID */
+  model: string | null;
 }
 
 export interface TextSession {
@@ -185,6 +221,7 @@ export interface AIApi {
 export interface AgentRunOptions {
   task: string;
   tools?: string[];         // Allowed tool names (overrides router)
+  provider?: string;        // Specify which LLM provider to use (default: active provider)
   useAllTools?: boolean;    // If true, disable tool router and use all tools
   requireCitations?: boolean;
   maxToolCalls?: number;    // Default: 5
@@ -227,6 +264,11 @@ export type ProviderMessageType =
   | 'permissions_result'
   | 'list_permissions'
   | 'list_permissions_result'
+  // LLM Providers
+  | 'llm_list_providers'
+  | 'llm_list_providers_result'
+  | 'llm_get_active'
+  | 'llm_get_active_result'
   // Text session (window.ai)
   | 'create_text_session'
   | 'create_text_session_result'
@@ -282,6 +324,7 @@ export interface ToolsCallPayload {
 export interface AgentRunPayload {
   task: string;
   tools?: string[];
+  provider?: string;        // Specify which LLM provider to use
   requireCitations?: boolean;
   maxToolCalls?: number;
 }

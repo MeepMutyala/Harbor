@@ -158,15 +158,14 @@ function createAgentRunOverride(): (options: {
         }
         
         const connections = connectionsResponse.connections;
-        if (connections.length === 0) {
-          yield { type: 'error', error: { code: 'ERR_INTERNAL', message: 'No MCP servers connected. Please start and connect at least one server.' } };
-          return;
-        }
-        
         const enabledServers = connections.map(c => c.serverId);
         const totalTools = connections.reduce((sum, c) => sum + c.toolCount, 0);
         
-        yield { type: 'status', message: `Found ${totalTools} tools from ${enabledServers.length} servers` };
+        if (connections.length === 0) {
+          yield { type: 'status', message: 'No MCP servers connected - chatting without tools' };
+        } else {
+          yield { type: 'status', message: `Found ${totalTools} tools from ${enabledServers.length} servers` };
+        }
         
         // Create chat session
         const createResponse = await browser.runtime.sendMessage({

@@ -38,6 +38,8 @@ import {
   createChatSession, 
   sendChatMessage, 
   deleteChatSession,
+  listLLMProviders,
+  getActiveLLM,
 } from '../bridge-api';
 
 const DEBUG = true;
@@ -360,6 +362,81 @@ async function handleListPermissions(
   sendResponse(port, 'list_permissions_result', requestId, status);
 }
 
+// =============================================================================
+// LLM Provider Handlers
+// =============================================================================
+
+async function handleLLMListProviders(
+  port: browser.Runtime.Port,
+  requestId: string,
+  origin: string
+): Promise<void> {
+  // Require model:list permission
+  if (!(await requirePermission(port, requestId, origin, 'model:list'))) {
+    return;
+  }
+  
+  try {
+    const response = await listLLMProviders();
+    
+    if (response.type === 'error' || !response.providers) {
+      sendError(port, requestId, createError('ERR_INTERNAL', response.error?.message || 'Failed to list providers'));
+      return;
+    }
+    
+    // Get the active provider to mark which one is default
+    const activeResponse = await getActiveLLM();
+    const activeProvider = activeResponse.provider;
+    
+    // Transform response to LLMProviderInfo[] format expected by JS API
+    const providersWithDefault = response.providers.map(p => ({
+      id: p.id,
+      name: p.name,
+      available: p.available,
+      baseUrl: p.baseUrl,
+      // Transform models from LLMModel[] to string[] (just IDs)
+      models: Array.isArray(p.models) 
+        ? p.models.map((m: { id?: string } | string) => typeof m === 'string' ? m : m.id || 'unknown')
+        : undefined,
+      isDefault: p.id === activeProvider,
+      supportsTools: p.supportsTools,
+    }));
+    
+    sendResponse(port, 'llm_list_providers_result', requestId, { providers: providersWithDefault });
+  } catch (err) {
+    log('LLM list providers error:', err);
+    sendError(port, requestId, createError('ERR_INTERNAL', String(err)));
+  }
+}
+
+async function handleLLMGetActive(
+  port: browser.Runtime.Port,
+  requestId: string,
+  origin: string
+): Promise<void> {
+  // Require model:list permission
+  if (!(await requirePermission(port, requestId, origin, 'model:list'))) {
+    return;
+  }
+  
+  try {
+    const response = await getActiveLLM();
+    
+    if (response.type === 'error') {
+      sendError(port, requestId, createError('ERR_INTERNAL', response.error?.message || 'Failed to get active LLM'));
+      return;
+    }
+    
+    sendResponse(port, 'llm_get_active_result', requestId, {
+      provider: response.provider ?? null,
+      model: response.model ?? null,
+    });
+  } catch (err) {
+    log('LLM get active error:', err);
+    sendError(port, requestId, createError('ERR_INTERNAL', String(err)));
+  }
+}
+
 async function handleCreateTextSession(
   port: browser.Runtime.Port,
   requestId: string,
@@ -420,6 +497,7 @@ async function handleTextSessionPrompt(
     const llmResponse = await llmChat({
       messages: session.messages.map(m => ({ role: m.role, content: m.content })),
       model: session.options.model,
+      provider: session.options.provider,  // Pass provider if specified
       temperature: session.options.temperature,
       // No tools for basic text session
     });
@@ -705,7 +783,7 @@ async function handleAgentRun(
   port: browser.Runtime.Port,
   requestId: string,
   origin: string,
-  payload: { task: string; tools?: string[]; requireCitations?: boolean; maxToolCalls?: number }
+  payload: { task: string; tools?: string[]; provider?: string; requireCitations?: boolean; maxToolCalls?: number }
 ): Promise<void> {
   console.log('🔧 handleAgentRun v2 - using bridge orchestrator');
   log('[AgentRun] Starting with task:', payload.task?.substring(0, 50));
@@ -715,7 +793,13 @@ async function handleAgentRun(
     return;
   }
   
-  const { task, requireCitations, maxToolCalls = 5 } = payload;
+  const { task, provider, requireCitations, maxToolCalls = 5 } = payload;
+  
+  // Note: provider selection is not yet implemented in chat sessions
+  // TODO: Pass provider to createChatSession when bridge supports it
+  if (provider) {
+    log('[AgentRun] Provider specified:', provider, '(will use for future implementation)');
+  }
   
   // Track this streaming request
   streamingRequests.set(requestId, { port, aborted: false });
@@ -745,18 +829,17 @@ async function handleAgentRun(
       return;
     }
     
-    // Check if we have any connected servers
+    // Check if we have any connected servers (chat can work without them, just no tools)
     const connections = connectionsResponse.connections || [];
-    if (connections.length === 0) {
-      log('[AgentRun] No MCP servers connected');
-      sendEvent({ type: 'error', error: createError('ERR_INTERNAL', 'No MCP servers connected. Please start and connect at least one server in the Harbor sidebar.') });
-      return;
-    }
-    
     const enabledServers = connections.map(c => c.serverId);
     const totalTools = connections.reduce((sum, c) => sum + c.toolCount, 0);
     
-    sendEvent({ type: 'status', message: `Found ${totalTools} tools from ${enabledServers.length} servers` });
+    if (connections.length === 0) {
+      log('[AgentRun] No MCP servers connected - will chat without tools');
+      sendEvent({ type: 'status', message: 'No MCP servers connected - chatting without tools' });
+    } else {
+      sendEvent({ type: 'status', message: `Found ${totalTools} tools from ${enabledServers.length} servers` });
+    }
     
     // Check if aborted
     const req = streamingRequests.get(requestId);
@@ -919,6 +1002,14 @@ function handleProviderMessage(
     case 'list_permissions':
       handleListPermissions(port, requestId, origin);
       break;
+    
+    case 'llm_list_providers':
+      handleLLMListProviders(port, requestId, origin);
+      break;
+      
+    case 'llm_get_active':
+      handleLLMGetActive(port, requestId, origin);
+      break;
       
     case 'create_text_session':
       handleCreateTextSession(port, requestId, origin, payload as { options?: TextSessionOptions });
@@ -946,7 +1037,7 @@ function handleProviderMessage(
       break;
       
     case 'agent_run':
-      handleAgentRun(port, requestId, origin, payload as { task: string; tools?: string[]; requireCitations?: boolean; maxToolCalls?: number });
+      handleAgentRun(port, requestId, origin, payload as { task: string; tools?: string[]; provider?: string; requireCitations?: boolean; maxToolCalls?: number });
       break;
       
     case 'agent_run_abort':

@@ -27,6 +27,7 @@ const ONCE_GRANT_TTL_MS = 10 * 60 * 1000;
 export const ALL_SCOPES: PermissionScope[] = [
   'model:prompt',
   'model:tools',
+  'model:list',
   'mcp:tools.list',
   'mcp:tools.call',
   'browser:activeTab.read',
@@ -37,6 +38,7 @@ export const ALL_SCOPES: PermissionScope[] = [
 export const SCOPE_DESCRIPTIONS: Record<PermissionScope, string> = {
   'model:prompt': 'Generate text using AI models',
   'model:tools': 'Use AI with tool calling capabilities',
+  'model:list': 'List configured AI providers and models',
   'mcp:tools.list': 'List available MCP tools',
   'mcp:tools.call': 'Execute MCP tools',
   'browser:activeTab.read': 'Read content from the currently active browser tab',

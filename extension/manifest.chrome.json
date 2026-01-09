@@ -9,7 +9,8 @@
     "tabs",
     "activeTab",
     "scripting",
-    "management"
+    "management",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://registry.modelcontextprotocol.io/*",
@@ -17,12 +18,14 @@
     "<all_urls>"
   ],
   "background": {
-    "scripts": ["background.js"],
+    "service_worker": "background.js",
     "type": "module"
   },
-  "sidebar_action": {
+  "side_panel": {
+    "default_path": "sidebar.html"
+  },
+  "action": {
     "default_title": "Harbor",
-    "default_panel": "sidebar.html",
     "default_icon": "icons/harbor-icon.svg"
   },
   "content_scripts": [
@@ -45,10 +48,10 @@
       "matches": ["http://*/*", "https://*/*"]
     }
   ],
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "raffi.krikorian.harbor@gmail.com",
-      "strict_min_version": "112.0"
-    }
+  "icons": {
+    "16": "icons/harbor-icon.svg",
+    "48": "icons/harbor-icon.svg",
+    "128": "icons/harbor-icon.svg"
   }
 }
+

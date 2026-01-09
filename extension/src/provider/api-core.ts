@@ -19,6 +19,8 @@ import type {
   StreamToken,
   AgentRunOptions,
   RunEvent,
+  LLMProviderInfo,
+  ActiveLLMConfig,
 } from './types';
 
 // =============================================================================
@@ -85,6 +87,16 @@ export interface AIApi {
   languageModel: {
     capabilities(): Promise<AILanguageModelCapabilities>;
     create(options?: AILanguageModelCreateOptions): Promise<AITextSession>;
+  };
+  /**
+   * Providers namespace for querying and managing LLM providers.
+   * Requires 'model:list' permission.
+   */
+  providers: {
+    /** List all configured LLM providers and their availability */
+    list(): Promise<LLMProviderInfo[]>;
+    /** Get the currently active (default) provider and model */
+    getActive(): Promise<ActiveLLMConfig>;
   };
 }
 
@@ -319,6 +331,29 @@ export function createAiApi(transport: Transport): AIApi {
         return sessionObj;
       },
     },
+    
+    /**
+     * Providers namespace for querying and managing LLM providers.
+     * Requires 'model:list' permission.
+     */
+    providers: {
+      /**
+       * List all configured LLM providers and their availability.
+       * Returns information about each provider including whether it's active.
+       */
+      async list(): Promise<LLMProviderInfo[]> {
+        const result = await transport.sendRequest<{ providers: LLMProviderInfo[] }>('llm_list_providers');
+        return result.providers;
+      },
+      
+      /**
+       * Get the currently active (default) provider and model.
+       */
+      async getActive(): Promise<ActiveLLMConfig> {
+        const result = await transport.sendRequest<ActiveLLMConfig>('llm_get_active');
+        return result;
+      },
+    },
   };
 }
 
@@ -456,6 +491,7 @@ export function createAgentApi(transport: Transport): AgentApi {
       transport.sendMessageWithId(requestId, 'agent_run', {
         task: options.task,
         tools: options.tools,
+        provider: options.provider,
         requireCitations: options.requireCitations,
         maxToolCalls: options.maxToolCalls,
       });
