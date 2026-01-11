@@ -154,7 +154,7 @@ interface OllamaInfo {
 
 interface LLMSetupStatus {
   available: boolean;
-  runningProvider: 'llamafile' | 'ollama' | 'external' | null;
+  runningProvider: 'ollama' | 'external' | null;
   runningUrl: string | null;
   downloadedModels: string[];
   activeModel: string | null;
@@ -335,16 +335,26 @@ const llmDeleteBtn = document.getElementById('llm-delete-btn') as HTMLButtonElem
 const llmDownloadedModelName = document.getElementById('llm-downloaded-model-name') as HTMLSpanElement;
 
 // Docker elements
+const dockerStatusContainer = document.getElementById('docker-status-container') as HTMLDivElement;
 const dockerStatusIndicator = document.getElementById('docker-status-indicator') as HTMLDivElement;
 const dockerStatusText = document.getElementById('docker-status-text') as HTMLSpanElement;
 const dockerDetails = document.getElementById('docker-details') as HTMLDivElement;
+const dockerContainersSection = document.getElementById('docker-containers') as HTMLDivElement;
+
+// Ollama runtime elements
+const ollamaRuntimeContainer = document.getElementById('ollama-runtime-container') as HTMLDivElement;
+const ollamaRuntimeIndicator = document.getElementById('ollama-runtime-indicator') as HTMLDivElement;
+const ollamaRuntimeText = document.getElementById('ollama-runtime-text') as HTMLSpanElement;
+const ollamaRuntimeDetails = document.getElementById('ollama-runtime-details') as HTMLDivElement;
 
 // Python elements
+const pythonStatusContainer = document.getElementById('python-status-container') as HTMLDivElement;
 const pythonStatusIndicator = document.getElementById('python-status-indicator') as HTMLDivElement;
 const pythonStatusText = document.getElementById('python-status-text') as HTMLSpanElement;
 const pythonDetails = document.getElementById('python-details') as HTMLDivElement;
 
 // Node.js elements
+const nodeStatusContainer = document.getElementById('node-status-container') as HTMLDivElement;
 const nodeStatusIndicator = document.getElementById('node-status-indicator') as HTMLDivElement;
 const nodeStatusText = document.getElementById('node-status-text') as HTMLSpanElement;
 const nodeDetails = document.getElementById('node-details') as HTMLDivElement;
@@ -1796,8 +1806,7 @@ function renderLLMStatus(): void {
     llmStatusText.textContent = 'Available';
     
     const provider = llmStatus.runningProvider || 'Unknown';
-    const providerName = provider === 'llamafile' ? 'Llamafile' : 
-                         provider === 'ollama' ? 'Ollama' : 'External';
+    const providerName = provider === 'ollama' ? 'Local LLM' : 'External';
     
     // Build details HTML
     let detailsHtml = `<strong>${providerName}</strong>`;
@@ -1834,15 +1843,17 @@ function renderLLMStatus(): void {
     llmDownloadSection.style.display = 'none';
     llmProgressSection.style.display = 'none';
     
-    // Show controls for llamafile (we can stop it even if we didn't start it)
-    if (llmStatus.runningProvider === 'llamafile') {
+    // Show controls for local LLM (Ollama)
+    if (llmStatus.runningProvider === 'ollama') {
       llmControlSection.style.display = 'block';
       llmStartBtn.style.display = 'none';
       llmStopBtn.style.display = 'flex';
       llmDeleteBtn.style.display = 'none'; // Can't delete while running
-      llmDownloadedModelName.textContent = llmStatus.activeModel || llmStatus.downloadedModels[0] || 'llamafile';
+      const modelName = llmStatus.activeModel || llmStatus.downloadedModels[0] || 
+        'Local LLM';
+      llmDownloadedModelName.textContent = modelName;
     } else {
-      // External LLM (Ollama or other) - no stop button
+      // External LLM - no stop button
       llmControlSection.style.display = 'none';
     }
     
@@ -1966,10 +1977,15 @@ async function startLocalLLM(): Promise<void> {
     }) as { type: string; success?: boolean; url?: string };
     
     if (response.type === 'llm_start_local_result' && response.success) {
+      // Small delay to ensure Ollama is fully ready before detection
+      await new Promise(r => setTimeout(r, 1000));
+      
       // Trigger LLM detection and refresh all LLM UI components
       await browser.runtime.sendMessage({ type: 'llm_detect' });
       await checkLLMStatus();
-      await loadLLMConfig(); // Refresh provider dropdown so llamafile shows as available
+      await loadLLMConfig(); // Refresh provider dropdown to show Local LLM as available
+      
+      console.log('[Sidebar] Local LLM started, provider dropdown refreshed');
     } else if (response.type === 'error') {
       const error = response as unknown as { error: { message: string } };
       alert(`Failed to start LLM: ${error.error.message}`);
@@ -1994,6 +2010,7 @@ async function stopLocalLLM(): Promise<void> {
     });
     
     await checkLLMStatus();
+    await loadLLMConfig(); // Refresh provider dropdown to show Ollama as offline
     
   } catch (err) {
     console.error('Failed to stop LLM:', err);
@@ -2028,6 +2045,7 @@ async function deleteLocalLLM(): Promise<void> {
       // Clear local status and refresh
       llmStatus = null;
       await checkLLMStatus();
+      await loadLLMConfig(); // Refresh provider dropdown to show Ollama as offline
       renderLLMStatus();
     } else if (response.type === 'error') {
       console.error('Failed to delete model:', response.error);
@@ -2088,8 +2106,13 @@ async function checkDockerStatus(): Promise<void> {
     }
   } catch (err) {
     console.error('Failed to check Docker status:', err);
-    dockerStatusText.textContent = 'Error checking Docker';
+    dockerStatusContainer.classList.remove('available');
+    dockerStatusContainer.classList.add('unavailable');
+    dockerStatusText.textContent = 'Error';
+    dockerStatusText.className = 'runtime-dep-status';
     dockerStatusIndicator.className = 'status-indicator disconnected';
+    dockerDetails.innerHTML = `<span class="hint">Error checking Docker status</span>`;
+    dockerContainersSection.innerHTML = '';
     updateRuntimeStatusDot();
   }
 }
@@ -2098,11 +2121,15 @@ function renderDockerStatus(): void {
   if (!dockerStatus) return;
 
   if (dockerStatus.available) {
-    dockerStatusIndicator.className = 'status-indicator connected';
-    dockerStatusText.className = 'status-text connected';
-    dockerStatusText.textContent = `🐳 Docker`;
+    // Update card styling
+    dockerStatusContainer.classList.remove('unavailable');
+    dockerStatusContainer.classList.add('available');
     
-    let detailsHtml = `<strong>v${dockerStatus.version || 'unknown'}</strong>`;
+    dockerStatusIndicator.className = 'status-indicator connected';
+    dockerStatusText.className = 'runtime-dep-status available';
+    dockerStatusText.textContent = 'Available';
+    
+    let detailsHtml = `<span class="version">v${dockerStatus.version || 'unknown'}</span>`;
     
     // Show image status if available
     if (dockerStatus.images) {
@@ -2112,42 +2139,52 @@ function renderDockerStatus(): void {
         .join(', ');
       
       if (builtImages) {
-        detailsHtml += `<br><span class="text-xs text-muted">Images: ${builtImages}</span>`;
-      } else {
-        detailsHtml += `<br><span class="text-xs text-muted">No images built yet</span>`;
-      }
-    }
-    
-    // Show running containers
-    if (dockerStatus.containers && dockerStatus.containers.length > 0) {
-      const runningContainers = dockerStatus.containers.filter(c => c.status === 'running');
-      
-      if (runningContainers.length > 0) {
-        detailsHtml += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border-subtle);">`;
-        detailsHtml += `<div class="text-xs text-muted" style="margin-bottom: 4px;">Running Containers (${runningContainers.length}):</div>`;
-        
-        for (const container of runningContainers) {
-          detailsHtml += `
-            <div style="display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 11px;">
-              <span style="width: 6px; height: 6px; background: var(--color-success); border-radius: 50%; flex-shrink: 0;"></span>
-              <span style="font-weight: 500; color: var(--text-primary);">${escapeHtml(container.serverId)}</span>
-              ${container.uptime ? `<span class="text-muted">· ${escapeHtml(container.uptime)}</span>` : ''}
-              ${container.cpu ? `<span class="text-muted">· CPU: ${escapeHtml(container.cpu)}</span>` : ''}
-              ${container.memory ? `<span class="text-muted">· ${escapeHtml(container.memory.split(' / ')[0])}</span>` : ''}
-            </div>
-          `;
-        }
-        
-        detailsHtml += `</div>`;
+        detailsHtml += `<br><span class="hint">Images: ${builtImages}</span>`;
       }
     }
     
     dockerDetails.innerHTML = detailsHtml;
+    
+    // Render running containers in the dedicated section
+    if (dockerStatus.containers && dockerStatus.containers.length > 0) {
+      const runningContainers = dockerStatus.containers.filter(c => c.status === 'running');
+      
+      if (runningContainers.length > 0) {
+        let containersHtml = `<div class="docker-containers-header">Running <span class="count">${runningContainers.length}</span></div>`;
+        
+        for (const container of runningContainers) {
+          const metaParts: string[] = [];
+          if (container.uptime) metaParts.push(escapeHtml(container.uptime));
+          if (container.memory) metaParts.push(escapeHtml(container.memory.split(' / ')[0]));
+          
+          containersHtml += `
+            <div class="docker-container-item">
+              <span class="docker-container-dot"></span>
+              <span class="docker-container-name">${escapeHtml(container.serverId)}</span>
+              ${metaParts.length > 0 ? `<span class="docker-container-meta">${metaParts.join(' · ')}</span>` : ''}
+            </div>
+          `;
+        }
+        
+        dockerContainersSection.innerHTML = containersHtml;
+      } else {
+        dockerContainersSection.innerHTML = '';
+      }
+    } else {
+      dockerContainersSection.innerHTML = '';
+    }
   } else {
+    // Update card styling
+    dockerStatusContainer.classList.remove('available');
+    dockerStatusContainer.classList.add('unavailable');
+    
     dockerStatusIndicator.className = 'status-indicator disconnected';
-    dockerStatusText.className = 'status-text disconnected';
-    dockerStatusText.textContent = '🐳 Docker';
-    dockerDetails.innerHTML = `<span class="text-xs text-muted">${dockerStatus.error || 'Not available'}</span>`;
+    dockerStatusText.className = 'runtime-dep-status';
+    dockerStatusText.textContent = 'Not available';
+    
+    let hint = dockerStatus.error || 'Not installed';
+    dockerDetails.innerHTML = `<span class="hint">${hint}</span><br><a href="https://docker.com/products/docker-desktop/" target="_blank">Install Docker Desktop →</a>`;
+    dockerContainersSection.innerHTML = '';
   }
 }
 
@@ -2189,11 +2226,24 @@ async function checkRuntimes(): Promise<void> {
     }
   } catch (err) {
     console.error('Failed to check runtimes:', err);
-    // Set error state for Python and Node
+    // Set error state for all runtimes
+    ollamaRuntimeContainer.classList.remove('available');
+    ollamaRuntimeContainer.classList.add('unavailable');
+    ollamaRuntimeIndicator.className = 'status-indicator disconnected';
+    ollamaRuntimeText.textContent = 'Error';
+    ollamaRuntimeText.className = 'runtime-dep-status';
+    
+    pythonStatusContainer.classList.remove('available');
+    pythonStatusContainer.classList.add('unavailable');
     pythonStatusIndicator.className = 'status-indicator disconnected';
     pythonStatusText.textContent = 'Error';
+    pythonStatusText.className = 'runtime-dep-status';
+    
+    nodeStatusContainer.classList.remove('available');
+    nodeStatusContainer.classList.add('unavailable');
     nodeStatusIndicator.className = 'status-indicator disconnected';
     nodeStatusText.textContent = 'Error';
+    nodeStatusText.className = 'runtime-dep-status';
   }
 }
 
@@ -2202,45 +2252,76 @@ function renderRuntimeStatus(): void {
 
   const pythonRuntime = runtimesCache.runtimes.find(r => r.type === 'python');
   const nodeRuntime = runtimesCache.runtimes.find(r => r.type === 'node');
+  const ollamaRuntime = runtimesCache.runtimes.find(r => r.type === 'ollama');
+
+  // Render Ollama status
+  if (ollamaRuntime) {
+    if (ollamaRuntime.available) {
+      ollamaRuntimeContainer.classList.remove('unavailable');
+      ollamaRuntimeContainer.classList.add('available');
+      ollamaRuntimeIndicator.className = 'status-indicator connected';
+      ollamaRuntimeText.className = 'runtime-dep-status available';
+      ollamaRuntimeText.textContent = 'Available';
+      
+      let details = `<span class="version">v${ollamaRuntime.version || 'installed'}</span>`;
+      details += `<br><span class="hint">Local LLM with GPU acceleration</span>`;
+      ollamaRuntimeDetails.innerHTML = details;
+    } else {
+      ollamaRuntimeContainer.classList.remove('available');
+      ollamaRuntimeContainer.classList.add('unavailable');
+      ollamaRuntimeIndicator.className = 'status-indicator disconnected';
+      ollamaRuntimeText.className = 'runtime-dep-status';
+      ollamaRuntimeText.textContent = 'Not installed';
+      ollamaRuntimeDetails.innerHTML = `<a href="https://ollama.com/" target="_blank">Install Ollama →</a>`;
+    }
+  }
 
   // Render Python status
   if (pythonRuntime) {
     if (pythonRuntime.available) {
+      pythonStatusContainer.classList.remove('unavailable');
+      pythonStatusContainer.classList.add('available');
       pythonStatusIndicator.className = 'status-indicator connected';
-      pythonStatusText.className = 'status-text connected';
-      pythonStatusText.textContent = '🐍 Python';
+      pythonStatusText.className = 'runtime-dep-status available';
+      pythonStatusText.textContent = 'Available';
       
-      let details = `<strong>v${pythonRuntime.version || 'unknown'}</strong>`;
+      let details = `<span class="version">v${pythonRuntime.version || 'unknown'}</span>`;
       if (pythonRuntime.runnerCmd) {
-        details += `<br><span class="text-xs text-muted">Runner: ${escapeHtml(pythonRuntime.runnerCmd)}</span>`;
+        details += `<br><span class="hint">Runner: ${escapeHtml(pythonRuntime.runnerCmd)}</span>`;
       }
       pythonDetails.innerHTML = details;
     } else {
+      pythonStatusContainer.classList.remove('available');
+      pythonStatusContainer.classList.add('unavailable');
       pythonStatusIndicator.className = 'status-indicator disconnected';
-      pythonStatusText.className = 'status-text disconnected';
-      pythonStatusText.textContent = '🐍 Python';
-      pythonDetails.innerHTML = `<span class="text-xs text-muted">Not installed</span>`;
+      pythonStatusText.className = 'runtime-dep-status';
+      pythonStatusText.textContent = 'Not installed';
+      pythonDetails.innerHTML = `<span class="hint">Required for Python MCP servers</span>`;
     }
   }
 
   // Render Node.js status
   if (nodeRuntime) {
     if (nodeRuntime.available) {
+      nodeStatusContainer.classList.remove('unavailable');
+      nodeStatusContainer.classList.add('available');
       nodeStatusIndicator.className = 'status-indicator connected';
-      nodeStatusText.className = 'status-text connected';
-      nodeStatusText.textContent = '📦 Node.js';
+      nodeStatusText.className = 'runtime-dep-status available';
+      nodeStatusText.textContent = 'Available';
       
-      let details = `<strong>v${nodeRuntime.version || 'unknown'}</strong>`;
+      let details = `<span class="version">v${nodeRuntime.version || 'unknown'}</span>`;
       if (nodeRuntime.runnerCmd) {
-        details += `<br><span class="text-xs text-muted">Runner: ${escapeHtml(nodeRuntime.runnerCmd)}</span>`;
+        details += `<br><span class="hint">Runner: ${escapeHtml(nodeRuntime.runnerCmd)}</span>`;
       }
-      details += `<br><span class="text-xs text-muted" style="font-style: italic;">Bridge uses bundled Node.js</span>`;
+      details += `<br><span class="hint" style="font-style: italic;">Bridge uses bundled Node.js</span>`;
       nodeDetails.innerHTML = details;
     } else {
+      nodeStatusContainer.classList.remove('unavailable');
+      nodeStatusContainer.classList.add('available'); // Node is always "available" via bundled
       nodeStatusIndicator.className = 'status-indicator warning';
-      nodeStatusText.className = 'status-text warning';
-      nodeStatusText.textContent = '📦 Node.js';
-      nodeDetails.innerHTML = `<span class="text-xs text-muted">External Node.js not found<br><span style="font-style: italic;">Bridge uses bundled Node.js</span></span>`;
+      nodeStatusText.className = 'runtime-dep-status';
+      nodeStatusText.textContent = 'Bundled';
+      nodeDetails.innerHTML = `<span class="hint">External Node.js not found<br><span style="font-style: italic;">Bridge uses bundled Node.js</span></span>`;
     }
   }
 }
@@ -2252,7 +2333,13 @@ function updateCapabilitiesSummary(): void {
 
   const dockerRuntime = runtimesCache.runtimes.find(r => r.type === 'docker');
   const pythonRuntime = runtimesCache.runtimes.find(r => r.type === 'python');
+  const ollamaRuntime = runtimesCache.runtimes.find(r => r.type === 'ollama');
   // Note: Node.js is always available via bundled bridge, so we don't warn about it
+
+  // Ollama is recommended for local LLMs with GPU acceleration
+  if (!ollamaRuntime?.available) {
+    messages.push('• <strong>Ollama not installed:</strong> For local AI with GPU acceleration, <a href="https://ollama.com/" target="_blank" style="color: var(--color-accent-primary);">install Ollama</a>');
+  }
 
   // Docker is the most important - it enables running ANY server securely
   if (!dockerRuntime?.available && !dockerStatus?.available) {
@@ -2316,9 +2403,10 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       llmDownloadBtn.disabled = false;
       
       // Update status and UI after a brief delay
-      setTimeout(() => {
+      setTimeout(async () => {
         llmProgressSection.style.display = 'none';
-        checkLLMStatus();
+        await checkLLMStatus();
+        await loadLLMConfig(); // Refresh provider dropdown
       }, 2000);
     } else if (msg.status === 'error') {
       // Download failed
@@ -3084,8 +3172,7 @@ const PROVIDER_INFO: Record<string, { name: string; hint: string; envVar: string
     hint: 'Get your API key from <a href="https://console.groq.com/keys" target="_blank">console.groq.com</a>',
     envVar: 'GROQ_API_KEY'
   },
-  ollama: { name: 'Ollama', hint: 'Local LLM - no API key required', envVar: '' },
-  llamafile: { name: 'llamafile', hint: 'Local LLM - no API key required', envVar: '' },
+  ollama: { name: 'Local LLM', hint: 'Runs locally via Docker - no API key required', envVar: '' },
 };
 
 /**

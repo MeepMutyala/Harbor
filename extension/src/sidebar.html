@@ -1052,6 +1052,206 @@
       color: var(--color-text-primary);
     }
 
+    /* Runtime Dependencies Section */
+    .runtime-deps-section {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: 1px solid var(--color-border-subtle);
+    }
+
+    .runtime-deps-header {
+      margin-bottom: var(--space-3);
+    }
+
+    .runtime-deps-title {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wide);
+    }
+
+    .runtime-deps-grid {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .runtime-dep-card {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-sm);
+      padding: var(--space-2) var(--space-3);
+      transition: border-color var(--transition-fast);
+    }
+
+    .runtime-dep-card:hover {
+      border-color: var(--color-border-default);
+    }
+
+    .runtime-dep-card.available {
+      border-left: 3px solid var(--color-success);
+    }
+
+    .runtime-dep-card.unavailable {
+      border-left: 3px solid var(--color-text-muted);
+      opacity: 0.8;
+    }
+
+    .runtime-dep-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .runtime-dep-icon {
+      font-size: var(--text-base);
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .runtime-dep-name {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-primary);
+      flex: 1;
+    }
+
+    .runtime-dep-status {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .runtime-dep-status.available {
+      color: var(--color-success);
+    }
+
+    .runtime-dep-details {
+      margin-top: var(--space-1);
+      margin-left: calc(var(--text-base) + var(--space-2));
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
+    .runtime-dep-details strong {
+      color: var(--color-text-primary);
+      font-weight: var(--weight-medium);
+    }
+
+    .runtime-dep-details .version {
+      color: var(--color-text-primary);
+      font-weight: var(--weight-medium);
+    }
+
+    .runtime-dep-details .hint {
+      color: var(--color-text-muted);
+      font-size: var(--text-2xs);
+    }
+
+    .runtime-dep-details a {
+      color: var(--color-accent-primary);
+      text-decoration: none;
+    }
+
+    .runtime-dep-details a:hover {
+      text-decoration: underline;
+    }
+
+    /* Docker containers nested section */
+    .docker-containers-section {
+      margin-top: var(--space-2);
+      margin-left: calc(var(--text-base) + var(--space-2));
+    }
+
+    .docker-containers-section:empty {
+      display: none;
+    }
+
+    .docker-containers-header {
+      font-size: var(--text-2xs);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-1);
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .docker-containers-header .count {
+      background: var(--color-success-subtle);
+      color: var(--color-success);
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+      font-weight: var(--weight-medium);
+    }
+
+    .docker-container-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-surface-primary);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      margin-bottom: var(--space-1);
+    }
+
+    .docker-container-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .docker-container-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--color-success);
+      border-radius: 50%;
+      flex-shrink: 0;
+      animation: pulse-dot 2s infinite;
+    }
+
+    .docker-container-name {
+      font-weight: var(--weight-medium);
+      color: var(--color-text-primary);
+      flex: 1;
+    }
+
+    .docker-container-meta {
+      color: var(--color-text-muted);
+      font-size: var(--text-2xs);
+    }
+
+    /* Capabilities warning */
+    .capabilities-warning {
+      margin-top: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-warning-subtle);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--color-warning);
+    }
+
+    .capabilities-warning-title {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-medium);
+      color: var(--color-warning);
+      margin-bottom: var(--space-1);
+    }
+
+    .capabilities-warning-messages {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+    }
+
+    .capabilities-warning-messages a {
+      color: var(--color-accent-primary);
+      text-decoration: none;
+    }
+
+    .capabilities-warning-messages a:hover {
+      text-decoration: underline;
+    }
+
     .llm-download-section,
     .llm-progress-section,
     .llm-control-section {
@@ -1547,45 +1747,62 @@
         </div>
         
         <!-- Runtime Dependencies Section -->
-        <div id="runtime-deps-container" class="status-section" style="margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border-subtle);">
-          <div class="status-row" style="margin-bottom: var(--space-2);">
-            <span class="status-label" style="font-weight: 600;">🔧 Runtime Dependencies</span>
+        <div id="runtime-deps-container" class="runtime-deps-section">
+          <div class="runtime-deps-header">
+            <span class="runtime-deps-title">Runtime Dependencies</span>
           </div>
           
-          <!-- Docker -->
-          <div id="docker-status-container" style="margin-bottom: var(--space-2);">
-            <div class="status-row">
-              <span class="status-label">🐳 Docker</span>
-              <div id="docker-status-indicator" class="status-indicator disconnected"></div>
-              <span id="docker-status-text" class="status-text disconnected">Checking...</span>
+          <div class="runtime-deps-grid">
+            <!-- Ollama -->
+            <div id="ollama-runtime-container" class="runtime-dep-card">
+              <div class="runtime-dep-header">
+                <span class="runtime-dep-icon">🦙</span>
+                <span class="runtime-dep-name">Ollama</span>
+                <div id="ollama-runtime-indicator" class="status-indicator disconnected"></div>
+                <span id="ollama-runtime-text" class="runtime-dep-status">Checking...</span>
+              </div>
+              <div id="ollama-runtime-details" class="runtime-dep-details"></div>
             </div>
-            <div id="docker-details" class="llm-details"></div>
-          </div>
-          
-          <!-- Python -->
-          <div id="python-status-container" style="margin-bottom: var(--space-2);">
-            <div class="status-row">
-              <span class="status-label">🐍 Python</span>
-              <div id="python-status-indicator" class="status-indicator disconnected"></div>
-              <span id="python-status-text" class="status-text disconnected">Checking...</span>
+            
+            <!-- Docker -->
+            <div id="docker-status-container" class="runtime-dep-card">
+              <div class="runtime-dep-header">
+                <span class="runtime-dep-icon">🐳</span>
+                <span class="runtime-dep-name">Docker</span>
+                <div id="docker-status-indicator" class="status-indicator disconnected"></div>
+                <span id="docker-status-text" class="runtime-dep-status">Checking...</span>
+              </div>
+              <div id="docker-details" class="runtime-dep-details"></div>
+              <div id="docker-containers" class="docker-containers-section"></div>
             </div>
-            <div id="python-details" class="llm-details"></div>
-          </div>
-          
-          <!-- Node.js -->
-          <div id="node-status-container">
-            <div class="status-row">
-              <span class="status-label">📦 Node.js</span>
-              <div id="node-status-indicator" class="status-indicator disconnected"></div>
-              <span id="node-status-text" class="status-text disconnected">Checking...</span>
+            
+            <!-- Python -->
+            <div id="python-status-container" class="runtime-dep-card">
+              <div class="runtime-dep-header">
+                <span class="runtime-dep-icon">🐍</span>
+                <span class="runtime-dep-name">Python</span>
+                <div id="python-status-indicator" class="status-indicator disconnected"></div>
+                <span id="python-status-text" class="runtime-dep-status">Checking...</span>
+              </div>
+              <div id="python-details" class="runtime-dep-details"></div>
             </div>
-            <div id="node-details" class="llm-details"></div>
+            
+            <!-- Node.js -->
+            <div id="node-status-container" class="runtime-dep-card">
+              <div class="runtime-dep-header">
+                <span class="runtime-dep-icon">📦</span>
+                <span class="runtime-dep-name">Node.js</span>
+                <div id="node-status-indicator" class="status-indicator disconnected"></div>
+                <span id="node-status-text" class="runtime-dep-status">Checking...</span>
+              </div>
+              <div id="node-details" class="runtime-dep-details"></div>
+            </div>
           </div>
           
           <!-- Capabilities Summary (shown if anything is missing) -->
-          <div id="capabilities-summary" style="display: none; margin-top: var(--space-3); padding: var(--space-2); background: var(--color-warning-subtle); border-radius: var(--radius-sm); border-left: 3px solid var(--color-warning);">
-            <div style="font-size: var(--text-xs); font-weight: 500; color: var(--color-warning); margin-bottom: var(--space-1);">⚠️ Limited Capabilities</div>
-            <div id="capabilities-messages" style="font-size: var(--text-xs); color: var(--color-text-secondary);"></div>
+          <div id="capabilities-summary" class="capabilities-warning" style="display: none;">
+            <div class="capabilities-warning-title">⚠️ Limited Capabilities</div>
+            <div id="capabilities-messages" class="capabilities-warning-messages"></div>
           </div>
         </div>
       </div>
