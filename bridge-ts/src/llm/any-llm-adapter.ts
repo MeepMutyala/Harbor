@@ -317,6 +317,14 @@ export class AnyLLMAdapter implements LegacyLLMProvider {
       anyRequest.api_base = this.config.baseUrl;
     }
     
+    log(`[AnyLLMAdapter] Full request being sent:`);
+    log(`[AnyLLMAdapter]   model in request: ${anyRequest.model}`);
+    log(`[AnyLLMAdapter]   messages: ${anyRequest.messages?.length || 0}`);
+    log(`[AnyLLMAdapter]   tools in request: ${anyRequest.tools?.length || 0}`);
+    if (anyRequest.tools && anyRequest.tools.length > 0) {
+      log(`[AnyLLMAdapter]   tool names in request: ${anyRequest.tools.map(t => t.function.name).join(', ')}`);
+    }
+    
     try {
       log(`[AnyLLMAdapter] Sending request to ${this.providerType}...`);
       const response = await completion(anyRequest);
@@ -324,13 +332,20 @@ export class AnyLLMAdapter implements LegacyLLMProvider {
       log(`[AnyLLMAdapter]   finish_reason: ${response.choices[0]?.finish_reason}`);
       const msgContent = response.choices[0]?.message?.content;
       log(`[AnyLLMAdapter]   content length: ${typeof msgContent === 'string' ? msgContent.length : (Array.isArray(msgContent) ? msgContent.length : 0)}`);
-      log(`[AnyLLMAdapter]   tool_calls: ${response.choices[0]?.message?.tool_calls?.length || 0}`);
+      const toolCallCount = response.choices[0]?.message?.tool_calls?.length || 0;
+      log(`[AnyLLMAdapter]   tool_calls: ${toolCallCount}`);
+      if (toolCallCount > 0) {
+        const toolNames = response.choices[0]?.message?.tool_calls?.map(tc => tc.function.name) || [];
+        log(`[AnyLLMAdapter]   TOOL CALLS RECEIVED: ${toolNames.join(', ')}`);
+      }
       if (response.choices[0]?.message?.content) {
         const content = response.choices[0].message.content;
         const preview = typeof content === 'string' ? content.substring(0, 150) : '[multimodal]';
         log(`[AnyLLMAdapter]   content preview: ${preview}`);
       }
-      return this.convertResponse(response);
+      const convertedResponse = this.convertResponse(response);
+      log(`[AnyLLMAdapter]   converted toolCalls: ${convertedResponse.message.toolCalls?.length || 0}`);
+      return convertedResponse;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log(`[AnyLLMAdapter] chat failed: ${message}`);

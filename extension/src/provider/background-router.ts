@@ -562,15 +562,20 @@ async function handleToolsList(
   requestId: string,
   origin: string
 ): Promise<void> {
+  log('[ToolsList] Request from origin:', origin);
+  
   // Require mcp:tools.list permission
   if (!(await requirePermission(port, requestId, origin, 'mcp:tools.list'))) {
+    log('[ToolsList] Permission denied for mcp:tools.list');
     return;
   }
+  
+  log('[ToolsList] Permission granted, fetching connections...');
   
   try {
     // Get list of connected MCP servers and their tools using direct function call
     const connectionsResponse = await getMcpConnections();
-    log('[ToolsList] Connections response:', connectionsResponse);
+    log('[ToolsList] Connections response:', JSON.stringify(connectionsResponse));
     
     if (connectionsResponse.type === 'error' || !connectionsResponse.connections) {
       log('[ToolsList] No connections available');
@@ -584,9 +589,10 @@ async function handleToolsList(
     
     // For each connected server, get its tools
     for (const conn of connectionsResponse.connections) {
+      log(`[ToolsList] Server ${conn.serverId}: toolCount=${conn.toolCount}`);
       log(`[ToolsList] Getting tools from server: ${conn.serverId}`);
       const toolsResponse = await listMcpTools(conn.serverId);
-      log(`[ToolsList] Tools response for ${conn.serverId}:`, toolsResponse);
+      log(`[ToolsList] Tools response for ${conn.serverId}:`, JSON.stringify(toolsResponse));
       
       if (toolsResponse.tools) {
         for (const tool of toolsResponse.tools) {
