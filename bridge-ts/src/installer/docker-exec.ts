@@ -365,12 +365,31 @@ export class DockerExec {
 
   /**
    * Get stats for running Harbor containers.
+   * Note: docker stats doesn't support --filter, so we first get container names
+   * via docker ps, then pass those to docker stats.
    */
   getContainerStats(): ContainerStats[] {
     try {
       const dockerPath = resolveExecutable('docker');
+      
+      // First, get names of running harbor-mcp containers using docker ps (which DOES support --filter)
+      const containerNames = execSync(
+        `"${dockerPath}" ps --filter "name=harbor-mcp-" --format "{{.Names}}"`,
+        { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PATH: getEnhancedPath() } }
+      ).trim();
+      
+      if (!containerNames) {
+        return [];
+      }
+      
+      // Get stats for those containers
+      const names = containerNames.split('\n').filter(n => n.trim());
+      if (names.length === 0) {
+        return [];
+      }
+      
       const output = execSync(
-        `"${dockerPath}" stats --no-stream --filter "name=harbor-mcp-" --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}"`,
+        `"${dockerPath}" stats --no-stream --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}" ${names.join(' ')}`,
         { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PATH: getEnhancedPath() } }
       ).trim();
       
