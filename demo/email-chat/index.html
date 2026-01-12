@@ -835,7 +835,7 @@ console.<span class="method">log</span>(<span class="string">`Found ${emailTools
           <pre class="step-code"><span class="comment">// Launch the email chat interface</span>
 <span class="keyword">for await</span> (<span class="keyword">const</span> event <span class="keyword">of</span> window.<span class="property">agent</span>.<span class="method">run</span>({
   <span class="property">task</span>: <span class="string">'Summarize my recent unread emails'</span>,
-  <span class="property">maxSteps</span>: <span class="number">10</span>
+  <span class="property">maxToolCalls</span>: <span class="number">10</span>
 })) {
   console.<span class="method">log</span>(event);
 }</pre>

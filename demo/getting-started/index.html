@@ -359,7 +359,7 @@ tools.<span class="method">forEach</span>(t => console.<span class="method">log<
           <div class="step-description">Run an AI agent that can use tools to answer</div>
           <pre class="step-code"><span class="keyword">for await</span> (<span class="keyword">const</span> event <span class="keyword">of</span> window.<span class="property">agent</span>.<span class="method">run</span>({
   <span class="property">task</span>: <span class="string">'What is the current time?'</span>,
-  <span class="property">maxSteps</span>: <span class="number">3</span>
+  <span class="property">maxToolCalls</span>: <span class="number">3</span>
 })) {
   <span class="keyword">if</span> (event.<span class="property">type</span> === <span class="string">'tool_call'</span>) {
     console.<span class="method">log</span>(<span class="string">'Using tool:'</span>, event.<span class="property">tool</span>);
@@ -452,7 +452,7 @@ console.<span class="method">log</span>(response);</pre>
           // Use the agent API to run with tools
           for await (const event of window.agent.run({
             task: 'What is the current time? Please use the get_current_time tool.',
-            maxSteps: 5
+            maxToolCalls: 5
           })) {
             console.log('[Demo] Agent event:', event.type, event);
             

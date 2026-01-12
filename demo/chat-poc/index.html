@@ -745,13 +745,13 @@ console.log(response); <span class="comment">// "Paris is the capital of France.
       </div>
       
       <div class="docs-section">
-        <h4>🔧 window.tools — MCP Tools</h4>
+        <h4>🔧 window.agent.tools — MCP Tools</h4>
         <pre class="docs-code"><span class="comment">// List available MCP tools</span>
-<span class="keyword">const</span> tools = <span class="keyword">await</span> window.tools.list();
+<span class="keyword">const</span> tools = <span class="keyword">await</span> window.<span class="property">agent</span>.<span class="property">tools</span>.list();
 console.log(tools); <span class="comment">// [{name: "memory/add", ...}, ...]</span>
 
 <span class="comment">// Call a tool directly</span>
-<span class="keyword">const</span> result = <span class="keyword">await</span> window.tools.call({
+<span class="keyword">const</span> result = <span class="keyword">await</span> window.<span class="property">agent</span>.<span class="property">tools</span>.call({
   tool: <span class="string">"memory/add"</span>,
   args: { key: <span class="string">"name"</span>, value: <span class="string">"Alice"</span> }
 });</pre>
@@ -763,7 +763,7 @@ console.log(tools); <span class="comment">// [{name: "memory/add", ...}, ...]</s
 <span class="keyword">for await</span> (<span class="keyword">const</span> event <span class="keyword">of</span> window.agent.run({
   task: <span class="string">"Save my name as Alice and then retrieve it"</span>,
   tools: [<span class="string">"memory/add"</span>, <span class="string">"memory/get"</span>],
-  maxSteps: 5
+  maxToolCalls: 5
 })) {
   <span class="keyword">switch</span> (event.type) {
     <span class="keyword">case</span> <span class="string">"status"</span>: console.log(<span class="string">"Status:"</span>, event.message); <span class="keyword">break</span>;
