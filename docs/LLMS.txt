@@ -2,7 +2,7 @@
 
 > This document is optimized for AI coding assistants. For human-readable documentation, see DEVELOPER_GUIDE.md and JS_AI_PROVIDER_API.md.
 
-The Web Agent API is a specification for AI agent capabilities in web pages. Harbor is the reference implementation (Firefox extension + Node.js bridge).
+The Web Agent API is a proposed specification for AI agent capabilities in web pages. Harbor is an implementation (Firefox extension + Node.js bridge).
 
 ## Key Concepts
 

@@ -4,7 +4,7 @@
 
 This guide is for developers who want to build web applications using the **[Web Agent API](../spec/)** — the JavaScript APIs (`window.ai` and `window.agent`) that enable AI agent capabilities in web pages.
 
-Harbor is the reference implementation of the Web Agent API. If you're looking to install Harbor as an end user, see [User Guide](USER_GUIDE.md). If you're contributing to Harbor itself, see [Contributing](../CONTRIBUTING.md).
+Harbor is an implementation of the Web Agent API. If you're looking to install Harbor as an end user, see [User Guide](USER_GUIDE.md). If you're contributing to Harbor itself, see [Contributing](../CONTRIBUTING.md).
 
 ---
 

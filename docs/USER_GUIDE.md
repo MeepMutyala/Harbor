@@ -6,7 +6,7 @@ Welcome to Harbor! This guide will help you install, configure, and start using 
 
 Harbor is a Firefox browser extension that implements the **Web Agent API** — a proposed standard for bringing AI agent capabilities to web applications.
 
-**The Web Agent API** lets websites use AI models and tools (with your permission). Harbor is the reference implementation that makes it work in Firefox.
+**The Web Agent API** lets websites use AI models and tools (with your permission). Harbor is an implementation that makes it work in Firefox.
 
 **With Harbor, you can:**
 - Use AI-powered features on websites that support the Web Agent API

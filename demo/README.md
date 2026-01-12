@@ -2,7 +2,7 @@
 
 Example code showing how web pages can use the **Web Agent API** (`window.ai` and `window.agent`) to interact with AI models and MCP tools.
 
-These demos require **Harbor**, the reference implementation of the Web Agent API.
+These demos require **Harbor**, an implementation of the Web Agent API.
 
 ## Available Demos
 

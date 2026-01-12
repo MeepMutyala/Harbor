@@ -15,14 +15,14 @@ These APIs provide the primitives for building AI agents on the web — with use
 
 ## Relationship to Harbor
 
-**Web Agent API** is the specification. **Harbor** is Mozilla's reference implementation.
+**Web Agent API** is the specification. **Harbor** is an implementation.
 
 | | Web Agent API | Harbor |
 |---|---------------|--------|
 | **What** | The API specification | A Firefox extension |
 | **Defines** | `window.ai`, `window.agent` interfaces | How to actually run them |
 | **Scope** | Browser-agnostic standard | Firefox (and Chrome) implementation |
-| **Who** | Could be implemented by any browser or extension | Mozilla's implementation |
+| **Who** | Could be implemented by any browser or extension | This implementation |
 
 Think of it like the Fetch API (specification) vs. how Firefox implements it.
 
@@ -151,17 +151,17 @@ This is an active proposal. We welcome feedback via GitHub Issues and Discussion
 
 | Implementation | Platform | Status |
 |----------------|----------|--------|
-| **[Harbor](../)** | Firefox, Chrome | Reference implementation |
+| **[Harbor](../)** | Firefox, Chrome | Working implementation |
 | *(your implementation?)* | | |
 
 ## Related
 
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) — The protocol powering tool extensibility
 - [Chrome Built-in AI](https://developer.chrome.com/docs/ai/built-in) — Chrome's built-in AI initiative
-- [Harbor](../) — Mozilla's reference implementation
+- [Harbor](../) — Implementation of this proposal
 
 ---
 
-**Editors**: Raffi Krikorian &lt;raffi@mozilla.org&gt;
+**Author**: Raffi Krikorian
 
-*This proposal is not affiliated with or endorsed by any browser vendor.*
+*This is a personal proposal, not affiliated with or endorsed by any browser vendor.*

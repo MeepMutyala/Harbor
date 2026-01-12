@@ -1,7 +1,7 @@
 # Web Agent API Explainer
 
 **Status**: Draft Proposal  
-**Editors**: Raffi Krikorian &lt;raffi@mozilla.org&gt;  
+**Author**: Raffi Krikorian  
 **Last Updated**: January 2026  
 **Version**: 1.0
 
@@ -37,7 +37,7 @@ The Web Agent API exposes two global JavaScript APIs to web pages for AI capabil
 
 These APIs provide the web platform primitives needed to build AI agents — applications that can reason, use tools, and accomplish tasks on behalf of users. The specification is implementation-agnostic; any browser or extension can implement these APIs.
 
-**Reference Implementation:** [Harbor](../) is Mozilla's reference implementation, available as a Firefox extension with a Node.js bridge.
+**Implementation:** [Harbor](../) is an implementation of this proposal, available as a Firefox extension with a Node.js bridge.
 
 ### Design Principles
 
@@ -1124,7 +1124,7 @@ for await (const event of window.agent.run({
 
 ### Implementation-Specific Namespaces
 
-Implementations MAY expose additional namespaces for implementation-specific features. For example, Harbor (the reference implementation) exposes `window.harbor`:
+Implementations MAY expose additional namespaces for implementation-specific features. For example, Harbor exposes `window.harbor`:
 
 ```typescript
 // Harbor-specific (not part of the Web Agent API specification)
@@ -1536,7 +1536,7 @@ Implementations SHOULD adhere to these principles:
 
 ## Implementation Notes
 
-This section describes how the **reference implementation (Harbor)** works. Other implementations may use different architectures.
+This section describes how **Harbor** works. Other implementations may use different architectures.
 
 ### Reference Architecture (Harbor)
 
@@ -2092,5 +2092,5 @@ const caps = await window.agent.capabilities();
 
 ---
 
-*This document is a draft proposal for the Web Agent API. For the reference implementation, see [Harbor](../).*
+*This document is a draft proposal for the Web Agent API. For an implementation, see [Harbor](../).*
 

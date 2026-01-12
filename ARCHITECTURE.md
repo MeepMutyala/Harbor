@@ -1,6 +1,6 @@
 # Harbor Architecture
 
-This document describes the architecture of Harbor, the reference implementation of the **[Web Agent API](spec/)**.
+This document describes the architecture of Harbor, an implementation of the **[Web Agent API](spec/)**.
 
 Harbor is a Firefox extension that implements the Web Agent API specification, bringing AI and MCP (Model Context Protocol) capabilities to web applications.
 

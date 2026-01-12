@@ -1,7 +1,7 @@
 # Harbor
 
 <p align="center">
-  <strong>The reference implementation of the Web Agent API</strong>
+  <strong>An implementation of the Web Agent API</strong>
 </p>
 
 Harbor is a Firefox browser extension that implements the **[Web Agent API](spec/)** — a proposed standard for bringing AI agent capabilities to web applications.
@@ -13,7 +13,7 @@ The **Web Agent API** is a specification that defines how web pages can access A
 - **`window.ai`** — Text generation (Chrome Prompt API compatible)
 - **`window.agent`** — Tool calling, browser access, and autonomous agent tasks via [MCP](https://modelcontextprotocol.io/)
 
-**Harbor** is Mozilla's reference implementation of this specification, available as a Firefox extension with a native Node.js bridge. It connects web pages to local AI models (Ollama, llamafile) or cloud providers — with user consent and local-first privacy.
+**Harbor** implements this specification as a Firefox extension with a native Node.js bridge. It connects web pages to local AI models (Ollama, llamafile) or cloud providers — with user consent and local-first privacy.
 
 ```
 ┌──────────────────┐                              ┌──────────────────┐

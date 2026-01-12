@@ -2,7 +2,7 @@
 
 This document is a detailed reference for the **[Web Agent API](../spec/)** — the JavaScript APIs exposed to web pages for AI agent capabilities.
 
-Harbor is the reference implementation. For the formal specification, see [spec/explainer.md](../spec/explainer.md).
+Harbor is an implementation of this proposal. For the full specification, see [spec/explainer.md](../spec/explainer.md).
 
 > **For AI Agents:** See [LLMS.txt](./LLMS.txt) for a compact, token-efficient version of this documentation.
 
