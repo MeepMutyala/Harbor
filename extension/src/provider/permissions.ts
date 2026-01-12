@@ -494,4 +494,3 @@ export function __clearAllTemporaryGrants(): void {
 export function __getTemporaryGrants(): Map<string, TemporaryGrant> {
   return temporaryGrants;
 }
-
