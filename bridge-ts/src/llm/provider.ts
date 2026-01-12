@@ -1,8 +1,8 @@
 /**
  * LLM Provider interface.
  * 
- * Defines the contract for LLM providers (llamafile, ollama, OpenAI, etc.)
- * Start with llamafile, but design for swappability.
+ * Defines the contract for LLM providers (Ollama, OpenAI, Anthropic, etc.)
+ * Local LLM uses Ollama (via Docker on macOS).
  */
 
 // =============================================================================
@@ -196,7 +196,7 @@ export interface LLMProvider {
  * Configuration for an LLM provider.
  */
 export interface LLMProviderConfig {
-  /** Provider type (llamafile, ollama, openai, etc.) */
+  /** Provider type (ollama, openai, anthropic, etc.) */
   type: string;
   
   /** Base URL for the API */
