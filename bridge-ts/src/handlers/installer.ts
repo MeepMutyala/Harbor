@@ -157,27 +157,43 @@ export const handleInstallServer: MessageHandler = requireFields(
     const packageIndex = (ctx.message.package_index as number) || 0;
 
     try {
+      // Debug: log what we received
+      log(`[handleInstallServer] ========== INSTALL START ==========`);
+      log(`[handleInstallServer] Server name: ${catalogEntry.name}`);
+      log(`[handleInstallServer] repositoryUrl: ${catalogEntry.repositoryUrl || '(none)'}`);
+      log(`[handleInstallServer] homepageUrl: ${catalogEntry.homepageUrl || '(none)'}`);
+      log(`[handleInstallServer] packages: ${JSON.stringify(catalogEntry.packages || [])}`);
+      
       // First, check if the repo has a manifest file (manifest-first approach)
       const repoUrl = catalogEntry.repositoryUrl || catalogEntry.homepageUrl || '';
+      log(`[handleInstallServer] Using repoUrl for manifest check: ${repoUrl}`);
       const githubMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/\#\?]+)/);
       
       if (githubMatch) {
         const [, owner, repo] = githubMatch;
         const cleanRepo = repo.replace(/\.git$/, '');
         
-        log(`[handleInstallServer] Checking for manifest in ${owner}/${cleanRepo}`);
+        log(`[handleInstallServer] Fetching manifest from: ${owner}/${cleanRepo}`);
         const manifest = await fetchManifestFromGitHub(owner, cleanRepo);
         
         if (manifest) {
-          log(`[handleInstallServer] Found manifest, using manifest-based installation`);
+          log(`[handleInstallServer] ✓ MANIFEST FOUND!`);
+          log(`[handleInstallServer]   name: ${manifest.name}`);
+          log(`[handleInstallServer]   package.type: ${manifest.package.type}`);
+          log(`[handleInstallServer]   package.name: ${manifest.package.name || '(none)'}`);
+          log(`[handleInstallServer]   package.url: ${manifest.package.url || '(none)'}`);
+          log(`[handleInstallServer]   oauth: ${manifest.oauth ? 'YES' : 'no'}`);
+          log(`[handleInstallServer] Using manifest-based installation`);
           
           // Use manifest-based installation
           const result = await ctx.installer.installFromManifest(manifest);
           
           if (!result.success) {
+            log(`[handleInstallServer] ✗ Manifest install failed: ${result.error}`);
             return ctx.error('install_error', result.error || 'Manifest installation failed');
           }
           
+          log(`[handleInstallServer] ✓ Manifest install succeeded. Server ID: ${result.serverId}`);
           return ctx.result('install_server_result', { 
             server: result.server,
             hasManifest: true,
@@ -186,17 +202,23 @@ export const handleInstallServer: MessageHandler = requireFields(
           });
         }
         
-        log(`[handleInstallServer] No manifest found, falling back to best-effort installation`);
+        log(`[handleInstallServer] ✗ No manifest found at ${owner}/${cleanRepo}`);
+      } else {
+        log(`[handleInstallServer] ✗ repoUrl does not match GitHub pattern: ${repoUrl}`);
       }
 
+      log(`[handleInstallServer] Falling back to best-effort installation (package.json resolution)`);
+      
       // Fall back to best-effort installation (no manifest found)
       let entryWithPackage = catalogEntry;
       const hasPackageInfo = catalogEntry.packages && 
                              catalogEntry.packages.length > 0 && 
                              catalogEntry.packages[0].identifier;
       
+      log(`[handleInstallServer] hasPackageInfo: ${hasPackageInfo}`);
+      
       if (!hasPackageInfo && catalogEntry.homepageUrl?.includes('github.com')) {
-        log(`[handleInstallServer] Resolving package info from GitHub: ${catalogEntry.homepageUrl}`);
+        log(`[handleInstallServer] Resolving package from package.json: ${catalogEntry.homepageUrl}`);
         const resolved = await resolveGitHubPackage(catalogEntry.homepageUrl);
         
         if (resolved && resolved.name) {
@@ -211,7 +233,11 @@ export const handleInstallServer: MessageHandler = requireFields(
           }
           
           // Create a copy with resolved package info
-          log(`[handleInstallServer] Creating package entry: registryType=${registryType}, identifier=${resolved.name}, binaryUrl=${resolved.binaryUrl || 'none'}`);
+          log(`[handleInstallServer] ⚠ Using FALLBACK package.json resolution:`);
+          log(`[handleInstallServer]   Package name from package.json: ${resolved.name}`);
+          log(`[handleInstallServer]   Registry type: ${registryType}`);
+          log(`[handleInstallServer]   Binary URL: ${resolved.binaryUrl || 'none'}`);
+          log(`[handleInstallServer]   NOTE: This may not match the mcp-manifest.json if one exists!`);
           entryWithPackage = {
             ...catalogEntry,
             packages: [{
@@ -222,7 +248,6 @@ export const handleInstallServer: MessageHandler = requireFields(
               binaryUrl: resolved.binaryUrl,
             }],
           };
-          log(`[handleInstallServer] Resolved: ${resolved.name} (${resolved.type})${resolved.binaryUrl ? ` from ${resolved.binaryUrl}` : ''}`);
         } else {
           // Could not resolve package info
           const url = catalogEntry.homepageUrl || '';

@@ -534,27 +534,42 @@ const handleInstallServer: MessageHandler = async (message, _store, _client, _ca
   }
 
   try {
+    // Debug: log what we received
+    log(`[handleInstallServer] ========== INSTALL START ==========`);
+    log(`[handleInstallServer] Server name: ${catalogEntry.name}`);
+    log(`[handleInstallServer] repositoryUrl: ${catalogEntry.repositoryUrl || '(none)'}`);
+    log(`[handleInstallServer] homepageUrl: ${catalogEntry.homepageUrl || '(none)'}`);
+    log(`[handleInstallServer] packages: ${JSON.stringify(catalogEntry.packages || [])}`);
+    
     // First, check if the repo has a manifest file (manifest-first approach)
     const repoUrl = catalogEntry.repositoryUrl || catalogEntry.homepageUrl || '';
+    log(`[handleInstallServer] Using repoUrl for manifest check: ${repoUrl}`);
     const githubMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/\#\?]+)/);
     
     if (githubMatch) {
       const [, owner, repo] = githubMatch;
       const cleanRepo = repo.replace(/\.git$/, '');
       
-      log(`[handleInstallServer] Checking for manifest in ${owner}/${cleanRepo}`);
+      log(`[handleInstallServer] Fetching manifest from: ${owner}/${cleanRepo}`);
       const manifest = await fetchManifestFromGitHub(owner, cleanRepo);
       
       if (manifest) {
-        log(`[handleInstallServer] Found manifest, using manifest-based installation`);
+        log(`[handleInstallServer] ✓ MANIFEST FOUND!`);
+        log(`[handleInstallServer]   name: ${manifest.name}`);
+        log(`[handleInstallServer]   package.type: ${manifest.package.type}`);
+        log(`[handleInstallServer]   package.name: ${manifest.package.name || '(none)'}`);
+        log(`[handleInstallServer]   package.url: ${manifest.package.url || '(none)'}`);
+        log(`[handleInstallServer]   oauth: ${manifest.oauth ? 'YES' : 'no'}`);
         
         // Use manifest-based installation
         const result = await installer.installFromManifest(manifest);
         
         if (!result.success) {
+          log(`[handleInstallServer] ✗ Manifest install failed: ${result.error}`);
           return makeError(requestId, 'install_error', result.error || 'Manifest installation failed');
         }
         
+        log(`[handleInstallServer] ✓ Manifest install succeeded. Server ID: ${result.serverId}`);
         return makeResult('install_server', requestId, { 
           server: result.server,
           hasManifest: true,
@@ -563,17 +578,23 @@ const handleInstallServer: MessageHandler = async (message, _store, _client, _ca
         });
       }
       
-      log(`[handleInstallServer] No manifest found, falling back to best-effort installation`);
+      log(`[handleInstallServer] ✗ No manifest found for ${owner}/${cleanRepo}`);
+    } else {
+      log(`[handleInstallServer] ✗ repoUrl does not match GitHub pattern`);
     }
 
+    log(`[handleInstallServer] Falling back to package.json resolution`);
+    
     // Fall back to best-effort installation (no manifest found)
     let entryWithPackage = catalogEntry;
     const hasPackageInfo = catalogEntry.packages && 
                            catalogEntry.packages.length > 0 && 
                            catalogEntry.packages[0].identifier;
     
+    log(`[handleInstallServer] hasPackageInfo: ${hasPackageInfo}`);
+    
     if (!hasPackageInfo && catalogEntry.homepageUrl?.includes('github.com')) {
-      log(`[handleInstallServer] Resolving package info from GitHub: ${catalogEntry.homepageUrl}`);
+      log(`[handleInstallServer] ⚠ Resolving from package.json: ${catalogEntry.homepageUrl}`);
       const resolved = await resolveGitHubPackage(catalogEntry.homepageUrl);
       
       if (resolved && resolved.name) {
@@ -1529,9 +1550,22 @@ const handleMcpConnect: MessageHandler = async (message, _store, _client, _catal
     return makeError(requestId, 'not_found', `Server not installed: ${serverId}`);
   }
 
+  // Map manifest package types to runtime types
+  // 'git' type packages are npm packages installed from git repos
+  // 'docker' type packages are oci/container images
+  let effectivePackageType = server.packageType;
+  if (server.packageType === 'git') {
+    effectivePackageType = 'npm';
+  } else if (server.packageType === 'docker') {
+    effectivePackageType = 'oci';
+  } else if (server.packageType === 'github') {
+    // Legacy: github type should be treated as npm
+    effectivePackageType = 'npm';
+  }
+  
   // Check if supported package type
   const supportedTypes = ['npm', 'pypi', 'binary', 'http', 'sse', 'oci'];
-  if (!supportedTypes.includes(server.packageType)) {
+  if (!supportedTypes.includes(effectivePackageType)) {
     return makeError(
       requestId, 
       'unsupported_package_type', 
@@ -1541,11 +1575,11 @@ const handleMcpConnect: MessageHandler = async (message, _store, _client, _catal
 
   // Determine if we should use Docker
   // OCI (Docker image) servers MUST use Docker
-  let useDocker = server.packageType === 'oci' || (useDockerOverride ?? server.useDocker ?? false);
+  let useDocker = effectivePackageType === 'oci' || (useDockerOverride ?? server.useDocker ?? false);
   
   // For binary packages on macOS, offer Docker as an option (bypasses Gatekeeper)
   // Docker will use a separately downloaded Linux binary
-  if (server.packageType === 'binary' && !useDocker && !message.skip_security_check) {
+  if (effectivePackageType === 'binary' && !useDocker && !message.skip_security_check) {
     const binaryPath = server.binaryPath || `~/.harbor/bin/${serverId}`;
     const dockerPreference = await installer.shouldPreferDocker(serverId);
     const hasGitHubInfo = server.githubOwner && server.githubRepo;
