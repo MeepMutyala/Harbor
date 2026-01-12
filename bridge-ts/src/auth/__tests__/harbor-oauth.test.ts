@@ -9,6 +9,7 @@ import {
   HarborOAuthConfig,
   StoredServerTokens,
 } from '../harbor-oauth.js';
+import { resetTokenStore } from '../token-store.js';
 import { ManifestOAuth } from '../../installer/manifest.js';
 
 // =============================================================================
@@ -90,11 +91,13 @@ describe('HarborOAuthBroker', () => {
   let broker: HarborOAuthBroker;
   
   beforeEach(() => {
+    resetTokenStore();
     resetHarborOAuthBroker();
   });
   
   afterEach(() => {
     resetHarborOAuthBroker();
+    resetTokenStore();
   });
   
   describe('getCapabilities', () => {

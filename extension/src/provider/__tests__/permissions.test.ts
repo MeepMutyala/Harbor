@@ -45,6 +45,7 @@ describe('Permission System', () => {
       const documentedScopes: PermissionScope[] = [
         'model:prompt',
         'model:tools',
+        'model:list',
         'mcp:tools.list',
         'mcp:tools.call',
         'browser:activeTab.read',

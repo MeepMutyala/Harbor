@@ -254,8 +254,15 @@ export function getTokenStore(): TokenStore {
 
 /**
  * Reset the token store (for testing).
+ * This clears the singleton AND removes all persisted tokens.
  */
 export function resetTokenStore(): void {
+  if (_store) {
+    // Clear all tokens in the current store (also clears persisted file)
+    for (const serverId of _store.getAllTokens().map(t => t.serverId)) {
+      _store.deleteTokens(serverId);
+    }
+  }
   _store = null;
 }
 

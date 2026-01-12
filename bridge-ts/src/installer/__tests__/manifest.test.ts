@@ -177,7 +177,7 @@ describe('validateManifest', () => {
       package: { type: 'invalid', name: 'test' },
     });
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('package.type must be one of: npm, pypi, docker, binary');
+    expect(result.errors).toContain('package.type must be one of: npm, pypi, docker, binary, git');
   });
 
   it('validates oauth.supportedSources', () => {

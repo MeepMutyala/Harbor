@@ -38,7 +38,7 @@ describe('Multi-Provider LLM Support', () => {
       const supported = manager.getSupportedProviders();
       
       expect(supported.local).toContain('ollama');
-      expect(supported.local).toContain('llamafile');
+      // llamafile is no longer a supported provider (deprecated)
       expect(supported.remote).toContain('openai');
       expect(supported.remote).toContain('anthropic');
       expect(supported.remote).toContain('mistral');
