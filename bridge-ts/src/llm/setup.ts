@@ -1600,20 +1600,44 @@ export class LLMSetupManager {
       let isRunning = await this.isOllamaRunning(ollamaUrl);
       
       if (!isRunning) {
+        // First check if Ollama is actually installed
+        const ollamaInstalled = await this.checkNativeOllamaInstalled();
+        if (!ollamaInstalled) {
+          return {
+            success: false,
+            error: 'Ollama is not installed. Install it with: brew install ollama',
+          };
+        }
+        
         // Try to start Ollama serve in background
         log('[LLMSetup] Starting native Ollama server...');
-        const ollamaServe = spawn('ollama', ['serve'], {
-          detached: true,
-          stdio: 'ignore',
-        });
-        ollamaServe.unref();
+        try {
+          const ollamaServe = spawn('ollama', ['serve'], {
+            detached: true,
+            stdio: 'ignore',
+          });
+          
+          // Handle spawn errors
+          ollamaServe.on('error', (err) => {
+            log(`[LLMSetup] Ollama spawn error: ${err.message}`);
+          });
+          
+          ollamaServe.unref();
+        } catch (spawnErr) {
+          const msg = spawnErr instanceof Error ? spawnErr.message : String(spawnErr);
+          log(`[LLMSetup] Failed to spawn Ollama: ${msg}`);
+          return {
+            success: false,
+            error: `Could not start Ollama. Try running "ollama serve" in a terminal first. (${msg})`,
+          };
+        }
         
         // Wait for it to be ready
         const ready = await this.waitForOllamaReady(ollamaUrl, 30000);
         if (!ready) {
           return {
             success: false,
-            error: 'Failed to start native Ollama server. Try running "ollama serve" manually.',
+            error: 'Ollama is not responding. Please run "ollama serve" in a terminal and try again.',
           };
         }
         isRunning = true;
@@ -1651,9 +1675,17 @@ export class LLMSetupManager {
       const message = error instanceof Error ? error.message : String(error);
       log(`[LLMSetup] Native Ollama start failed: ${message}`);
       
+      // Provide more helpful error messages for common issues
+      let userMessage = message;
+      if (message.includes('spawn') || message.includes('ENOENT') || message.includes('error -8')) {
+        userMessage = 'Ollama is not running. Please start it with "ollama serve" or "brew services start ollama"';
+      } else if (message.includes('ECONNREFUSED')) {
+        userMessage = 'Cannot connect to Ollama. Make sure it\'s running on localhost:11434';
+      }
+      
       return {
         success: false,
-        error: `Native Ollama failed: ${message}`,
+        error: userMessage,
       };
     }
   }
