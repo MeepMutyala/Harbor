@@ -2218,11 +2218,13 @@ async function checkRuntimes(): Promise<void> {
     const response = await browser.runtime.sendMessage({
       type: 'check_runtimes',
     }) as RuntimesResponse;
-
+    
     if (response.type === 'check_runtimes_result') {
       runtimesCache = response;
       renderRuntimeStatus();
       updateCapabilitiesSummary();
+    } else if (response.type === 'error') {
+      throw new Error(response.error?.message || 'Unknown error');
     }
   } catch (err) {
     console.error('Failed to check runtimes:', err);
@@ -2327,17 +2329,22 @@ function renderRuntimeStatus(): void {
 }
 
 function updateCapabilitiesSummary(): void {
-  if (!runtimesCache || !capabilitiesSummary || !capabilitiesMessages) return;
+  if (!capabilitiesSummary || !capabilitiesMessages) return;
 
   const messages: string[] = [];
 
-  const dockerRuntime = runtimesCache.runtimes.find(r => r.type === 'docker');
-  const pythonRuntime = runtimesCache.runtimes.find(r => r.type === 'python');
-  const ollamaRuntime = runtimesCache.runtimes.find(r => r.type === 'ollama');
+  const dockerRuntime = runtimesCache?.runtimes.find(r => r.type === 'docker');
+  const pythonRuntime = runtimesCache?.runtimes.find(r => r.type === 'python');
+  const ollamaRuntime = runtimesCache?.runtimes.find(r => r.type === 'ollama');
+  
+  // Also check LLM providers for Ollama availability (workaround for check_runtimes issue)
+  const ollamaLLMProvider = llmProviders.find(p => p.id === 'ollama');
+  const ollamaAvailable = ollamaRuntime?.available || ollamaLLMProvider?.available;
+  
   // Note: Node.js is always available via bundled bridge, so we don't warn about it
 
   // Ollama is recommended for local LLMs with GPU acceleration
-  if (!ollamaRuntime?.available) {
+  if (!ollamaAvailable) {
     messages.push('• <strong>Ollama not installed:</strong> For local AI with GPU acceleration, <a href="https://ollama.com/" target="_blank" style="color: var(--color-accent-primary);">install Ollama</a>');
   }
 
@@ -2774,7 +2781,7 @@ async function init(): Promise<void> {
     await checkDockerStatus();
   }
   
-  // Check all runtime dependencies (Python, Node.js)
+  // Check all runtime dependencies (Python, Node.js, Ollama)
   // This gives users visibility into what MCP server types they can run
   await checkRuntimes();
   
@@ -2889,24 +2896,6 @@ const openChatBtn = document.getElementById('open-chat') as HTMLButtonElement;
 openChatBtn?.addEventListener('click', () => {
   const demoUrl = browser.runtime.getURL('demo/index.html');
   browser.tabs.create({ url: demoUrl });
-});
-
-// Open Page Chat button (injects chat sidebar into current tab)
-const openPageChatBtn = document.getElementById('open-page-chat') as HTMLButtonElement;
-openPageChatBtn?.addEventListener('click', async () => {
-  try {
-    // Get the active tab
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-    if (tabs[0]?.id) {
-      // Send message to background to inject page chat
-      await browser.runtime.sendMessage({ 
-        type: 'open_page_chat', 
-        tabId: tabs[0].id 
-      });
-    }
-  } catch (err) {
-    console.error('[Sidebar] Failed to open page chat:', err);
-  }
 });
 
 // Theme toggle
@@ -3219,6 +3208,28 @@ async function loadLLMConfig(): Promise<void> {
     if (detectResponse.type === 'llm_detect_result' && detectResponse.providers) {
       llmProviders = detectResponse.providers;
       console.log('[Sidebar] LLM providers detected:', llmProviders.map(p => ({ id: p.id, available: p.available })));
+      
+      // Update Ollama runtime status based on LLM detection (workaround for check_runtimes issue)
+      const ollamaProvider = detectResponse.providers.find(p => p.id === 'ollama');
+      if (ollamaProvider) {
+        if (ollamaProvider.available) {
+          ollamaRuntimeContainer.classList.remove('unavailable');
+          ollamaRuntimeContainer.classList.add('available');
+          ollamaRuntimeIndicator.className = 'status-indicator connected';
+          ollamaRuntimeText.className = 'runtime-dep-status available';
+          ollamaRuntimeText.textContent = 'Available';
+          ollamaRuntimeDetails.innerHTML = `<span class="version">Detected via LLM</span><br><span class="hint">Local LLM with GPU acceleration</span>`;
+          // Also update capabilities summary
+          updateCapabilitiesSummary();
+        } else {
+          ollamaRuntimeContainer.classList.remove('available');
+          ollamaRuntimeContainer.classList.add('unavailable');
+          ollamaRuntimeIndicator.className = 'status-indicator disconnected';
+          ollamaRuntimeText.className = 'runtime-dep-status';
+          ollamaRuntimeText.textContent = 'Not available';
+          ollamaRuntimeDetails.innerHTML = '<a href="https://ollama.com/" target="_blank">Install Ollama →</a>';
+        }
+      }
     }
     
     // Get current config
