@@ -3,9 +3,29 @@
  * 
  * This content script injects a chat sidebar into web pages that allows
  * users to ask questions about the current page content using the Web Agent API.
+ * 
+ * BYOC Support: Can be opened via agent.chat.open() with configuration.
  */
 
 import browser from 'webextension-polyfill';
+
+// BYOC: Configuration interface
+interface PageChatConfig {
+  chatId?: string;
+  initialMessage?: string;
+  systemPrompt?: string;
+  tools?: string[];
+  sessionId?: string;
+  style?: {
+    theme?: 'light' | 'dark' | 'auto';
+    accentColor?: string;
+    position?: 'right' | 'left' | 'center';
+  };
+}
+
+// BYOC: Read configuration injected by background script
+const byocConfig: PageChatConfig = 
+  (window as unknown as { __harborPageChatConfig?: PageChatConfig }).__harborPageChatConfig || {};
 
 // Check if sidebar is already injected
 if (document.getElementById('harbor-page-chat')) {
@@ -15,24 +35,57 @@ if (document.getElementById('harbor-page-chat')) {
 }
 
 function initPageChat() {
-  console.log('[Harbor Page Chat] Initializing...');
+  const isByocMode = !!byocConfig.chatId;
+  console.log('[Harbor Page Chat] Initializing...', isByocMode ? `(BYOC: ${byocConfig.chatId})` : '');
 
   // Create the sidebar container
   const sidebar = document.createElement('div');
   sidebar.id = 'harbor-page-chat';
-  sidebar.innerHTML = getSidebarHTML();
+  sidebar.innerHTML = getSidebarHTML(isByocMode);
   document.body.appendChild(sidebar);
 
   // Add styles
   const styles = document.createElement('style');
   styles.textContent = getSidebarCSS();
   document.head.appendChild(styles);
+  
+  // BYOC: Apply custom styling from config
+  if (byocConfig.style) {
+    // Apply theme (light/dark)
+    if (byocConfig.style.theme === 'light') {
+      sidebar.classList.add('hpc-theme-light');
+    } else if (byocConfig.style.theme === 'auto') {
+      // Detect from page background
+      const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+      const rgb = bodyBg.match(/\d+/g);
+      if (rgb) {
+        const brightness = (parseInt(rgb[0]) * 299 + parseInt(rgb[1]) * 587 + parseInt(rgb[2]) * 114) / 1000;
+        if (brightness > 128) {
+          sidebar.classList.add('hpc-theme-light');
+        }
+      }
+    }
+    
+    // Apply accent color
+    if (byocConfig.style.accentColor) {
+      sidebar.style.setProperty('--hpc-accent', byocConfig.style.accentColor);
+      sidebar.style.setProperty('--hpc-accent-glow', byocConfig.style.accentColor + '40');
+    }
+    
+    // Apply position
+    if (byocConfig.style.position === 'left') {
+      sidebar.classList.add('hpc-position-left');
+    }
+  }
 
   // Initialize state
   let isOpen = true;
-  let isConnected = false;
+  let isConnected = isByocMode; // Auto-connected in BYOC mode
   let isProcessing = false;
   let pageContext = '';
+  
+  // BYOC: Store custom system prompt if provided
+  const customSystemPrompt = byocConfig.systemPrompt;
 
   // DOM references
   const container = document.getElementById('harbor-page-chat')!;
@@ -61,6 +114,17 @@ function initPageChat() {
     container.remove();
     styles.remove();
   });
+  
+  // BYOC: Listen for close messages from background script
+  if (byocConfig.chatId) {
+    browser.runtime.onMessage.addListener((message: { type: string; chatId?: string }) => {
+      if (message.type === 'harbor_chat_close' && message.chatId === byocConfig.chatId) {
+        console.log('[Harbor Page Chat] Closing via API request');
+        container.remove();
+        styles.remove();
+      }
+    });
+  }
 
   // Connect to Web Agent API
   connectBtn.addEventListener('click', async () => {
@@ -127,6 +191,9 @@ function initPageChat() {
     return text;
   }
 
+  // BYOC: Track tools configured for this chat
+  const configuredTools = byocConfig.tools || [];
+  
   // Send message
   async function sendMessage(content: string) {
     if (!content.trim() || !isConnected || isProcessing) return;
@@ -140,7 +207,18 @@ function initPageChat() {
     addThinking();
 
     try {
-      const systemPrompt = `You are a helpful assistant that answers questions about the content on this webpage.
+      // BYOC: Use custom system prompt if provided, otherwise default
+      const systemPrompt = customSystemPrompt 
+        ? `${customSystemPrompt}
+
+Page URL: ${window.location.href}
+Page Title: ${document.title}
+
+Page content:
+---
+${pageContext}
+---`
+        : `You are a helpful assistant that answers questions about the content on this webpage.
 Be concise and helpful. Reference specific parts of the content when relevant.
 
 Page URL: ${window.location.href}
@@ -151,30 +229,72 @@ Here is the page content:
 ${pageContext}
 ---`;
 
-      const session = await (window as any).ai.createTextSession({
-        systemPrompt
-      });
-
-      let responseText = '';
-      let messageEl: HTMLElement | null = null;
-
-      for await (const chunk of session.promptStreaming(content)) {
-        responseText = chunk;
-
-        if (!messageEl) {
-          removeThinking();
-          messageEl = addMessage('assistant', responseText);
+      // BYOC: Use browser.runtime.sendMessage to communicate with background
+      // since we're in content script context and can't access window.ai/agent
+      if (isByocMode) {
+        console.log('[Harbor Page Chat] BYOC mode - sending via background');
+        
+        const response = await browser.runtime.sendMessage({
+          type: 'page_chat_message',
+          chatId: byocConfig.chatId,
+          message: content,
+          systemPrompt,
+          tools: configuredTools,
+          pageContext: {
+            url: window.location.href,
+            title: document.title,
+          },
+        }) as { 
+          type: string; 
+          response?: string; 
+          error?: { message: string };
+          toolsUsed?: { name: string }[];
+        };
+        
+        removeThinking();
+        
+        if (response.type === 'error' || response.error) {
+          addMessage('assistant', `Error: ${response.error?.message || 'Unknown error'}`);
+        } else if (response.response) {
+          const messageEl = addMessage('assistant', response.response);
+          
+          // Show tool usage indicator
+          if (response.toolsUsed && response.toolsUsed.length > 0 && messageEl) {
+            const toolsInfo = document.createElement('div');
+            toolsInfo.className = 'hpc-tools-used';
+            toolsInfo.innerHTML = `<small>🔧 Used: ${response.toolsUsed.map(t => t.name.split('/').pop()).join(', ')}</small>`;
+            messageEl.appendChild(toolsInfo);
+          }
         } else {
-          updateMessageBody(messageEl, responseText);
+          addMessage('assistant', '(No response)');
         }
-        scrollToBottom();
-      }
+      } else {
+        // Standard mode: Use window.ai (needs page context)
+        const session = await (window as any).ai.createTextSession({
+          systemPrompt
+        });
 
-      await session.destroy();
-      removeThinking();
+        let responseText = '';
+        let messageEl: HTMLElement | null = null;
 
-      if (!messageEl && !responseText) {
-        addMessage('assistant', '(No response)');
+        for await (const chunk of session.promptStreaming(content)) {
+          responseText = chunk;
+
+          if (!messageEl) {
+            removeThinking();
+            messageEl = addMessage('assistant', responseText);
+          } else {
+            updateMessageBody(messageEl, responseText);
+          }
+          scrollToBottom();
+        }
+
+        await session.destroy();
+        removeThinking();
+
+        if (!messageEl && !responseText) {
+          addMessage('assistant', '(No response)');
+        }
       }
 
     } catch (err: any) {
@@ -188,14 +308,19 @@ ${pageContext}
   }
 
   // Message helpers
+  // BYOC: In BYOC mode, show AI as responding on behalf of the website
+  const siteHost = window.location.hostname;
+  const assistantName = isByocMode ? `AI · ${siteHost}` : 'Harbor';
+  const assistantAvatar = isByocMode ? '🤖' : 'H';
+  
   function addMessage(role: string, content: string): HTMLElement {
     emptyState.style.display = 'none';
 
     const messageEl = document.createElement('div');
     messageEl.className = `hpc-message hpc-${role}`;
 
-    const avatar = role === 'user' ? 'U' : 'H';
-    const roleName = role === 'user' ? 'You' : 'Harbor';
+    const avatar = role === 'user' ? 'U' : assistantAvatar;
+    const roleName = role === 'user' ? 'You' : assistantName;
 
     messageEl.innerHTML = `
       <div class="hpc-msg-header">
@@ -226,8 +351,8 @@ ${pageContext}
     el.id = 'hpc-thinking';
     el.innerHTML = `
       <div class="hpc-msg-header">
-        <div class="hpc-avatar">H</div>
-        <span class="hpc-role">Harbor</span>
+        <div class="hpc-avatar">${assistantAvatar}</div>
+        <span class="hpc-role">${assistantName}</span>
       </div>
       <div class="hpc-thinking">
         <span></span><span></span><span></span>
@@ -281,18 +406,96 @@ ${pageContext}
     });
   });
 
-  // Check if API is available
-  if ((window as any).ai && (window as any).agent) {
-    statusText.textContent = 'Ready';
+  // BYOC mode: Auto-enable everything, get page context
+  if (isByocMode) {
+    pageContext = getPageContext();
+    inputArea.disabled = false;
+    sendBtn.disabled = false;
+    inputArea.focus();
+    console.log('[Harbor Page Chat] BYOC mode - ready with tools:', configuredTools);
   } else {
-    statusDot.classList.add('hpc-error');
-    statusText.textContent = 'No API';
+    // Check if API is available
+    if ((window as any).ai && (window as any).agent) {
+      statusText.textContent = 'Ready';
+    } else {
+      statusDot.classList.add('hpc-error');
+      statusText.textContent = 'No API';
+    }
   }
 
   console.log('[Harbor Page Chat] Ready');
 }
 
-function getSidebarHTML(): string {
+function getSidebarHTML(isByocMode: boolean = false): string {
+  // Get site info for BYOC mode
+  const siteHost = window.location.hostname;
+  
+  // BYOC mode: Show trust indicator that this is YOUR AI, requested by the website
+  if (isByocMode) {
+    return `
+      <button id="hpc-toggle" class="hpc-toggle" title="Your AI Assistant">💬</button>
+      <div class="hpc-panel">
+        <div class="hpc-header hpc-header-byoc">
+          <div class="hpc-header-main">
+            <div class="hpc-header-left">
+              <div class="hpc-logo hpc-logo-verified">⚓</div>
+              <div class="hpc-header-text">
+                <span class="hpc-title">Your AI Assistant</span>
+                <span class="hpc-subtitle">Powered by Harbor</span>
+              </div>
+            </div>
+            <button id="hpc-close" class="hpc-close" title="Close">×</button>
+          </div>
+          <div class="hpc-connection-banner">
+            <div class="hpc-connection-icon">🔗</div>
+            <div class="hpc-connection-text">
+              <strong>Temporary connection</strong>
+              <span>This website provided tools for your AI to use</span>
+            </div>
+          </div>
+          <div class="hpc-trust-bar">
+            <span class="hpc-trust-badge">✓ Your personal AI</span>
+            <span class="hpc-trust-divider">•</span>
+            <span class="hpc-trust-site">Tools from <strong>${siteHost}</strong></span>
+          </div>
+        </div>
+        
+        <div class="hpc-setup" style="display: none;">
+          <div class="hpc-setup-content">
+            <button id="hpc-connect" class="hpc-connect-btn" style="display:none;">Connect</button>
+            <div id="hpc-setup-error" class="hpc-error-msg" style="display: none;"></div>
+          </div>
+        </div>
+        
+        <div id="hpc-messages" class="hpc-messages">
+          <div class="hpc-empty">
+            <div class="hpc-empty-icon">💬</div>
+            <h4>Ready to help!</h4>
+            <p class="hpc-empty-desc">
+              I'm your personal AI assistant, temporarily connected to tools from <strong>${siteHost}</strong>.
+              <br><br>
+              When you leave this page, this connection will end.
+            </p>
+            <div class="hpc-chips">
+              <button class="hpc-chip" data-prompt="What tools do you have access to from this website?">🔧 What tools are available?</button>
+              <button class="hpc-chip" data-prompt="Help me find something">🔍 Help me find...</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="hpc-input-area">
+          <textarea id="hpc-input" placeholder="Ask me anything..." rows="1"></textarea>
+          <button id="hpc-send" class="hpc-send-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  
+  // Standard mode: Regular page chat
   return `
     <button id="hpc-toggle" class="hpc-toggle" title="Chat about this page">💬</button>
     <div class="hpc-panel">
@@ -677,6 +880,246 @@ function getSidebarCSS(): string {
       font-size: 13px;
       line-height: 1.6;
       color: var(--hpc-text-dim);
+    }
+    
+    .hpc-tools-used {
+      margin-left: 32px;
+      margin-top: 8px;
+      padding: 6px 10px;
+      background: var(--hpc-surface);
+      border: 1px solid var(--hpc-border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--hpc-text-muted);
+    }
+    
+    .hpc-tools-used small {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    /* BYOC Trust Indicator Styles */
+    .hpc-header-byoc {
+      background: linear-gradient(180deg, #1a1a24 0%, #16161e 100%);
+      padding: 0 !important;
+      flex-direction: column;
+      border-bottom: none;
+    }
+    
+    .hpc-header-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--hpc-border);
+    }
+    
+    .hpc-header-main .hpc-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .hpc-header-main .hpc-header-text {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .hpc-header-main .hpc-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--hpc-text);
+    }
+    
+    .hpc-header-main .hpc-subtitle {
+      font-size: 11px;
+      color: var(--hpc-text-muted);
+    }
+    
+    .hpc-connection-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: rgba(139, 92, 246, 0.1);
+      border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+    }
+    
+    .hpc-connection-icon {
+      font-size: 18px;
+    }
+    
+    .hpc-connection-text {
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+    }
+    
+    .hpc-connection-text strong {
+      color: var(--hpc-accent);
+      font-weight: 600;
+    }
+    
+    .hpc-connection-text span {
+      color: var(--hpc-text-muted);
+      font-size: 11px;
+    }
+    
+    .hpc-trust-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      font-size: 11px;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--hpc-border);
+    }
+    
+    .hpc-trust-badge {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--hpc-success);
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 11px;
+    }
+    
+    .hpc-trust-divider {
+      color: var(--hpc-text-muted);
+    }
+    
+    .hpc-trust-site {
+      color: var(--hpc-text-muted);
+    }
+    
+    .hpc-trust-site strong {
+      color: var(--hpc-text-dim);
+    }
+    
+    .hpc-empty-desc {
+      color: var(--hpc-text-muted);
+      font-size: 13px;
+      line-height: 1.5;
+      max-width: 280px;
+    }
+    
+    .hpc-empty-desc strong {
+      color: var(--hpc-text-dim);
+    }
+    
+    .hpc-logo-verified {
+      position: relative;
+    }
+    
+    .hpc-logo-verified::after {
+      content: '✓';
+      position: absolute;
+      bottom: -2px;
+      right: -2px;
+      width: 12px;
+      height: 12px;
+      background: var(--hpc-success);
+      border-radius: 50%;
+      font-size: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+    
+    /* Light Theme */
+    #harbor-page-chat.hpc-theme-light {
+      --hpc-bg: #ffffff;
+      --hpc-surface: #f5f5f5;
+      --hpc-border: rgba(0,0,0,0.1);
+      --hpc-text: #1a1a1a;
+      --hpc-text-dim: #4a4a4a;
+      --hpc-text-muted: #888888;
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-panel {
+      background: var(--hpc-bg);
+      border-color: var(--hpc-border);
+      box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-header {
+      background: var(--hpc-surface);
+      border-bottom-color: var(--hpc-border);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-header-byoc {
+      background: linear-gradient(180deg, #f8f8f8, #f0f0f0);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-connection-banner {
+      background: rgba(139, 92, 246, 0.08);
+      border-bottom-color: rgba(139, 92, 246, 0.15);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-trust-bar {
+      background: rgba(0,0,0,0.03);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-logo {
+      background: var(--hpc-accent);
+      color: white;
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-title {
+      color: var(--hpc-text);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-messages {
+      background: var(--hpc-bg);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-assistant .hpc-msg-body {
+      color: var(--hpc-text);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-user .hpc-msg-bubble {
+      background: var(--hpc-accent);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-assistant .hpc-avatar {
+      background: var(--hpc-surface);
+      border-color: var(--hpc-border);
+      color: var(--hpc-text-dim);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-input-area {
+      background: var(--hpc-surface);
+      border-top-color: var(--hpc-border);
+    }
+    
+    #harbor-page-chat.hpc-theme-light #hpc-input {
+      background: var(--hpc-bg);
+      border-color: var(--hpc-border);
+      color: var(--hpc-text);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-chip {
+      background: var(--hpc-bg);
+      border-color: var(--hpc-border);
+      color: var(--hpc-text-dim);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-chip:hover {
+      background: var(--hpc-surface);
+      border-color: var(--hpc-accent);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-empty h4,
+    #harbor-page-chat.hpc-theme-light .hpc-empty p {
+      color: var(--hpc-text-dim);
+    }
+    
+    #harbor-page-chat.hpc-theme-light .hpc-toggle {
+      background: var(--hpc-accent);
+      color: white;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
     }
     
     .hpc-thinking {

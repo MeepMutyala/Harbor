@@ -432,6 +432,34 @@ browser.runtime.onMessage.addListener(
       }, timeout);
     }
 
+    // =======================================================================
+    // BYOC: Add remote MCP server (temporary, for website integrations)
+    // =======================================================================
+    if (msg.type === 'add_remote_mcp') {
+      console.log('[Background] add_remote_mcp:', msg.server_id, msg.url);
+      
+      // Try to connect to the remote SSE server via the bridge
+      return sendToBridge({
+        type: 'connect_remote_mcp',
+        request_id: generateRequestId(),
+        server_id: msg.server_id as string,
+        name: msg.name as string,
+        url: msg.url as string,
+        transport: (msg.transport as string) || 'sse',
+        temporary: true,
+        origin: msg.origin as string,
+      }).then((result) => {
+        console.log('[Background] connect_remote_mcp result:', result);
+        if (result?.type === 'error') {
+          return { type: 'error', success: false, error: result.error };
+        }
+        return { type: 'add_remote_mcp_result', success: true, server_id: msg.server_id };
+      }).catch((err) => {
+        console.error('[Background] connect_remote_mcp error:', err);
+        return { type: 'error', success: false, error: { message: String(err) } };
+      });
+    }
+
     // LLM messages
     if (msg.type === 'llm_detect') {
       return sendToBridge({
@@ -492,6 +520,78 @@ browser.runtime.onMessage.addListener(
         temperature: msg.temperature,
         system_prompt: msg.system_prompt,
       }, CHAT_TIMEOUT_MS);
+    }
+
+    // =======================================================================
+    // BYOC: Page Chat message handler
+    // =======================================================================
+    if (msg.type === 'page_chat_message') {
+      console.log('[Background] page_chat_message:', msg.chatId);
+      
+      // Use the chat orchestrator for tool-enabled chat
+      return (async () => {
+        try {
+          // Create a temporary session for this chat
+          const createResult = await sendToBridge({
+            type: 'chat_create_session',
+            request_id: generateRequestId(),
+            system_prompt: msg.systemPrompt as string,
+            enabled_servers: [], // Website tools are handled differently
+          });
+          
+          if (createResult?.type === 'error') {
+            return { type: 'error', error: { message: createResult.error?.message || 'Failed to create session' } };
+          }
+          
+          // Session ID is nested in session.id
+          const session = (createResult as { session?: { id?: string } })?.session;
+          const sessionId = session?.id;
+          if (!sessionId) {
+            console.error('[Background] No session ID in response:', createResult);
+            return { type: 'error', error: { message: 'No session ID returned' } };
+          }
+          
+          console.log('[Background] Created session:', sessionId);
+          
+          // Send the message and get response
+          const chatResult = await sendToBridge({
+            type: 'chat_send_message',
+            request_id: generateRequestId(),
+            session_id: sessionId,
+            message: msg.message as string,
+          }, CHAT_TIMEOUT_MS);
+          
+          // Clean up session
+          await sendToBridge({
+            type: 'chat_delete_session',
+            request_id: generateRequestId(),
+            session_id: sessionId,
+          });
+          
+          if (chatResult?.type === 'error') {
+            return { type: 'error', error: { message: chatResult.error?.message || 'Chat failed' } };
+          }
+          
+          const result = chatResult as { 
+            response?: string; 
+            steps?: Array<{ type: string; tool?: string }>;
+          };
+          
+          // Extract tools used from steps
+          const toolsUsed = (result.steps || [])
+            .filter((s: { type: string }) => s.type === 'tool_call')
+            .map((s: { tool?: string }) => ({ name: s.tool || 'unknown' }));
+          
+          return {
+            type: 'page_chat_response',
+            response: result.response,
+            toolsUsed,
+          };
+        } catch (err) {
+          console.error('[Background] page_chat_message error:', err);
+          return { type: 'error', error: { message: String(err) } };
+        }
+      })();
     }
 
     // LLM provider configuration messages
