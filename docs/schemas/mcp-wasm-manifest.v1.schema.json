@@ -1,0 +1,465 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://harbor.dev/schemas/mcp-wasm-manifest.v1.json",
+  "title": "MCP WASM Server Manifest",
+  "description": "Manifest schema for WASM-compiled MCP servers. Packaged alongside the .wasm binary to describe server metadata, capabilities, and configuration requirements.",
+  "type": "object",
+  "required": ["manifestVersion", "name", "version"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema URL for validation"
+    },
+    "manifestVersion": {
+      "type": "string",
+      "description": "Manifest format version (semver)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["1.0.0"]
+    },
+    "name": {
+      "type": "string",
+      "description": "Machine-readable identifier for the server (lowercase, hyphens allowed)",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "examples": ["mcp-time", "filesystem-server", "weather-api"]
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Human-readable display name for the server"
+    },
+    "version": {
+      "type": "string",
+      "description": "Server version (semver)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$",
+      "examples": ["1.0.0", "0.1.0-beta", "2.0.0+build.123"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of what the server does"
+    },
+    "author": {
+      "$ref": "#/definitions/Author"
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier",
+      "examples": ["MIT", "Apache-2.0", "GPL-3.0-only"]
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "Project homepage URL"
+    },
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "description": "Source repository URL"
+    },
+    "keywords": {
+      "type": "array",
+      "description": "Keywords for discoverability",
+      "items": {
+        "type": "string"
+      }
+    },
+    "wasm": {
+      "$ref": "#/definitions/WasmConfig"
+    },
+    "capabilities": {
+      "$ref": "#/definitions/Capabilities"
+    },
+    "environment": {
+      "type": "array",
+      "description": "Environment variables the server reads",
+      "items": {
+        "$ref": "#/definitions/EnvVar"
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "description": "Secret credentials (API keys, tokens) - stored securely by the host",
+      "items": {
+        "$ref": "#/definitions/Secret"
+      }
+    },
+    "tools": {
+      "type": "array",
+      "description": "Optional static declaration of tools provided by this server. If omitted, tools are discovered via MCP tools/list at runtime.",
+      "items": {
+        "$ref": "#/definitions/Tool"
+      }
+    },
+    "resources": {
+      "type": "array",
+      "description": "Optional static declaration of resources provided by this server",
+      "items": {
+        "$ref": "#/definitions/Resource"
+      }
+    },
+    "prompts": {
+      "type": "array",
+      "description": "Optional static declaration of prompts provided by this server",
+      "items": {
+        "$ref": "#/definitions/Prompt"
+      }
+    },
+    "signature": {
+      "$ref": "#/definitions/Signature"
+    }
+  },
+  "definitions": {
+    "Author": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Author name or 'Name <email>' format"
+        },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Author name"
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Author email"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Author website"
+            }
+          }
+        }
+      ]
+    },
+    "WasmConfig": {
+      "type": "object",
+      "description": "WASM-specific configuration",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path to the .wasm file relative to manifest (defaults to 'server.wasm')",
+          "default": "server.wasm"
+        },
+        "wasi": {
+          "type": "object",
+          "description": "WASI configuration",
+          "properties": {
+            "version": {
+              "type": "string",
+              "enum": ["preview1", "preview2"],
+              "default": "preview1",
+              "description": "WASI version required"
+            },
+            "features": {
+              "type": "array",
+              "description": "WASI features required beyond stdio",
+              "items": {
+                "type": "string",
+                "enum": ["clocks", "random", "poll"]
+              }
+            }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "description": "Memory constraints",
+          "properties": {
+            "initial": {
+              "type": "integer",
+              "description": "Initial memory in pages (64KB each)",
+              "default": 16
+            },
+            "maximum": {
+              "type": "integer",
+              "description": "Maximum memory in pages (64KB each)"
+            }
+          }
+        }
+      }
+    },
+    "Capabilities": {
+      "type": "object",
+      "description": "Host capabilities the server requires or requests",
+      "properties": {
+        "network": {
+          "oneOf": [
+            {
+              "type": "boolean",
+              "description": "Whether network access is needed"
+            },
+            {
+              "type": "object",
+              "description": "Detailed network requirements",
+              "properties": {
+                "required": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Whether network access is required (vs optional)"
+                },
+                "hosts": {
+                  "type": "array",
+                  "description": "Allowed host patterns (e.g., 'api.example.com', '*.openai.com')",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable explanation of why network is needed"
+                }
+              }
+            }
+          ]
+        },
+        "filesystem": {
+          "oneOf": [
+            {
+              "type": "boolean",
+              "description": "Whether filesystem access is needed"
+            },
+            {
+              "type": "object",
+              "description": "Detailed filesystem requirements",
+              "properties": {
+                "required": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Whether filesystem access is required (vs optional)"
+                },
+                "read": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Needs read access"
+                },
+                "write": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Needs write access"
+                },
+                "paths": {
+                  "type": "array",
+                  "description": "Specific paths or patterns the server needs access to",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable explanation of why filesystem is needed"
+                }
+              }
+            }
+          ]
+        },
+        "llm": {
+          "oneOf": [
+            {
+              "type": "boolean",
+              "description": "Whether LLM access is needed"
+            },
+            {
+              "type": "object",
+              "description": "Detailed LLM requirements",
+              "properties": {
+                "required": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Whether LLM access is required (vs optional)"
+                },
+                "providers": {
+                  "type": "array",
+                  "description": "Preferred LLM providers in order of preference",
+                  "items": {
+                    "type": "string",
+                    "enum": ["local", "ollama", "llamafile", "openai", "anthropic", "any"]
+                  }
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable explanation of why LLM is needed"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "EnvVar": {
+      "type": "object",
+      "description": "Non-secret environment variable",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Variable name (e.g., 'LOG_LEVEL')",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether required to start"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "url"],
+          "default": "string",
+          "description": "Value type for validation and UI rendering"
+        },
+        "default": {
+          "description": "Default value if not provided",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" }
+          ]
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed values (renders as dropdown)"
+        },
+        "example": {
+          "type": "string",
+          "description": "Example value for documentation"
+        }
+      }
+    },
+    "Secret": {
+      "type": "object",
+      "description": "Secret credential (API key, token) - stored securely",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Environment variable name (e.g., 'OPENAI_API_KEY')",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description"
+        },
+        "required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether required to start"
+        },
+        "helpUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL where user can obtain this credential"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Validation regex pattern"
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Placeholder text for input"
+        }
+      }
+    },
+    "Tool": {
+      "type": "object",
+      "description": "MCP tool declaration (optional - can be discovered at runtime)",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tool name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Tool description"
+        },
+        "inputSchema": {
+          "type": "object",
+          "description": "JSON Schema for tool input"
+        }
+      }
+    },
+    "Resource": {
+      "type": "object",
+      "description": "MCP resource declaration",
+      "required": ["uri", "name"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "description": "Resource URI"
+        },
+        "name": {
+          "type": "string",
+          "description": "Resource name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Resource description"
+        },
+        "mimeType": {
+          "type": "string",
+          "description": "MIME type of resource content"
+        }
+      }
+    },
+    "Prompt": {
+      "type": "object",
+      "description": "MCP prompt declaration",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Prompt name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Prompt description"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "required": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "Signature": {
+      "type": "object",
+      "description": "Digital signature for integrity verification",
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["ed25519", "rsa-sha256"],
+          "description": "Signature algorithm"
+        },
+        "value": {
+          "type": "string",
+          "description": "Base64-encoded signature"
+        },
+        "publicKey": {
+          "type": "string",
+          "description": "Base64-encoded public key or URL to fetch it"
+        },
+        "keyId": {
+          "type": "string",
+          "description": "Key identifier for key lookup"
+        }
+      }
+    }
+  }
+}

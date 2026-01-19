@@ -1,27 +1,19 @@
 {
-  "name": "harbor-extension",
-  "version": "0.0.2",
+  "name": "harbor-wasm-extension",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch",
-    "build": "vite build",
-    "build:firefox": "TARGET_BROWSER=firefox vite build",
-    "build:chrome": "TARGET_BROWSER=chrome vite build",
-    "dev:chrome": "TARGET_BROWSER=chrome vite build --watch",
-    "check": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-  },
-  "devDependencies": {
-    "@types/webextension-polyfill": "^0.10.7",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.12",
-    "vitest": "^2.1.9"
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch"
   },
   "dependencies": {
-    "webextension-polyfill": "^0.10.0"
+    "@wasmer/wasi": "latest",
+    "@wasmer/wasmfs": "latest",
+    "buffer": "latest"
+  },
+  "devDependencies": {
+    "esbuild": "latest",
+    "typescript": "latest"
   }
 }
-

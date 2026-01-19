@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Harbor Time MCP Demo</title>
+    <style>
+      body { font-family: sans-serif; margin: 2rem; }
+      button { padding: 0.5rem 1rem; }
+      pre { background: #f5f5f5; padding: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Time MCP Tool Demo</h1>
+    <p>Calls <code>navigator.agents.runTool</code> with <code>time.now</code>.</p>
+    <button id="call">Get Time</button>
+    <pre id="output">Waiting...</pre>
+    <script type="module" src="./time-agent.js"></script>
+  </body>
+</html>

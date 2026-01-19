@@ -1,2148 +1,862 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Harbor</title>
-  <link rel="stylesheet" href="design-tokens.css">
-  <style>
-    /* Sidebar-specific layout */
-    body {
-      min-height: 100vh;
-      padding: var(--space-3);
-    }
-
-    .container {
-      max-width: 400px;
-    }
-
-    /* Header */
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: var(--space-3);
-      padding-bottom: var(--space-3);
-      border-bottom: 1px solid var(--color-border-subtle);
-    }
-
-    .header-brand {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .header-logo {
-      width: 28px;
-      height: 28px;
-      background: var(--color-accent-primary);
-      border-radius: var(--radius-sm);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--color-text-inverse);
-      font-weight: var(--weight-bold);
-      font-size: var(--text-sm);
-    }
-
-    .header-title {
-      font-size: var(--text-lg);
-      font-weight: var(--weight-bold);
-      color: var(--color-text-primary);
-      letter-spacing: var(--tracking-tight);
-    }
-
-    .dev-mode-badge {
-      font-size: var(--text-2xs);
-      padding: 2px 6px;
-      background: var(--color-warning, #f59e0b);
-      color: #000;
-      border-radius: var(--radius-sm);
-      text-decoration: none;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-
-    .dev-mode-badge:hover {
-      opacity: 0.8;
-    }
-
-    .header-status {
-      display: flex;
-      align-items: center;
-      gap: var(--space-1);
-      margin-left: var(--space-2);
-      padding-left: var(--space-2);
-      border-left: 1px solid var(--color-border-subtle);
-    }
-
-    .header-status .status-indicator {
-      width: 6px;
-      height: 6px;
-    }
-
-    .header-status .status-text {
-      font-size: var(--text-xs);
-      font-weight: var(--weight-medium);
-    }
-
-    .theme-toggle {
-      width: var(--height-btn-sm);
-      height: var(--height-btn-sm);
-      border: 1px solid var(--color-border-default);
-      background: var(--color-surface-primary);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-size: var(--text-xs);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all var(--transition-fast);
-    }
-
-    .theme-toggle:hover {
-      background: var(--color-bg-subtle);
-      border-color: var(--color-border-strong);
-    }
-
-    /* Cards */
-    .panel {
-      background: var(--color-surface-primary);
-      border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-md);
-      margin-bottom: var(--space-3);
-    }
-
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: var(--space-2) var(--space-3);
-      border-bottom: 1px solid var(--color-border-subtle);
-      cursor: pointer;
-      user-select: none;
-      transition: background var(--transition-fast);
-    }
-
-    .panel-header:hover {
-      background: var(--color-bg-subtle);
-    }
-
-    .panel-header-left {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .panel-header-actions {
-      display: flex;
-      align-items: center;
-      gap: var(--space-1);
-    }
-
-    .panel-title {
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semibold);
-      color: var(--color-text-muted);
-      text-transform: uppercase;
-      letter-spacing: var(--tracking-wide);
-    }
-
-    .panel-collapse-icon {
-      color: var(--color-text-muted);
-      font-size: 10px;
-      transition: transform var(--transition-fast);
-    }
-
-    .panel.collapsed .panel-collapse-icon {
-      transform: rotate(-90deg);
-    }
-
-    .panel-status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .panel-status-dot.green { background: var(--color-success); }
-    .panel-status-dot.yellow { background: var(--color-warning); }
-    .panel-status-dot.red { background: var(--color-error); }
-    .panel-status-dot.gray { background: var(--color-text-muted); }
-
-    .panel-body {
-      padding: var(--space-3);
-    }
-
-    .panel.collapsed .panel-body {
-      display: none;
-    }
-
-    .panel.collapsed .panel-header {
-      border-bottom: none;
-    }
-
-    /* Connection Status */
-    .status-row {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .status-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: var(--radius-full);
-      flex-shrink: 0;
-    }
-
-    .status-indicator.connected {
-      background: var(--color-success);
-    }
-
-    .status-indicator.warning {
-      background: var(--color-warning, #f59e0b);
-    }
-
-    .status-indicator.disconnected {
-      background: var(--color-error);
-    }
-
-    .status-indicator.connecting {
-      background: var(--color-warning);
-      animation: pulse 1.5s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    .status-text {
-      font-weight: var(--weight-medium);
-      font-size: var(--text-sm);
-    }
-
-    .status-text.connected { color: var(--color-success); }
-    .status-text.disconnected { color: var(--color-error); }
-    .status-text.connecting { color: var(--color-warning, #f59e0b); }
-    .status-text.warning { color: var(--color-warning, #f59e0b); }
-
-    /* Actions row */
-    .actions {
-      display: flex;
-      gap: var(--space-2);
-      margin-top: var(--space-3);
-    }
-
-    /* Form styles */
-    .form-group {
-      margin-bottom: var(--space-2);
-    }
-
-    .form-group:last-child {
-      margin-bottom: 0;
-    }
-
-    .form-label {
-      display: block;
-      font-size: var(--text-xs);
-      font-weight: var(--weight-medium);
-      color: var(--color-text-secondary);
-      margin-bottom: var(--space-1);
-    }
-
-    /* Server list styles */
-    .server-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-
-    .server-item {
-      background: var(--color-bg-subtle);
-      border-radius: var(--radius-sm);
-      padding: var(--space-3);
-      border: 1px solid var(--color-border-subtle);
-    }
-
-    .server-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: var(--space-1);
-    }
-
-    .server-label {
-      font-weight: var(--weight-semibold);
-      font-size: var(--text-sm);
-      color: var(--color-text-primary);
-    }
-
-    .server-url {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      font-family: var(--font-mono);
-      word-break: break-all;
-      margin-bottom: var(--space-2);
-    }
-
-    .server-actions {
-      display: flex;
-      gap: var(--space-1);
-      flex-wrap: wrap;
-    }
-
-    .server-status {
-      display: flex;
-      align-items: center;
-      gap: var(--space-1);
-      font-size: var(--text-xs);
-    }
-
-    .server-status .status-indicator {
-      width: 6px;
-      height: 6px;
-    }
-
-    /* Installed server items */
-    .installed-server-item {
-      background: var(--color-bg-subtle);
-      border-radius: var(--radius-sm);
-      padding: var(--space-3);
-      border: 1px solid var(--color-border-subtle);
-      transition: all var(--transition-fast);
-      position: relative;
-    }
-
-    .installed-server-item:hover {
-      border-color: var(--color-border-default);
-    }
-
-    .installed-server-item.running {
-      border-left: 3px solid var(--color-success);
-    }
-
-    .installed-server-item.needs-auth {
-      border-left: 3px solid var(--color-warning);
-    }
-
-    .installed-server-item.error {
-      border-left: 3px solid var(--color-error);
-    }
-
-    .server-status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      height: 18px;
-      padding: 0 var(--space-2);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-2xs);
-      font-weight: var(--weight-medium);
-    }
-
-    .server-status-badge.running {
-      background: var(--color-success-subtle);
-      color: var(--color-success);
-    }
-
-    .server-status-badge.running::before {
-      content: '';
-      width: 6px;
-      height: 6px;
-      background: var(--color-success);
-      border-radius: 50%;
-      animation: pulse-dot 2s infinite;
-    }
-
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    .server-status-badge.stopped {
-      background: var(--color-bg-subtle);
-      color: var(--color-text-muted);
-    }
-
-    .server-status-badge.stopped::before {
-      content: '';
-      width: 6px;
-      height: 6px;
-      background: var(--color-text-muted);
-      border-radius: 50%;
-    }
-
-    .server-status-badge.needs-auth {
-      background: var(--color-warning-subtle);
-      color: var(--color-warning);
-    }
-
-    .server-status-badge.needs-auth::before {
-      content: '!';
-      font-weight: bold;
-      font-size: 9px;
-    }
-
-    .server-status-badge.error {
-      background: var(--color-error-subtle);
-      color: var(--color-error);
-    }
-
-    .server-status-badge.error::before {
-      content: '✕';
-      font-size: 8px;
-    }
-
-    .server-status-badge.connecting {
-      background: var(--color-accent-subtle, #2563eb20);
-      color: var(--color-accent-primary, #3b82f6);
-    }
-
-    .connecting-spinner {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border: 2px solid var(--color-accent-subtle, #3b82f640);
-      border-top-color: var(--color-accent-primary, #3b82f6);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* Running server highlight */
-    .running-servers-summary {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-2) var(--space-3);
-      background: var(--color-success-subtle);
-      border-radius: var(--radius-sm);
-      margin-bottom: var(--space-3);
-      font-size: var(--text-xs);
-      color: var(--color-success);
-      font-weight: var(--weight-medium);
-    }
-
-    .running-servers-summary .dot {
-      width: 8px;
-      height: 8px;
-      background: var(--color-success);
-      border-radius: 50%;
-      animation: pulse-dot 2s infinite;
-    }
-
-    .server-package-info {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      font-family: var(--font-mono);
-      margin: var(--space-2) 0;
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .lang-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 2px;
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      font-size: 10px;
-      font-weight: 600;
-      font-family: var(--font-sans);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .lang-badge.lang-js {
-      background: rgba(247, 223, 30, 0.15);
-      color: #f7df1e;
-      border: 1px solid rgba(247, 223, 30, 0.3);
-    }
-
-    .lang-badge.lang-python {
-      background: rgba(55, 118, 171, 0.15);
-      color: #3776ab;
-      border: 1px solid rgba(55, 118, 171, 0.3);
-    }
-
-    [data-theme="dark"] .lang-badge.lang-python {
-      color: #4b8bbe;
-    }
-
-    .lang-badge.lang-go {
-      background: rgba(0, 173, 216, 0.15);
-      color: #00add8;
-      border: 1px solid rgba(0, 173, 216, 0.3);
-    }
-
-    .lang-badge.lang-http {
-      background: rgba(138, 43, 226, 0.15);
-      color: #9b59b6;
-      border: 1px solid rgba(138, 43, 226, 0.3);
-    }
-
-    .package-name {
-      color: var(--color-text-muted);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    /* Response section */
-    .message-content {
-      background: var(--color-code-bg);
-      border-radius: var(--radius-sm);
-      padding: var(--space-3);
-      overflow-x: auto;
-      max-height: 120px;
-      overflow-y: auto;
-    }
-
-    /* Catalog Status */
-    .catalog-status-body {
-      padding: var(--space-2) var(--space-3);
-    }
-
-    .catalog-status-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-1) 0;
-      font-size: var(--text-xs);
-    }
-
-    .catalog-status-label {
-      color: var(--color-text-muted);
-    }
-
-    .catalog-status-value {
-      color: var(--color-text-primary);
-      font-weight: var(--weight-medium);
-    }
-
-    .catalog-status-value.loading {
-      color: var(--color-warning);
-    }
-
-    .catalog-status-value.success {
-      color: var(--color-success);
-    }
-
-    .catalog-status-value.error {
-      color: var(--color-error);
-    }
-
-    .catalog-activity {
-      margin-top: var(--space-2);
-      padding-top: var(--space-2);
-      border-top: 1px solid var(--color-border-subtle);
-      font-size: var(--text-xs);
-      max-height: 80px;
-      overflow-y: auto;
-    }
-
-    .catalog-activity-item {
-      display: flex;
-      gap: var(--space-2);
-      padding: 2px 0;
-      color: var(--color-text-secondary);
-      animation: fadeIn 0.3s ease-out;
-    }
-
-    .catalog-activity-item.new {
-      background: var(--color-accent-primary-alpha);
-      animation: highlight 1s ease-out;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes highlight {
-      0% { background: var(--color-accent-primary); color: white; }
-      100% { background: transparent; color: var(--color-text-secondary); }
-    }
-
-    .catalog-activity-time {
-      color: var(--color-text-muted);
-      white-space: nowrap;
-    }
-
-    .catalog-activity-msg {
-      flex: 1;
-    }
-
-    .live-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-    }
-
-    .live-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--color-success);
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    .catalog-controls {
-      display: flex;
-      gap: var(--space-1);
-    }
-
-    pre {
-      margin: 0;
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      line-height: var(--leading-relaxed);
-      color: var(--color-text-secondary);
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .no-message {
-      color: var(--color-text-muted);
-      font-style: italic;
-    }
-
-    .json-key { color: var(--color-code-keyword); }
-    .json-string { color: var(--color-code-string); }
-    .json-value { color: var(--color-code-number); }
-
-    .collapsible-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .collapse-icon {
-      color: var(--color-text-muted);
-      font-size: var(--text-xs);
-      transition: transform var(--transition-fast);
-    }
-
-    .collapsible-content {
-      margin-top: var(--space-3);
-    }
-
-    .collapsible-content.collapsed {
-      display: none;
-    }
-
-    /* Modal styles */
-    .modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: var(--z-modal);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal-backdrop {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-    }
-
-    .modal-content {
-      position: relative;
-      background: var(--color-surface-primary);
-      border-radius: var(--radius-md);
-      border: 1px solid var(--color-border-default);
-      width: 90%;
-      max-width: 380px;
-      max-height: 80vh;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-3);
-      border-bottom: 1px solid var(--color-border-subtle);
-    }
-
-    .modal-header h3 {
-      font-size: var(--text-base);
-      font-weight: var(--weight-semibold);
-      margin: 0;
-    }
-
-    .modal-close {
-      width: 24px;
-      height: 24px;
-      border: none;
-      background: none;
-      font-size: var(--text-lg);
-      cursor: pointer;
-      color: var(--color-text-muted);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: var(--radius-sm);
-    }
-
-    .modal-close:hover {
-      background: var(--color-bg-subtle);
-      color: var(--color-text-primary);
-    }
-
-    .modal-body {
-      padding: var(--space-3);
-      overflow-y: auto;
-      flex: 1;
-    }
-
-    .modal-footer {
-      display: flex;
-      gap: var(--space-2);
-      justify-content: flex-end;
-      padding: var(--space-3);
-      border-top: 1px solid var(--color-border-subtle);
-    }
-
-    /* Credential form */
-    .credential-field {
-      margin-bottom: var(--space-3);
-    }
-
-    .credential-field:last-child {
-      margin-bottom: 0;
-    }
-
-    .credential-label {
-      display: flex;
-      align-items: center;
-      gap: var(--space-1);
-      margin-bottom: var(--space-1);
-    }
-
-    .credential-label-text {
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semibold);
-      color: var(--color-text-primary);
-    }
-
-    .credential-required {
-      color: var(--color-error);
-      font-size: var(--text-2xs);
-    }
-
-    .credential-description {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      margin-bottom: var(--space-1);
-    }
-
-    .credential-input {
-      width: 100%;
-      height: var(--height-input);
-      padding: 0 var(--space-3);
-      border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-sm);
-      background: var(--color-surface-primary);
-      color: var(--color-text-primary);
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-    }
-
-    .credential-input:focus {
-      outline: none;
-      border-color: var(--color-border-focus);
-      box-shadow: 0 0 0 3px var(--color-accent-primary-subtle);
-    }
-
-    .credential-input.is-set {
-      border-color: var(--color-success);
-      background: var(--color-success-subtle);
-    }
-
-    .credential-status {
-      font-size: var(--text-2xs);
-      margin-top: var(--space-1);
-    }
-
-    .credential-status.set {
-      color: var(--color-success);
-    }
-
-    .credential-status.missing {
-      color: var(--color-warning);
-    }
-    
-    /* Add credential section */
-    .add-credential-section {
-      margin-top: var(--space-4);
-      padding-top: var(--space-3);
-    }
-    
-    /* Args configuration (directories) */
-    .args-config-section {
-      margin-top: var(--space-3);
-      padding-top: var(--space-3);
-    }
-    
-    .directory-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-      margin-bottom: var(--space-2);
-    }
-    
-    .directory-item {
-      display: flex;
-      gap: var(--space-2);
-      align-items: center;
-    }
-    
-    .directory-item .credential-input {
-      flex: 1;
-      font-family: var(--font-mono);
-      font-size: 12px;
-    }
-    
-    .directory-item .remove-dir-btn {
-      flex-shrink: 0;
-      width: 28px;
-      height: 28px;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .section-divider {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      margin-bottom: var(--space-3);
-      color: var(--color-text-muted);
-      font-size: var(--text-2xs);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    
-    .section-divider::before,
-    .section-divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--color-border-subtle);
-    }
-    
-    .add-credential-form {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-    
-    .add-credential-form .credential-input {
-      font-family: var(--font-mono);
-    }
-    
-    .credential-hint {
-      font-size: var(--text-2xs);
-      color: var(--color-text-muted);
-      margin-top: var(--space-2);
-    }
-    
-    .credential-hint a {
-      color: var(--color-accent-primary);
-      text-decoration: none;
-    }
-    
-    .credential-hint a:hover {
-      text-decoration: underline;
-    }
-    
-    .credential-label .delete-credential-btn {
-      margin-left: auto;
-      padding: 2px 6px;
-      font-size: 10px;
-      opacity: 0.6;
-    }
-    
-    .credential-label .delete-credential-btn:hover {
-      opacity: 1;
-      color: var(--color-error);
-    }
-
-    .password-input-wrapper {
-      position: relative;
-    }
-
-    .password-toggle {
-      position: absolute;
-      right: var(--space-2);
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: var(--text-sm);
-      padding: var(--space-1);
-    }
-
-    .password-toggle:hover {
-      opacity: 0.7;
-    }
-
-    .credential-help {
-      font-size: var(--text-xs);
-      color: var(--color-accent-primary);
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-1);
-      margin-top: var(--space-1);
-    }
-
-    .credential-help:hover {
-      text-decoration: underline;
-    }
-
-    /* Quick links panel */
-    .quick-links {
-      display: flex;
-      gap: var(--space-2);
-    }
-
-    .quick-link {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-1);
-      padding: var(--space-3);
-      background: var(--color-bg-subtle);
-      border: 1px solid var(--color-border-subtle);
-      border-radius: var(--radius-sm);
-      text-decoration: none;
-      color: var(--color-text-secondary);
-      font-size: var(--text-xs);
-      font-weight: var(--weight-medium);
-      transition: all var(--transition-fast);
-      cursor: pointer;
-    }
-
-    .quick-link:hover {
-      background: var(--color-surface-primary);
-      border-color: var(--color-border-strong);
-      color: var(--color-text-primary);
-    }
-
-    .quick-link-icon {
-      font-size: var(--text-lg);
-    }
-
-    /* Toggle switches */
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: var(--space-2) 0;
-    }
-
-    .toggle-row + .toggle-row {
-      border-top: 1px solid var(--color-border-subtle);
-    }
-
-    .toggle-label {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .toggle-label-text {
-      font-size: var(--text-sm);
-      font-weight: var(--weight-medium);
-      color: var(--color-text-primary);
-    }
-
-    .toggle-label-hint {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-    }
-
-    .toggle-switch {
-      position: relative;
-      width: 36px;
-      height: 20px;
-    }
-
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .toggle-switch input:focus-visible + .toggle-slider {
-      outline: 2px solid var(--color-border-focus);
-      outline-offset: 2px;
-    }
-
-    .toggle-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: var(--color-border-strong);
-      border-radius: 10px;
-      transition: background var(--transition-fast);
-    }
-
-    .toggle-slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 2px;
-      bottom: 2px;
-      background: white;
-      border-radius: 50%;
-      transition: transform var(--transition-fast);
-    }
-
-    .toggle-switch input:checked + .toggle-slider {
-      background: var(--color-accent-primary);
-    }
-
-    .toggle-switch input:checked + .toggle-slider:before {
-      transform: translateX(16px);
-    }
-
-    /* LLM section */
-    .llm-details {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-      margin-top: var(--space-2);
-    }
-
-    .llm-details strong {
-      color: var(--color-text-primary);
-    }
-
-    /* Runtime Dependencies Section */
-    .runtime-deps-section {
-      margin-top: var(--space-3);
-      padding-top: var(--space-3);
-      border-top: 1px solid var(--color-border-subtle);
-    }
-
-    .runtime-deps-header {
-      margin-bottom: var(--space-3);
-    }
-
-    .runtime-deps-title {
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semibold);
-      color: var(--color-text-muted);
-      text-transform: uppercase;
-      letter-spacing: var(--tracking-wide);
-    }
-
-    .runtime-deps-grid {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-
-    .runtime-dep-card {
-      background: var(--color-bg-subtle);
-      border: 1px solid var(--color-border-subtle);
-      border-radius: var(--radius-sm);
-      padding: var(--space-2) var(--space-3);
-      transition: border-color var(--transition-fast);
-    }
-
-    .runtime-dep-card:hover {
-      border-color: var(--color-border-default);
-    }
-
-    .runtime-dep-card.available {
-      border-left: 3px solid var(--color-success);
-    }
-
-    .runtime-dep-card.unavailable {
-      border-left: 3px solid var(--color-text-muted);
-      opacity: 0.8;
-    }
-
-    .runtime-dep-header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .runtime-dep-icon {
-      font-size: var(--text-base);
-      line-height: 1;
-      flex-shrink: 0;
-    }
-
-    .runtime-dep-name {
-      font-size: var(--text-sm);
-      font-weight: var(--weight-semibold);
-      color: var(--color-text-primary);
-      flex: 1;
-    }
-
-    .runtime-dep-status {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-    }
-
-    .runtime-dep-status.available {
-      color: var(--color-success);
-    }
-
-    .runtime-dep-details {
-      margin-top: var(--space-1);
-      margin-left: calc(var(--text-base) + var(--space-2));
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-    }
-
-    .runtime-dep-details strong {
-      color: var(--color-text-primary);
-      font-weight: var(--weight-medium);
-    }
-
-    .runtime-dep-details .version {
-      color: var(--color-text-primary);
-      font-weight: var(--weight-medium);
-    }
-
-    .runtime-dep-details .hint {
-      color: var(--color-text-muted);
-      font-size: var(--text-2xs);
-    }
-
-    .runtime-dep-details a {
-      color: var(--color-accent-primary);
-      text-decoration: none;
-    }
-
-    .runtime-dep-details a:hover {
-      text-decoration: underline;
-    }
-
-    /* Docker containers nested section */
-    .docker-containers-section {
-      margin-top: var(--space-2);
-      margin-left: calc(var(--text-base) + var(--space-2));
-    }
-
-    .docker-containers-section:empty {
-      display: none;
-    }
-
-    .docker-containers-header {
-      font-size: var(--text-2xs);
-      color: var(--color-text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: var(--space-1);
-      display: flex;
-      align-items: center;
-      gap: var(--space-1);
-    }
-
-    .docker-containers-header .count {
-      background: var(--color-success-subtle);
-      color: var(--color-success);
-      padding: 1px 6px;
-      border-radius: var(--radius-sm);
-      font-weight: var(--weight-medium);
-    }
-
-    .docker-container-item {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-1) var(--space-2);
-      background: var(--color-surface-primary);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-      margin-bottom: var(--space-1);
-    }
-
-    .docker-container-item:last-child {
-      margin-bottom: 0;
-    }
-
-    .docker-container-dot {
-      width: 6px;
-      height: 6px;
-      background: var(--color-success);
-      border-radius: 50%;
-      flex-shrink: 0;
-      animation: pulse-dot 2s infinite;
-    }
-
-    .docker-container-name {
-      font-weight: var(--weight-medium);
-      color: var(--color-text-primary);
-      flex: 1;
-    }
-
-    .docker-container-meta {
-      color: var(--color-text-muted);
-      font-size: var(--text-2xs);
-    }
-
-    /* Capabilities warning */
-    .capabilities-warning {
-      margin-top: var(--space-3);
-      padding: var(--space-2) var(--space-3);
-      background: var(--color-warning-subtle);
-      border-radius: var(--radius-sm);
-      border-left: 3px solid var(--color-warning);
-    }
-
-    .capabilities-warning-title {
-      font-size: var(--text-xs);
-      font-weight: var(--weight-medium);
-      color: var(--color-warning);
-      margin-bottom: var(--space-1);
-    }
-
-    .capabilities-warning-messages {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-      line-height: var(--leading-relaxed);
-    }
-
-    .capabilities-warning-messages a {
-      color: var(--color-accent-primary);
-      text-decoration: none;
-    }
-
-    .capabilities-warning-messages a:hover {
-      text-decoration: underline;
-    }
-
-    .llm-download-section,
-    .llm-progress-section,
-    .llm-control-section {
-      margin-top: var(--space-3);
-    }
-
-    .progress-bar-wrapper {
-      background: var(--color-bg-subtle);
-      border-radius: var(--radius-sm);
-      height: 6px;
-      overflow: hidden;
-    }
-
-    .progress-bar {
-      background: var(--color-accent-primary);
-      height: 100%;
-      transition: width 0.3s;
-    }
-
-    .progress-bar-animated {
-      background: linear-gradient(
-        90deg,
-        var(--color-accent-primary) 0%,
-        var(--color-accent-hover) 50%,
-        var(--color-accent-primary) 100%
-      );
-      background-size: 200% 100%;
-      animation: progress-shimmer 1.5s ease-in-out infinite;
-    }
-
-    @keyframes progress-shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-
-    .download-header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      margin-bottom: var(--space-2);
-    }
-
-    .download-icon {
-      font-size: 1.2em;
-    }
-
-    .status-label {
-      font-weight: 500;
-      font-size: var(--text-sm);
-      margin-right: var(--space-2);
-    }
-
-    .llm-setup-section {
-      margin-top: var(--space-3);
-      padding: var(--space-3);
-      background: var(--color-bg-subtle);
-      border-radius: var(--radius-md);
-    }
-
-    .setup-option {
-      padding: var(--space-2);
-      background: var(--color-bg-base);
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--color-border-subtle);
-    }
-
-    .setup-option-header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      margin-bottom: var(--space-1);
-    }
-
-    .setup-option-icon {
-      font-size: 1.1em;
-    }
-
-    .setup-divider {
-      display: flex;
-      align-items: center;
-      margin: var(--space-3) 0;
-    }
-
-    .setup-divider::before,
-    .setup-divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--color-border-subtle);
-    }
-
-    .setup-divider-text {
-      padding: 0 var(--space-2);
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      text-transform: uppercase;
-    }
-
-    .badge {
-      font-size: var(--text-2xs);
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-    }
-
-    .badge-muted {
-      background: var(--color-bg-subtle);
-      color: var(--color-text-muted);
-    }
-
-    .progress-text {
-      font-size: var(--text-2xs);
-      color: var(--color-text-muted);
-      margin-top: var(--space-1);
-    }
-
-    /* Form divider */
-    .form-divider {
-      margin-bottom: var(--space-3);
-      padding-bottom: var(--space-3);
-      border-bottom: 1px solid var(--color-border-subtle);
-    }
-
-    /* Error message */
-    .error-message {
-      margin-top: var(--space-2);
-      padding: var(--space-2) var(--space-3);
-      background: var(--color-error-subtle);
-      border-radius: var(--radius-sm);
-      color: var(--color-error);
-      font-size: var(--text-xs);
-      font-weight: var(--weight-medium);
-    }
-
-    /* Empty state */
-    .empty-state {
-      text-align: center;
-      padding: var(--space-4);
-      color: var(--color-text-muted);
-      font-size: var(--text-sm);
-    }
-
-    .empty-state a {
-      color: var(--color-accent-primary);
-    }
-
-    /* Bridge Activity Panel */
-    .panel-title-with-indicator {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .bridge-indicator {
-      font-size: 8px;
-      color: var(--color-success);
-      animation: pulse 2s infinite;
-    }
-
-    .bridge-indicator.error {
-      color: var(--color-error);
-    }
-
-    .bridge-indicator.idle {
-      color: var(--color-text-muted);
-      animation: none;
-    }
-
-    .bridge-activity-tabs {
-      display: flex;
-      gap: var(--space-1);
-      padding: var(--space-2);
-      border-bottom: 1px solid var(--color-border-subtle);
-      background: var(--color-bg-subtle);
-    }
-
-    .bridge-tab {
-      padding: var(--space-1) var(--space-2);
-      background: transparent;
-      border: none;
-      color: var(--color-text-secondary);
-      cursor: pointer;
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-      font-family: var(--font-sans);
-    }
-
-    .bridge-tab:hover {
-      background: var(--color-surface-primary);
-    }
-
-    .bridge-tab.active {
-      background: var(--color-accent-primary);
-      color: white;
-    }
-
-    .bridge-activity-log {
-      max-height: 200px;
-      overflow-y: auto;
-      font-size: var(--text-xs);
-      padding: var(--space-2);
-    }
-
-    .bridge-entry {
-      display: flex;
-      align-items: flex-start;
-      gap: var(--space-2);
-      padding: var(--space-1) 0;
-      border-bottom: 1px solid var(--color-border-subtle);
-      cursor: pointer;
-    }
-
-    .bridge-entry:hover {
-      background: var(--color-bg-subtle);
-    }
-
-    .bridge-entry:last-child {
-      border-bottom: none;
-    }
-
-    .bridge-time {
-      color: var(--color-text-muted);
-      font-family: var(--font-mono);
-      white-space: nowrap;
-      font-size: var(--text-2xs);
-    }
-
-    .bridge-dir {
-      font-weight: var(--weight-bold);
-      width: 12px;
-      text-align: center;
-    }
-
-    .bridge-dir.send {
-      color: var(--color-accent-primary);
-    }
-
-    .bridge-dir.recv {
-      color: var(--color-success);
-    }
-
-    .bridge-type {
-      font-family: var(--font-mono);
-      color: var(--color-text-primary);
-      font-weight: var(--weight-medium);
-    }
-
-    .bridge-summary {
-      color: var(--color-text-muted);
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .bridge-json-view {
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    .bridge-json-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-2);
-      background: var(--color-bg-subtle);
-      border-bottom: 1px solid var(--color-border-subtle);
-      position: sticky;
-      top: 0;
-    }
-
-    .bridge-json-title {
-      font-size: var(--text-xs);
-      font-weight: var(--weight-medium);
-      color: var(--color-text-muted);
-    }
-
-    .bridge-json-view pre {
-      margin: 0;
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      white-space: pre-wrap;
-      word-break: break-all;
-      color: var(--color-text-secondary);
-      background: var(--color-bg-subtle);
-      padding: var(--space-2);
-      border-radius: var(--radius-sm);
-    }
-
-    /* Permissions Panel */
-    .permissions-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-
-    .permission-origin-item {
-      background: var(--color-bg-subtle);
-      border-radius: var(--radius-sm);
-      padding: var(--space-2);
-      border: 1px solid var(--color-border-subtle);
-    }
-
-    .permission-origin-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: var(--space-1);
-    }
-
-    .permission-origin-name {
-      font-size: var(--text-xs);
-      font-family: var(--font-mono);
-      color: var(--color-accent-primary);
-      word-break: break-all;
-    }
-
-    .permission-scopes {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      margin-top: var(--space-1);
-    }
-
-    .permission-scope-badge {
-      font-size: var(--text-2xs);
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      background: var(--color-success-subtle);
-      color: var(--color-success);
-    }
-
-    .permission-scope-badge.temporary {
-      background: var(--color-warning-subtle);
-      color: var(--color-warning);
-    }
-
-    .permission-scope-badge.denied {
-      background: var(--color-error-subtle);
-      color: var(--color-error);
-    }
-
-    .permission-temp-label {
-      font-size: 9px;
-      opacity: 0.85;
-      margin-left: 2px;
-    }
-
-    .permission-tools-section {
-      margin-top: var(--space-2);
-      padding-top: var(--space-2);
-      border-top: 1px solid var(--color-border-subtle);
-    }
-
-    .permission-tools-title {
-      font-size: var(--text-2xs);
-      color: var(--color-text-muted);
-      text-transform: uppercase;
-      margin-bottom: var(--space-1);
-    }
-
-    .permission-tools-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-    }
-
-    .permission-tool-badge {
-      font-size: var(--text-2xs);
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      background: var(--color-bg-subtle);
-      color: var(--color-text-secondary);
-      font-family: var(--font-mono);
-      border: 1px solid var(--color-border-subtle);
-    }
-
-    .permission-actions {
-      display: flex;
-      gap: var(--space-1);
-      margin-top: var(--space-2);
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <!-- Header with Bridge Status -->
-    <header class="header">
+  <head>
+    <meta charset="utf-8" />
+    <title>Harbor</title>
+    <link rel="stylesheet" href="./design-tokens.css" />
+    <style>
+      body {
+        min-height: 100vh;
+        padding: var(--space-3);
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--space-3);
+      }
+      .header-brand {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .header-logo {
+        width: 28px;
+        height: 28px;
+        background: var(--color-accent-primary);
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-text-inverse);
+        font-weight: var(--weight-bold);
+        font-size: var(--text-sm);
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s;
+      }
+      .header-logo:hover {
+        transform: scale(1.05);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+      .header-logo:active {
+        transform: scale(0.98);
+      }
+      .header-title {
+        font-size: var(--text-lg);
+        font-weight: var(--weight-bold);
+        color: var(--color-text-primary);
+      }
+      .header-status {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+        margin-left: var(--space-2);
+        padding-left: var(--space-2);
+        border-left: 1px solid var(--color-border-subtle);
+      }
+      .header-status .status-indicator {
+        width: 6px;
+        height: 6px;
+      }
+      .header-status .status-text {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+      }
+      .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: var(--radius-full);
+        flex-shrink: 0;
+      }
+      .status-indicator.connected {
+        background: var(--color-success);
+      }
+      .status-indicator.disconnected {
+        background: var(--color-error);
+      }
+      .status-indicator.connecting {
+        background: var(--color-warning);
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+      .status-text {
+        font-weight: var(--weight-medium);
+        font-size: var(--text-sm);
+      }
+      .status-text.connected { color: var(--color-success); }
+      .status-text.disconnected { color: var(--color-error); }
+      .status-text.connecting { color: var(--color-warning); }
+      .panel {
+        background: var(--color-surface-primary);
+        border: 1px solid var(--color-border-default);
+        border-radius: var(--radius-md);
+      }
+      .panel + .panel {
+        margin-top: var(--space-3);
+      }
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--color-border-subtle);
+        cursor: pointer;
+        user-select: none;
+      }
+      .panel-header:hover {
+        background: var(--color-surface-secondary);
+      }
+      .panel-title {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-semibold);
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+      }
+      .panel-toggle {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        transition: transform 0.2s;
+      }
+      .panel-toggle.collapsed {
+        transform: rotate(-90deg);
+      }
+      .panel-body {
+        padding: var(--space-3);
+      }
+      .panel-body.collapsed {
+        display: none;
+      }
+      .server {
+        padding: var(--space-2);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-secondary);
+      }
+      .server + .server {
+        margin-top: var(--space-2);
+      }
+      .server-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: var(--weight-semibold);
+        gap: var(--space-2);
+      }
+      .server-meta {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-top: var(--space-1);
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: var(--radius-full);
+        display: inline-block;
+        margin-right: var(--space-1);
+      }
+      .server-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .status-running {
+        background: var(--color-success);
+      }
+      .status-stopped {
+        background: var(--color-text-muted);
+      }
+      /* LLM Provider styles */
+      .provider {
+        padding: var(--space-2);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-secondary);
+      }
+      .provider + .provider {
+        margin-top: var(--space-2);
+      }
+      .provider-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+      }
+      .provider-name {
+        font-weight: var(--weight-semibold);
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .provider-badge {
+        font-size: var(--text-xs);
+        padding: 2px 6px;
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-tertiary);
+        color: var(--color-text-muted);
+      }
+      .provider-badge.local {
+        background: var(--color-success-bg);
+        color: var(--color-success);
+      }
+      .provider-badge.configured {
+        background: var(--color-accent-bg);
+        color: var(--color-accent-primary);
+      }
+      .provider-config {
+        margin-top: var(--space-2);
+        padding-top: var(--space-2);
+        border-top: 1px solid var(--color-border-subtle);
+        display: none;
+      }
+      .provider-config.expanded {
+        display: block;
+      }
+      .form-group {
+        margin-bottom: var(--space-2);
+      }
+      .form-group:last-child {
+        margin-bottom: 0;
+      }
+      .form-label {
+        display: block;
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-1);
+      }
+      .form-input {
+        width: 100%;
+        padding: var(--space-1) var(--space-2);
+        font-size: var(--text-sm);
+        border: 1px solid var(--color-border-default);
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-primary);
+        color: var(--color-text-primary);
+      }
+      .form-input:focus {
+        outline: none;
+        border-color: var(--color-accent-primary);
+      }
+      .form-input::placeholder {
+        color: var(--color-text-muted);
+      }
+      .form-hint {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-top: var(--space-1);
+      }
+      .form-actions {
+        display: flex;
+        gap: var(--space-2);
+        margin-top: var(--space-2);
+      }
+      .model-select {
+        margin-top: var(--space-3);
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--color-border-subtle);
+      }
+      .model-select-label {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-semibold);
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        margin-bottom: var(--space-2);
+        display: block;
+      }
+      .model-dropdown {
+        width: 100%;
+        padding: var(--space-2);
+        font-size: var(--text-sm);
+        border: 1px solid var(--color-border-default);
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-primary);
+        color: var(--color-text-primary);
+        cursor: pointer;
+      }
+      .empty-state {
+        text-align: center;
+        color: var(--color-text-muted);
+        padding: var(--space-4);
+      }
+      /* Panel header with status */
+      .panel-header-left {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .panel-header-right {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+      }
+      .panel-header-right .status-indicator {
+        width: 6px;
+        height: 6px;
+      }
+      .panel-header-right .status-text {
+        font-size: var(--text-xs);
+      }
+      .panel-collapse-icon {
+        color: var(--color-text-muted);
+        font-size: 10px;
+        transition: transform 0.2s;
+      }
+      .panel-collapse-icon.collapsed {
+        transform: rotate(-90deg);
+      }
+      /* Status summary */
+      .status-summary {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        padding: var(--space-2);
+        background: var(--color-surface-secondary);
+        border-radius: var(--radius-sm);
+        margin-bottom: var(--space-3);
+      }
+      .status-summary.available {
+        background: var(--color-success-bg, rgba(34, 197, 94, 0.1));
+        color: var(--color-success);
+      }
+      .status-summary.unavailable {
+        background: var(--color-warning-bg, rgba(234, 179, 8, 0.1));
+        color: var(--color-warning, #eab308);
+      }
+      /* Provider sections */
+      .provider-section {
+        margin-bottom: var(--space-3);
+      }
+      .provider-section:last-of-type {
+        margin-bottom: 0;
+      }
+      .section-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-bottom: var(--space-1);
+      }
+      .section-icon {
+        font-size: var(--text-sm);
+      }
+      .section-title {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-semibold);
+        color: var(--color-text-primary);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+      }
+      .section-hint {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-2);
+      }
+      .badge {
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: var(--radius-sm);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: var(--weight-semibold);
+      }
+      .badge-muted {
+        background: var(--color-surface-tertiary);
+        color: var(--color-text-muted);
+      }
+      .badge-success {
+        background: var(--color-success-bg, rgba(34, 197, 94, 0.1));
+        color: var(--color-success);
+      }
+      /* Provider list */
+      .provider-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+      }
+      /* Provider item - compact card style */
+      .provider-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2);
+        background: var(--color-surface-secondary);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        transition: border-color 0.2s;
+      }
+      .provider-item:hover {
+        border-color: var(--color-border-default);
+      }
+      .provider-item.available {
+        border-left: 3px solid var(--color-success);
+      }
+      .provider-item.configured {
+        border-left: 3px solid var(--color-accent-primary);
+      }
+      .provider-item.unavailable {
+        opacity: 0.7;
+      }
+      .provider-info {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        flex: 1;
+        min-width: 0;
+      }
+      .provider-name {
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--color-text-primary);
+      }
+      .provider-status {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+      }
+      .provider-status.available {
+        color: var(--color-success);
+      }
+      .provider-status.configured {
+        color: var(--color-accent-primary);
+      }
+      .provider-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+      }
+      /* Model select section */
+      .model-select-section {
+        margin-top: var(--space-3);
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--color-border-subtle);
+      }
+      /* Add provider section */
+      .add-provider-section {
+        margin-bottom: var(--space-3);
+      }
+      .add-provider-row {
+        display: flex;
+        gap: var(--space-2);
+      }
+      .provider-dropdown {
+        flex: 1;
+        padding: var(--space-2);
+        font-size: var(--text-sm);
+        border: 1px solid var(--color-border-default);
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-primary);
+        color: var(--color-text-primary);
+        cursor: pointer;
+      }
+      .provider-dropdown:focus {
+        outline: none;
+        border-color: var(--color-accent-primary);
+      }
+      /* Provider config form */
+      .provider-config-form {
+        padding: var(--space-3);
+        background: var(--color-surface-secondary);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        margin-bottom: var(--space-3);
+      }
+      .provider-config-form .form-group {
+        margin-bottom: var(--space-2);
+      }
+      .provider-config-form .form-group:last-of-type {
+        margin-bottom: var(--space-3);
+      }
+      /* Configured providers */
+      #configured-providers-section {
+        margin-top: var(--space-2);
+      }
+      #configured-providers-section .section-header {
+        margin-bottom: var(--space-2);
+      }
+      .configured-provider {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2);
+        background: var(--color-surface-secondary);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        margin-bottom: var(--space-2);
+      }
+      .configured-provider:last-child {
+        margin-bottom: 0;
+      }
+      .configured-provider.available {
+        border-left: 3px solid var(--color-success);
+      }
+      .configured-provider.unavailable {
+        border-left: 3px solid var(--color-text-muted);
+      }
+      .configured-provider.is-default {
+        background: var(--color-accent-bg, rgba(99, 102, 241, 0.1));
+      }
+      .configured-provider-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .configured-provider-name {
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--color-text-primary);
+      }
+      .configured-provider-type {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+      }
+      .configured-provider-status {
+        font-size: var(--text-xs);
+      }
+      .configured-provider-status.available {
+        color: var(--color-success);
+      }
+      .configured-provider-status.unavailable {
+        color: var(--color-text-muted);
+      }
+      .configured-provider-actions {
+        display: flex;
+        gap: var(--space-1);
+      }
+      .no-providers {
+        color: var(--color-text-muted);
+        font-size: var(--text-sm);
+        text-align: center;
+        padding: var(--space-3);
+      }
+      /* Detected Providers List */
+      .detected-providers-list {
+        margin-bottom: var(--space-3);
+      }
+      .detected-provider {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2);
+        background: var(--color-surface-secondary);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        margin-bottom: var(--space-2);
+      }
+      .detected-provider:last-child {
+        margin-bottom: 0;
+      }
+      .detected-provider.available {
+        border-left: 3px solid var(--color-success);
+      }
+      .detected-provider.unavailable {
+        border-left: 3px solid var(--color-text-muted);
+        opacity: 0.7;
+      }
+      .detected-provider.needs-config {
+        border-left: 3px solid var(--color-warning);
+      }
+      .detected-provider-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .detected-provider-name {
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--color-text-primary);
+      }
+      .detected-provider-status {
+        font-size: var(--text-xs);
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+      }
+      .detected-provider-status.available {
+        color: var(--color-success);
+      }
+      .detected-provider-status.unavailable {
+        color: var(--color-text-muted);
+      }
+      .detected-provider-status.needs-config {
+        color: var(--color-warning);
+      }
+      .detected-provider-action {
+        flex-shrink: 0;
+      }
+      /* API Key Config */
+      .api-key-config {
+        padding: var(--space-3);
+        background: var(--color-surface-secondary);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        margin-bottom: var(--space-3);
+      }
+      .api-key-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--space-2);
+        font-weight: var(--weight-medium);
+        font-size: var(--text-sm);
+      }
+      /* Section label */
+      .section-label {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-semibold);
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        margin-bottom: var(--space-2);
+      }
+      /* Configured Models */
+      .configured-models-list {
+        margin-bottom: var(--space-3);
+      }
+      .configured-model {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2);
+        background: var(--color-surface-secondary);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        margin-bottom: var(--space-2);
+      }
+      .configured-model:last-child {
+        margin-bottom: 0;
+      }
+      .configured-model.is-default {
+        border-left: 3px solid var(--color-success);
+        background: rgba(34, 197, 94, 0.05);
+      }
+      .configured-model-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .configured-model-name {
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--color-text-primary);
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+      }
+      .configured-model-id {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        font-family: var(--font-mono);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .configured-model-actions {
+        display: flex;
+        gap: var(--space-1);
+        margin-left: var(--space-2);
+      }
+      .no-models {
+        color: var(--color-text-muted);
+        font-size: var(--text-sm);
+        text-align: center;
+        padding: var(--space-3);
+      }
+      /* Add Model Section */
+      .add-model-section {
+        display: flex;
+        gap: var(--space-2);
+        margin-bottom: var(--space-3);
+      }
+      .add-model-section .model-dropdown {
+        flex: 1;
+      }
+      /* Providers Details */
+      .providers-details {
+        margin-top: var(--space-2);
+        border-top: 1px solid var(--color-border-subtle);
+        padding-top: var(--space-2);
+      }
+      .providers-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--color-text-muted);
+        padding: var(--space-1) 0;
+      }
+      .providers-summary:hover {
+        color: var(--color-text-secondary);
+      }
+      .providers-count {
+        background: var(--color-surface-tertiary);
+        padding: 2px 6px;
+        border-radius: var(--radius-sm);
+        font-size: var(--text-2xs);
+      }
+      .providers-details[open] .detected-providers-list {
+        margin-top: var(--space-2);
+      }
+      /* Quick Actions Panel */
+      .quick-actions-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-2);
+      }
+      .quick-action-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-1);
+        padding: var(--space-3);
+        background: var(--color-surface-secondary);
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .quick-action-btn:hover {
+        background: var(--color-surface-tertiary);
+        border-color: var(--color-accent-primary);
+      }
+      .quick-action-icon {
+        font-size: var(--text-lg);
+      }
+      .quick-action-label {
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+        font-weight: var(--weight-medium);
+      }
+      
+      /* Toast notification */
+      .toast {
+        position: fixed;
+        bottom: var(--space-3);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--color-surface-tertiary);
+        color: var(--color-text-primary);
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-sm);
+        font-size: var(--text-sm);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        animation: toast-in 0.2s ease-out;
+      }
+      @keyframes toast-in {
+        from {
+          opacity: 0;
+          transform: translateX(-50%) translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
       <div class="header-brand">
-        <div class="header-logo">H</div>
-        <span class="header-title">Harbor</span>
-        <a id="dev-mode-link" class="dev-mode-badge" href="about:debugging#/runtime/this-firefox" target="_blank" title="Open debugging page (Reload/Inspect)" style="display: none;">
-          🛠️ DEV
-        </a>
+        <div class="header-logo" id="header-logo" title="Open Firefox debugging page">H</div>
+        <div class="header-title">Harbor</div>
         <div class="header-status">
-          <div id="status-indicator" class="status-indicator disconnected"></div>
-          <span id="status-text" class="status-text disconnected">Disconnected</span>
+          <div id="bridge-status-indicator" class="status-indicator connecting"></div>
+          <span id="bridge-status-text" class="status-text connecting">Connecting...</span>
         </div>
       </div>
-      <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
-        <span id="theme-icon">◐</span>
-      </button>
-    </header>
-    
-    <!-- Bridge Error (shown only on error) -->
-    <div id="error-container" class="error-message" style="display: none;"></div>
-
-    <!-- Runtime Status Section -->
-    <div class="panel collapsed" id="llm-card" data-panel="runtime">
-      <div class="panel-header">
-        <div class="panel-header-left">
-          <span class="panel-collapse-icon">▼</span>
-          <span class="panel-title">Runtime Status</span>
-          <span class="panel-status-dot green" id="runtime-status-dot" title="All systems operational"></span>
-        </div>
-      </div>
-      <div class="panel-body">
-        <!-- LLM Status Section -->
-        <div id="llm-status-container" class="status-section">
-          <div class="status-row">
-            <span class="status-label">🤖 LLM</span>
-            <div id="llm-status-indicator" class="status-indicator disconnected"></div>
-            <span id="llm-status-text" class="status-text disconnected">Checking...</span>
-          </div>
-          <div id="llm-details" class="llm-details"></div>
-          
-          <!-- LLM Setup Options (shown when no LLM available) -->
-          <div id="llm-download-section" class="llm-setup-section" style="display: none;">
-            <p class="text-sm mb-2">To use Harbor's AI features, configure an LLM:</p>
-            
-            <div class="setup-option">
-              <div class="setup-option-header">
-                <span class="setup-option-icon">💻</span>
-                <strong class="text-sm">Local Model</strong>
-                <span class="badge badge-muted">Private</span>
-              </div>
-              <p class="text-xs text-muted mb-2">Download and run on your machine. No data leaves your computer.</p>
-              <div class="form-group mb-2">
-                <select id="llm-model-dropdown" class="input select">
-                  <option value="mistral-7b-instruct">Mistral 7B (4.1 GB) — Recommended</option>
-                  <option value="llama-3.2-3b">Llama 3.2 3B (2.0 GB)</option>
-                  <option value="phi-2">Phi-2 (1.7 GB) — Faster</option>
-                  <option value="tinyllama-1.1b">TinyLlama (670 MB) — Fastest</option>
-                </select>
-              </div>
-              <button id="llm-download-btn" class="btn btn-primary btn-sm w-full">
-                Download Model
-              </button>
-            </div>
-            
-            <div class="setup-divider">
-              <span class="setup-divider-text">or</span>
-            </div>
-            
-            <div class="setup-option">
-              <div class="setup-option-header">
-                <span class="setup-option-icon">☁️</span>
-                <strong class="text-sm">Cloud Provider</strong>
-                <span class="badge badge-muted">API Key</span>
-              </div>
-              <p class="text-xs text-muted mb-2">Use OpenAI, Anthropic, Mistral, or other providers.</p>
-              <p class="text-xs text-muted">👇 Configure in <strong>LLM Provider</strong> section below</p>
-            </div>
-          </div>
-          
-          <!-- Progress section (shown during download) -->
-          <div id="llm-progress-section" class="llm-progress-section" style="display: none;">
-            <div class="download-header">
-              <span class="download-icon">⬇️</span>
-              <span class="text-sm"><strong>Downloading <span id="llm-download-model-name"></span></strong></span>
-            </div>
-            <div class="progress-bar-wrapper">
-              <div id="llm-progress-bar" class="progress-bar progress-bar-animated" style="width: 100%;"></div>
-            </div>
-            <div id="llm-progress-text" class="progress-text text-muted">
-              This is a large file and may take 10-30 minutes depending on your connection.
-            </div>
-            <p class="text-xs text-muted mt-2">
-              ⚠️ Please keep Firefox open until the download completes.
-            </p>
-          </div>
-          
-          <!-- Control section (shown when model is downloaded) -->
-          <div id="llm-control-section" class="llm-control-section" style="display: none;">
-            <div class="llm-model-info text-xs text-muted mb-2">
-              Model: <span id="llm-downloaded-model-name">—</span>
-            </div>
-            <div class="actions" style="gap: var(--space-2);">
-              <button id="llm-start-btn" class="btn btn-success flex-1">Start Local LLM</button>
-              <button id="llm-stop-btn" class="btn btn-danger flex-1" style="display: none;">Stop</button>
-              <button id="llm-delete-btn" class="btn btn-ghost btn-sm" title="Delete downloaded model" style="padding: 6px 10px;">🗑️</button>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Runtime Dependencies Section -->
-        <div id="runtime-deps-container" class="runtime-deps-section">
-          <div class="runtime-deps-header">
-            <span class="runtime-deps-title">Runtime Dependencies</span>
-          </div>
-          
-          <div class="runtime-deps-grid">
-            <!-- Ollama -->
-            <div id="ollama-runtime-container" class="runtime-dep-card">
-              <div class="runtime-dep-header">
-                <span class="runtime-dep-icon">🦙</span>
-                <span class="runtime-dep-name">Ollama</span>
-                <div id="ollama-runtime-indicator" class="status-indicator disconnected"></div>
-                <span id="ollama-runtime-text" class="runtime-dep-status">Checking...</span>
-              </div>
-              <div id="ollama-runtime-details" class="runtime-dep-details"></div>
-            </div>
-            
-            <!-- Docker -->
-            <div id="docker-status-container" class="runtime-dep-card">
-              <div class="runtime-dep-header">
-                <span class="runtime-dep-icon">🐳</span>
-                <span class="runtime-dep-name">Docker</span>
-                <div id="docker-status-indicator" class="status-indicator disconnected"></div>
-                <span id="docker-status-text" class="runtime-dep-status">Checking...</span>
-              </div>
-              <div id="docker-details" class="runtime-dep-details"></div>
-              <div id="docker-containers" class="docker-containers-section"></div>
-            </div>
-            
-            <!-- Python -->
-            <div id="python-status-container" class="runtime-dep-card">
-              <div class="runtime-dep-header">
-                <span class="runtime-dep-icon">🐍</span>
-                <span class="runtime-dep-name">Python</span>
-                <div id="python-status-indicator" class="status-indicator disconnected"></div>
-                <span id="python-status-text" class="runtime-dep-status">Checking...</span>
-              </div>
-              <div id="python-details" class="runtime-dep-details"></div>
-            </div>
-            
-            <!-- Node.js -->
-            <div id="node-status-container" class="runtime-dep-card">
-              <div class="runtime-dep-header">
-                <span class="runtime-dep-icon">📦</span>
-                <span class="runtime-dep-name">Node.js</span>
-                <div id="node-status-indicator" class="status-indicator disconnected"></div>
-                <span id="node-status-text" class="runtime-dep-status">Checking...</span>
-              </div>
-              <div id="node-details" class="runtime-dep-details"></div>
-            </div>
-          </div>
-          
-          <!-- Capabilities Summary (shown if anything is missing) -->
-          <div id="capabilities-summary" class="capabilities-warning" style="display: none;">
-            <div class="capabilities-warning-title">⚠️ Limited Capabilities</div>
-            <div id="capabilities-messages" class="capabilities-warning-messages"></div>
-          </div>
-        </div>
+      <div class="server-actions">
+        <button class="btn btn-secondary btn-sm" id="refresh">Refresh</button>
       </div>
     </div>
 
-    <!-- LLM Provider Settings -->
-    <div class="panel" id="llm-settings-card" data-panel="llm-settings">
-      <div class="panel-header">
+    <div class="panel" id="llm-panel">
+      <div class="panel-header" id="llm-panel-header">
         <div class="panel-header-left">
-          <span class="panel-collapse-icon">▼</span>
-          <span class="panel-title">🤖 LLM Provider</span>
-          <span class="panel-status-dot gray" id="llm-settings-dot" title="No provider selected"></span>
+          <span class="panel-collapse-icon" id="llm-panel-toggle">&#9660;</span>
+          <div class="panel-title">LLM Providers</div>
         </div>
-        <div class="panel-header-actions" onclick="event.stopPropagation();">
-          <button class="btn btn-sm btn-ghost" id="refresh-llm-config" title="Refresh">↻</button>
+        <div class="panel-header-right">
+          <div id="llm-status-indicator" class="status-indicator connecting"></div>
+          <span id="llm-status-text" class="status-text connecting">Checking...</span>
         </div>
       </div>
-      <div class="panel-body">
-        <!-- Active Provider & Model Selection -->
-        <div class="form-group">
-          <label class="form-label">Provider</label>
-          <select id="llm-provider-select" class="input select">
-            <option value="">-- Select Provider --</option>
+      <div class="panel-body" id="llm-panel-body">
+        <!-- Configured Models List -->
+        <div class="section-label">Configured Models</div>
+        <div id="configured-models" class="configured-models-list"></div>
+        
+        <!-- Add Model -->
+        <div class="add-model-section">
+          <select class="model-dropdown" id="available-models">
+            <option value="">Select a model to add...</option>
           </select>
+          <button class="btn btn-primary btn-sm" id="add-model-btn" disabled>Add</button>
         </div>
-        
-        <div class="form-group">
-          <label class="form-label">Model</label>
-          <select id="llm-model-select" class="input select" disabled>
-            <option value="">-- Select Provider First --</option>
-          </select>
-        </div>
-        
-        <div id="llm-provider-status" class="llm-details" style="margin-top: var(--space-2);">
-          <!-- Provider status will appear here -->
-        </div>
-        
-        <!-- API Key Configuration Section -->
-        <div id="llm-api-key-section" style="margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border-subtle); display: none;">
-          <div class="section-divider">
-            <span>🔑 API Keys</span>
-          </div>
+
+        <!-- Detected Providers (collapsible) -->
+        <details class="providers-details">
+          <summary class="providers-summary">
+            <span>Providers</span>
+            <span id="providers-count" class="providers-count">0</span>
+          </summary>
+          <div id="detected-providers" class="detected-providers-list"></div>
           
-          <div id="llm-api-keys-list">
-            <!-- API key inputs will be rendered here -->
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- LLM API Key Modal -->
-    <div id="llm-api-key-modal" class="modal" style="display: none;">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3 id="llm-api-key-modal-title">Configure API Key</h3>
-          <button class="modal-close" id="llm-api-key-modal-close">×</button>
-        </div>
-        <div class="modal-body">
-          <p id="llm-api-key-modal-description" class="text-sm text-muted mb-3"></p>
-          
-          <div class="credential-field">
-            <div class="credential-label">
-              <span class="credential-label-text" id="llm-api-key-label">API Key</span>
-              <span class="credential-required">*</span>
+          <!-- API Key Config -->
+          <div id="api-key-config" class="api-key-config" style="display: none;">
+            <div class="api-key-header">
+              <span id="api-key-provider-name">Configure Provider</span>
+              <button class="btn btn-ghost btn-sm" id="api-key-cancel">×</button>
             </div>
-            <div class="password-input-wrapper">
-              <input type="password" id="llm-api-key-input" class="credential-input" placeholder="Enter API key...">
-              <button class="password-toggle" type="button" id="llm-api-key-toggle">◉</button>
+            <div class="form-group">
+              <label class="form-label" for="api-key-input">API Key</label>
+              <input type="password" class="form-input" id="api-key-input" placeholder="Enter API key" />
             </div>
-            <div id="llm-api-key-status" class="credential-status"></div>
+            <button class="btn btn-primary btn-sm" id="api-key-save" style="width: 100%;">Save</button>
           </div>
-          
-          <div class="credential-hint" id="llm-api-key-hint" style="margin-top: var(--space-2);">
-            <!-- Hint will be populated dynamically -->
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="llm-api-key-modal-cancel">Cancel</button>
-          <button class="btn btn-danger" id="llm-api-key-modal-remove" style="display: none;">Remove Key</button>
-          <button class="btn btn-primary" id="llm-api-key-modal-save">Save</button>
-        </div>
+        </details>
       </div>
     </div>
 
-    <!-- Add Server Section -->
-    <div class="panel" id="add-server-card" data-panel="add-server">
-      <div class="panel-header">
+    <div class="panel">
+      <div class="panel-header" id="servers-panel-header">
         <div class="panel-header-left">
-          <span class="panel-collapse-icon">▼</span>
-          <span class="panel-title">➕ Add Server</span>
+          <span class="panel-collapse-icon" id="servers-panel-toggle">&#9660;</span>
+          <div class="panel-title">MCP Servers</div>
+        </div>
+        <div class="panel-header-right">
+          <button class="btn btn-secondary btn-sm" id="add" title="Load WASM MCP server">Add WASM</button>
+          <input id="file" type="file" accept=".wasm" hidden />
         </div>
       </div>
-      <div class="panel-body">
-        <!-- GitHub URL Input -->
-        <div class="form-group mb-3">
-          <label class="form-label">Install from GitHub</label>
-          <div style="display: flex; gap: var(--space-2);">
-            <input type="text" id="github-url-input" class="input" placeholder="github.com/user/repo" style="flex: 1;">
-            <button id="install-github-btn" class="btn btn-primary">Install</button>
-          </div>
-          <div class="credential-hint mt-1">Paste any GitHub MCP server repository URL</div>
-        </div>
-        
-        <!-- Quick actions -->
-        <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
-          <button class="btn btn-sm btn-secondary" id="import-config-btn">📄 Import JSON</button>
-          <button class="btn btn-sm btn-secondary" id="add-remote-server-btn">🌐 Add Remote</button>
-        </div>
-      </div>
+      <div class="panel-body" id="servers"></div>
     </div>
 
-    <!-- Installed Servers Section -->
-    <div class="panel" id="installed-servers-card" data-panel="my-servers">
-      <div class="panel-header">
+    <!-- Quick Actions Panel -->
+    <div class="panel" id="quick-actions-panel">
+      <div class="panel-header" id="quick-actions-header">
         <div class="panel-header-left">
-          <span class="panel-collapse-icon">▼</span>
-          <span class="panel-title">📦 My Servers</span>
-          <span class="panel-status-dot gray" id="servers-status-dot" title="No servers running"></span>
-        </div>
-        <div class="panel-header-actions" onclick="event.stopPropagation();">
-          <button class="btn btn-sm btn-ghost" id="refresh-installed" title="Refresh">↻</button>
+          <span class="panel-collapse-icon" id="quick-actions-toggle">&#9660;</span>
+          <div class="panel-title">Quick Actions</div>
         </div>
       </div>
-      <div class="panel-body">
-        <div id="installed-server-list" class="server-list">
-          <div class="empty-state">
-            No servers installed. 
-            <a href="#" id="go-to-directory-link" style="color: var(--color-accent-primary);">Browse the directory</a> or install from GitHub above.
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Add Remote Server Modal -->
-    <div id="add-remote-modal" class="modal" style="display: none;">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Add Remote MCP Server</h3>
-          <button class="modal-close" id="add-remote-modal-close">×</button>
-        </div>
-        <div class="modal-body">
-          <p class="text-sm text-muted mb-3">Connect to a remote MCP server via HTTP.</p>
-          
-          <div class="credential-field">
-            <div class="credential-label">
-              <span class="credential-label-text">Server Name</span>
-              <span class="credential-required">*</span>
-            </div>
-            <input type="text" id="remote-server-name" class="credential-input" placeholder="e.g. GitHub Copilot MCP">
-          </div>
-          
-          <div class="credential-field">
-            <div class="credential-label">
-              <span class="credential-label-text">Server URL</span>
-              <span class="credential-required">*</span>
-            </div>
-            <input type="url" id="remote-server-url" class="credential-input" placeholder="https://api.example.com/mcp/">
-          </div>
-          
-          <div class="credential-field">
-            <div class="credential-label">
-              <span class="credential-label-text">Transport Type</span>
-            </div>
-            <select id="remote-server-type" class="credential-input">
-              <option value="http">HTTP (Streamable)</option>
-              <option value="sse">SSE (Legacy)</option>
-            </select>
-          </div>
-          
-          <div class="credential-hint">
-            Remote servers are cloud-hosted MCP endpoints. You can add authentication tokens after adding the server.
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="add-remote-modal-cancel">Cancel</button>
-          <button class="btn btn-primary" id="add-remote-modal-add">Add Server</button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Import Config Modal -->
-    <div id="import-config-modal" class="modal" style="display: none;">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content" style="max-width: 500px;">
-        <div class="modal-header">
-          <h3>Import MCP Configuration</h3>
-          <button class="modal-close" id="import-config-modal-close">×</button>
-        </div>
-        <div class="modal-body">
-          <p class="text-sm text-muted mb-3">
-            Paste a configuration from Claude Desktop or VS Code. Supports both stdio and HTTP servers.
-          </p>
-          
-          <div class="credential-field">
-            <div class="credential-label">
-              <span class="credential-label-text">JSON Configuration</span>
-            </div>
-            <textarea 
-              id="import-config-json" 
-              class="credential-input" 
-              style="height: 200px; font-family: var(--font-mono); font-size: 11px; resize: vertical;"
-              placeholder='{
-  "servers": {
-    "github": {
-      "type": "http",
-      "url": "https://api.example.com/mcp/"
-    }
-  }
-}'></textarea>
-          </div>
-          
-          <details class="credential-hint" style="margin-top: 12px;">
-            <summary style="cursor: pointer; user-select: none;">Supported formats</summary>
-            <div style="margin-top: 8px; padding: 8px; background: var(--color-surface-secondary); border-radius: 4px; font-size: 10px;">
-              <strong>VS Code format:</strong><br>
-              <code>{"servers": {"name": {"type": "http", "url": "..."}}}</code><br><br>
-              <strong>Claude Desktop format:</strong><br>
-              <code>{"mcpServers": {"name": {"command": "npx", "args": [...]}}}</code>
-            </div>
-          </details>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="import-config-modal-cancel">Cancel</button>
-          <button class="btn btn-primary" id="import-config-modal-import">Import</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Credential Modal -->
-    <div id="credential-modal" class="modal" style="display: none;">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3 id="credential-modal-title">Configure Credentials</h3>
-          <button class="modal-close" id="credential-modal-close">×</button>
-        </div>
-        <div class="modal-body" id="credential-modal-body">
-          <!-- Credential forms will be inserted here -->
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="credential-modal-cancel">Cancel</button>
-          <button class="btn btn-primary" id="credential-modal-save">Save</button>
-        </div>
-      </div>
-    </div>
-
-
-    <!-- Tools Response (shown when listing tools) -->
-    <div class="panel" id="tools-card" style="display: none;" data-panel="tools">
-      <div class="panel-header">
-        <div class="panel-header-left">
-          <span class="panel-collapse-icon">▼</span>
-          <span class="panel-title">Tools Response</span>
-        </div>
-      </div>
-      <div class="panel-body">
-        <div class="message-content">
-          <pre id="tools-response"></pre>
-        </div>
-      </div>
-    </div>
-
-    <!-- Quick Links -->
-    <div class="panel" data-panel="actions">
-      <div class="panel-header">
-        <div class="panel-header-left">
-          <span class="panel-collapse-icon">▼</span>
-          <span class="panel-title">Actions</span>
-        </div>
-      </div>
-      <div class="panel-body">
-        <div class="quick-links">
-          <button id="open-chat" class="quick-link">
-            <span class="quick-link-icon">💬</span>
-            <span>Chat</span>
+      <div class="panel-body" id="quick-actions-body">
+        <div class="quick-actions-grid">
+          <button class="quick-action-btn" id="open-chat-btn" title="Open debug chat in new tab">
+            <span class="quick-action-icon">💬</span>
+            <span class="quick-action-label">Open Chat</span>
           </button>
-          <button id="open-directory" class="quick-link">
-            <span class="quick-link-icon">📂</span>
-            <span>Directory</span>
+          <button class="quick-action-btn" id="reload-extension-btn" title="Reload the extension">
+            <span class="quick-action-icon">🔄</span>
+            <span class="quick-action-label">Reload</span>
           </button>
         </div>
-        
-        <!-- Bridge Controls -->
-        <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border-subtle);">
-          <button id="send-hello" class="btn btn-sm btn-secondary flex-1">Send Hello</button>
-          <button id="reconnect" class="btn btn-sm btn-secondary flex-1">Reconnect</button>
-        </div>
       </div>
     </div>
 
-    <!-- Permissions Panel -->
-    <div class="panel collapsed" id="permissions-panel" data-panel="permissions">
-      <div class="panel-header">
-        <div class="panel-header-left">
-          <span class="panel-collapse-icon">▼</span>
-          <span class="panel-title">🔒 Site Permissions</span>
-        </div>
-        <div class="panel-header-actions" onclick="event.stopPropagation();">
-          <button class="btn btn-sm btn-ghost" id="refresh-permissions" title="Refresh">↻</button>
-        </div>
-      </div>
-      <div class="panel-body">
-        <div id="permissions-list" class="permissions-list">
-          <div class="empty-state">
-            No site permissions granted yet.
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Bridge Activity Panel (collapsible) -->
-    <div class="panel collapsed" id="bridge-activity-panel" data-panel="bridge-activity">
-      <div class="panel-header" id="bridge-activity-header">
-        <div class="panel-header-left">
-          <span class="panel-collapse-icon">▼</span>
-          <span class="panel-title">Bridge Activity</span>
-          <span class="bridge-indicator" id="bridge-indicator">●</span>
-        </div>
-      </div>
-      <div id="bridge-activity-content" class="panel-body" style="padding: 0;">
-        <div class="bridge-activity-tabs">
-          <button class="bridge-tab active" data-tab="activity">Activity</button>
-          <button class="bridge-tab" data-tab="json">Raw JSON</button>
-        </div>
-        <div class="bridge-activity-log" id="bridge-activity-log">
-          <!-- Activity entries will appear here -->
-        </div>
-        <div class="bridge-json-view" id="bridge-json-view" style="display: none;">
-          <div class="bridge-json-header">
-            <span class="bridge-json-title">Selected Message</span>
-            <button class="btn btn-sm btn-ghost" id="copy-bridge-json-btn">Copy</button>
-          </div>
-          <pre id="bridge-json-content">Select a message to view</pre>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script type="module" src="sidebar.js"></script>
-</body>
+    <script type="module" src="./sidebar.js"></script>
+  </body>
 </html>

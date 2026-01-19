@@ -1,3 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Harbor Directory</title>
+    <link rel="stylesheet" href="./design-tokens.css" />
+    <style>
+      body {
+        padding: 16px;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div>
+        <div class="section-header">Directory</div>
+        <div class="text-lg font-semibold">Installed MCP Servers</div>
+      </div>
+      <button class="btn btn-secondary" id="refresh">Refresh</button>
+    </div>
+    <div id="list" class="list"></div>
+    <script type="module" src="./directory.js"></script>
+  </body>
+</html>
 <!DOCTYPE html>
 <html lang="en">
 <head>

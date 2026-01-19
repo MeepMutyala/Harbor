@@ -1,0 +1,14 @@
+# Harbor WASM MCP Extension
+
+This is the new extension skeleton for the WASM-based MCP architecture.
+
+## Notes
+- The extension is TypeScript-first, build tooling TBD.
+- WASM MCP servers are loaded via WASI + wasmtime (planned).
+- Local LLMs and filesystem access are routed through the Rust bridge.
+- UI uses `src/design-tokens.css` (ported from the original extension).
+
+## Next Steps
+- Add build tooling (Vite or esbuild).
+- Implement Web Agents API content script injection.
+- Implement WASM MCP runtime and server registry.

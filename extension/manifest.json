@@ -1,63 +1,60 @@
 {
   "manifest_version": 3,
-  "name": "Harbor",
-  "version": "0.260104.2113",
-  "description": "Native messaging bridge for Harbor - AI agents with MCP tools",
-  "permissions": [
-    "nativeMessaging",
-    "storage",
-    "tabs",
-    "activeTab",
-    "scripting",
-    "management"
-  ],
-  "host_permissions": [
-    "https://registry.modelcontextprotocol.io/*",
-    "https://raw.githubusercontent.com/*",
-    "<all_urls>"
-  ],
+  "name": "Harbor (WASM MCP)",
+  "version": "0.1.0",
+  "description": "WASM MCP extension with Web Agents API.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "harbor@anthropic.com"
+    }
+  },
   "background": {
-    "scripts": ["background.js"],
-    "type": "module"
+    "scripts": ["dist/background.js"]
   },
-  "sidebar_action": {
-    "default_title": "Harbor",
-    "default_panel": "sidebar.html",
-    "default_icon": "icons/harbor-icon.svg"
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "nativeMessaging"
+  ],
+  "omnibox": {
+    "keyword": "h"
   },
+  "host_permissions": [
+    "http://localhost/*",
+    "https://*/*"
+  ],
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content-bridge.js"],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["vscode-detector.js"],
-      "run_at": "document_idle",
-      "all_frames": false
+      "matches": ["<all_urls>"],
+      "js": ["dist/agents/content-script.js"],
+      "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["provider-injected.js", "page-chat.js"],
-      "matches": ["http://*/*", "https://*/*"]
+      "resources": [
+        "dist/agents/injected.js",
+        "dist/permission-prompt.html",
+        "dist/permission-prompt.js",
+        "dist/design-tokens.css",
+        "dist/demo-bootstrap.js",
+        "demo/*",
+        "assets/mcp-time.wasm"
+      ],
+      "matches": ["<all_urls>"]
     }
   ],
-  "commands": {
-    "toggle-page-chat": {
-      "suggested_key": {
-        "default": "Alt+Shift+C",
-        "mac": "Alt+Shift+C"
-      },
-      "description": "Toggle page chat sidebar"
-    }
+  "action": {
+    "default_title": "Harbor",
+    "default_popup": "dist/directory.html"
   },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "raffi.krikorian.harbor@gmail.com",
-      "strict_min_version": "112.0"
-    }
+  "sidebar_action": {
+    "default_title": "Harbor",
+    "default_panel": "dist/sidebar.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }
 }

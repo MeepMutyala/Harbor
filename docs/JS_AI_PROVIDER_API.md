@@ -46,6 +46,10 @@ All API calls require permission from the user. Permissions are scoped per-origi
 | `browser:activeTab.read` | Read content from active tab | `agent.browser.activeTab.readability()` |
 | `chat:open` | Open browser's chat UI | `agent.chat.open()` |
 | `web:fetch` | Proxy fetch requests | Not implemented in v1 |
+| `addressBar:suggest` | Provide address bar suggestions | `agent.addressBar.registerProvider()` |
+| `addressBar:context` | Access current tab context | Smart navigation features |
+| `addressBar:history` | Access recent navigation history | Personalized suggestions |
+| `addressBar:execute` | Execute actions from address bar | Tool invocation |
 
 ### Permission Grants
 
@@ -720,7 +724,9 @@ const response = await session.prompt('Explain quantum computing');
 
 ### ai.providers.list()
 
-List all configured LLM providers and their availability.
+List all configured LLM provider instances and their availability.
+
+**Multi-Instance Support:** Harbor supports multiple instances of the same provider type. For example, you can have two different OpenAI accounts configured with different API keys and names.
 
 **Requires:** `model:list` permission
 
@@ -732,15 +738,23 @@ ai.providers.list(): Promise<LLMProviderInfo[]>
 **Returns:**
 ```typescript
 interface LLMProviderInfo {
-  id: string;           // e.g., 'openai', 'anthropic', 'ollama'
-  name: string;         // Human-readable name
-  available: boolean;   // Whether the provider is currently accessible
-  baseUrl?: string;     // API endpoint
-  models?: string[];    // Available model IDs
-  isDefault: boolean;   // Whether this is the active provider
+  id: string;              // Unique instance ID (e.g., 'openai-work', 'openai-personal')
+  type: string;            // Provider type: 'openai', 'anthropic', 'ollama', etc.
+  name: string;            // User-defined display name
+  available: boolean;      // Whether the provider is currently accessible
+  baseUrl?: string;        // Custom API endpoint
+  models?: string[];       // Available model IDs
+  isDefault: boolean;      // Whether this is the global default provider
+  isTypeDefault: boolean;  // Whether this is the default for its provider type
   supportsTools?: boolean; // Whether it supports tool calling
 }
 ```
+
+**Provider Selection Logic:**
+- If you specify `provider: 'openai-work'` (an instance ID), that specific instance is used
+- If you specify `provider: 'openai'` (a type), the type default is used
+- If you have only one instance of a type, it's automatically the type default
+- If no provider is specified, the global default is used
 
 **Example:**
 ```javascript
@@ -750,19 +764,21 @@ await window.agent.requestPermissions({
   reason: 'To show available AI providers',
 });
 
-// List all providers
+// List all provider instances
 const providers = await window.ai.providers.list();
 
 console.log('Available providers:');
 for (const provider of providers) {
   const status = provider.available ? '✓' : '✗';
-  const defaultMark = provider.isDefault ? ' (default)' : '';
-  console.log(`  ${status} ${provider.name}${defaultMark}`);
-  
-  if (provider.models) {
-    console.log(`    Models: ${provider.models.join(', ')}`);
-  }
+  const defaultMark = provider.isDefault ? ' (global default)' : 
+                      provider.isTypeDefault ? ` (${provider.type} default)` : '';
+  console.log(`  ${status} ${provider.name} [${provider.type}]${defaultMark}`);
 }
+
+// Example output:
+// ✓ Work OpenAI [openai] (global default)
+// ✓ Personal OpenAI [openai]
+// ✓ Ollama Local [ollama] (ollama default)
 ```
 
 ---
@@ -781,7 +797,7 @@ ai.providers.getActive(): Promise<ActiveLLMConfig>
 **Returns:**
 ```typescript
 interface ActiveLLMConfig {
-  provider: string | null;  // Active provider ID
+  provider: string | null;  // Active provider instance ID
   model: string | null;     // Active model ID
 }
 ```
@@ -795,6 +811,98 @@ if (active.provider) {
 } else {
   console.log('No LLM provider configured');
 }
+```
+
+---
+
+### ai.providers.add(options)
+
+Add a new provider instance.
+
+**Requires:** `model:list` permission
+
+**Signature:**
+```typescript
+ai.providers.add(options: {
+  type: string;      // Provider type: 'openai', 'anthropic', 'ollama', etc.
+  name: string;      // User-defined display name
+  apiKey?: string;   // API key (for cloud providers)
+  baseUrl?: string;  // Custom API endpoint
+}): Promise<{ id: string }>
+```
+
+**Returns:** The unique instance ID for the new provider
+
+**Example:**
+```javascript
+// Add a second OpenAI account
+const result = await window.ai.providers.add({
+  type: 'openai',
+  name: 'Personal OpenAI',
+  apiKey: 'sk-...',
+});
+
+console.log('Added provider with ID:', result.id);
+// Output: Added provider with ID: openai-a1b2c3
+```
+
+---
+
+### ai.providers.remove(instanceId)
+
+Remove a provider instance.
+
+**Requires:** `model:list` permission
+
+**Signature:**
+```typescript
+ai.providers.remove(instanceId: string): Promise<void>
+```
+
+**Example:**
+```javascript
+await window.ai.providers.remove('openai-a1b2c3');
+```
+
+---
+
+### ai.providers.setDefault(instanceId)
+
+Set the global default provider instance.
+
+**Requires:** `model:list` permission
+
+**Signature:**
+```typescript
+ai.providers.setDefault(instanceId: string): Promise<void>
+```
+
+**Example:**
+```javascript
+// Make 'openai-work' the default provider
+await window.ai.providers.setDefault('openai-work');
+```
+
+---
+
+### ai.providers.setTypeDefault(instanceId)
+
+Set an instance as the default for its provider type. This is used when you specify just the type (e.g., `provider: 'openai'`) rather than a specific instance ID.
+
+**Requires:** `model:list` permission
+
+**Signature:**
+```typescript
+ai.providers.setTypeDefault(instanceId: string): Promise<void>
+```
+
+**Example:**
+```javascript
+// Make 'openai-personal' the default when 'openai' is specified
+await window.ai.providers.setTypeDefault('openai-personal');
+
+// Now this will use 'openai-personal':
+const session = await window.ai.createTextSession({ provider: 'openai' });
 ```
 
 ---
@@ -1124,6 +1232,10 @@ declare global {
       providers: {
         list(): Promise<LLMProviderInfo[]>;
         getActive(): Promise<ActiveLLMConfig>;
+        add(options: AddProviderOptions): Promise<{ id: string }>;
+        remove(instanceId: string): Promise<void>;
+        setDefault(instanceId: string): Promise<void>;
+        setTypeDefault(instanceId: string): Promise<void>;
       };
     };
     agent: {
@@ -1155,8 +1267,131 @@ declare global {
         open(options?: ChatOpenOptions): Promise<ChatOpenResult>;
         close(chatId?: string): Promise<{ success: boolean }>;
       };
+      // Address Bar APIs (also available as agent.commandBar)
+      addressBar: AddressBarAPI;
+      commandBar: AddressBarAPI;  // Alias
     };
   }
+}
+
+// Address Bar API
+interface AddressBarAPI {
+  canProvide(): Promise<'readily' | 'no'>;
+  registerProvider(options: AddressBarProviderOptions): Promise<{ providerId: string }>;
+  registerToolShortcuts(options: ToolShortcutsOptions): Promise<{ registered: string[] }>;
+  registerSiteProvider(options: SiteProviderOptions): Promise<{ providerId: string }>;
+  discover(): Promise<DeclaredAddressBarProvider[]>;
+  listProviders(): Promise<AddressBarProviderInfo[]>;
+  unregisterProvider(providerId: string): Promise<void>;
+  setDefaultProvider(providerId: string): Promise<void>;
+  getDefaultProvider(): Promise<string | null>;
+}
+
+interface AddressBarProviderOptions {
+  id: string;
+  name: string;
+  description: string;
+  triggers: AddressBarTrigger[];
+  onQuery(context: AddressBarQueryContext): Promise<AddressBarSuggestion[]>;
+  onSelect?(suggestion: AddressBarSuggestion): Promise<AddressBarAction>;
+}
+
+interface AddressBarTrigger {
+  type: 'prefix' | 'keyword' | 'regex' | 'always';
+  value: string;
+  hint?: string;
+}
+
+interface AddressBarQueryContext {
+  query: string;
+  trigger: AddressBarTrigger;
+  currentTab?: {
+    url: string;
+    title: string;
+    domain: string;
+  };
+  recentHistory?: {
+    url: string;
+    title: string;
+    visitCount: number;
+    lastVisit: number;
+  }[];
+  isTyping: boolean;
+  timeSinceLastKeystroke: number;
+}
+
+interface AddressBarSuggestion {
+  id: string;
+  type: 'url' | 'search' | 'tool' | 'action' | 'answer';
+  title: string;
+  description?: string;
+  icon?: string;
+  url?: string;
+  searchQuery?: string;
+  searchEngine?: string;
+  tool?: {
+    name: string;
+    args: Record<string, unknown>;
+  };
+  action?: AddressBarAction;
+  answer?: {
+    text: string;
+    source?: string;
+    copyable?: boolean;
+  };
+  confidence?: number;
+  provider: string;
+}
+
+type AddressBarAction =
+  | { type: 'navigate'; url: string }
+  | { type: 'search'; query: string; engine?: string }
+  | { type: 'copy'; text: string; notify?: boolean }
+  | { type: 'execute'; tool: string; args: Record<string, unknown> }
+  | { type: 'show'; content: string; format: 'text' | 'markdown' | 'html' }
+  | { type: 'agent'; task: string; tools?: string[] };
+
+interface ToolShortcutsOptions {
+  shortcuts: ToolShortcut[];
+  resultHandler: 'inline' | 'popup' | 'navigate' | 'clipboard';
+}
+
+interface ToolShortcut {
+  trigger: string;
+  tool: string;
+  description: string;
+  examples?: string[];
+  argParser?: (query: string) => Record<string, unknown>;
+  useLLMParser?: boolean;
+  llmParserPrompt?: string;
+}
+
+interface SiteProviderOptions {
+  origin: string;
+  name: string;
+  description: string;
+  patterns: string[];
+  icon?: string;
+  endpoint?: string;
+  onQuery?: (query: string) => Promise<AddressBarSuggestion[]>;
+}
+
+interface DeclaredAddressBarProvider {
+  origin: string;
+  name: string;
+  description?: string;
+  endpoint: string;
+  patterns: string[];
+  icon?: string;
+}
+
+interface AddressBarProviderInfo {
+  id: string;
+  name: string;
+  description: string;
+  triggers: AddressBarTrigger[];
+  isDefault: boolean;
+  origin?: string;
 }
 
 type PermissionScope =
@@ -1168,7 +1403,11 @@ type PermissionScope =
   | 'mcp:servers.register'
   | 'browser:activeTab.read'
   | 'chat:open'
-  | 'web:fetch';
+  | 'web:fetch'
+  | 'addressBar:suggest'
+  | 'addressBar:context'
+  | 'addressBar:history'
+  | 'addressBar:execute';
 
 type PermissionGrant =
   | 'granted-once'
@@ -1208,18 +1447,27 @@ interface TextSessionOptions {
 }
 
 interface LLMProviderInfo {
-  id: string;
-  name: string;
+  id: string;              // Unique instance ID (e.g., 'openai-work')
+  type: string;            // Provider type: 'openai', 'anthropic', etc.
+  name: string;            // User-defined display name
   available: boolean;
   baseUrl?: string;
   models?: string[];
-  isDefault: boolean;
+  isDefault: boolean;      // Is global default?
+  isTypeDefault: boolean;  // Is default for its type?
   supportsTools?: boolean;
 }
 
 interface ActiveLLMConfig {
-  provider: string | null;
+  provider: string | null;  // Instance ID of active provider
   model: string | null;
+}
+
+interface AddProviderOptions {
+  type: string;       // Provider type: 'openai', 'anthropic', etc.
+  name: string;       // User-defined display name
+  apiKey?: string;    // API key (for cloud providers)
+  baseUrl?: string;   // Custom API endpoint
 }
 
 interface TextSession {
@@ -1317,9 +1565,583 @@ interface ChatOpenResult {
 
 ---
 
+## Address Bar API (Omnibox)
+
+The Address Bar API allows web pages and the extension to provide AI-powered suggestions and tool invocations directly from the browser's URL bar. This enables:
+
+1. **AI Search Enhancement** - Get LLM-powered search suggestions as you type
+2. **Smart Navigation** - Context-aware page suggestions based on current tab
+3. **Tool Invocation** - Execute MCP tools directly from the URL bar (e.g., `@time`, `@calc`)
+4. **Site-Specific Suggestions** - Websites can provide deep-link suggestions for their own content
+
+Both `agent.addressBar` and `agent.commandBar` are provided as aliases for the same API.
+
+### Permission Scopes
+
+| Scope | Description | Required For |
+|-------|-------------|--------------|
+| `addressBar:suggest` | Provide autocomplete suggestions | `registerProvider()`, `registerToolShortcuts()` |
+| `addressBar:context` | Access current tab context | Smart navigation features |
+| `addressBar:history` | Access recent navigation history | Personalized suggestions (sensitive) |
+| `addressBar:execute` | Execute actions from suggestions | Tool invocation, agent tasks |
+
+---
+
+### agent.addressBar.canProvide()
+
+Check if address bar suggestion integration is available.
+
+**Signature:**
+```typescript
+agent.addressBar.canProvide(): Promise<'readily' | 'no'>
+```
+
+**Returns:** `'readily'` if the browser supports omnibox integration, `'no'` otherwise.
+
+**Example:**
+```javascript
+const availability = await window.agent.addressBar.canProvide();
+
+if (availability === 'readily') {
+  // Can register suggestion providers
+  await registerMyProvider();
+}
+```
+
+---
+
+### agent.addressBar.registerProvider(options)
+
+Register an AI-powered suggestion provider that responds to specific triggers in the address bar.
+
+**Requires:** `addressBar:suggest` permission
+
+**Signature:**
+```typescript
+agent.addressBar.registerProvider(options: AddressBarProviderOptions): Promise<{ providerId: string }>
+```
+
+**Parameters:**
+```typescript
+interface AddressBarProviderOptions {
+  id: string;           // Unique identifier for this provider
+  name: string;         // Human-readable name
+  description: string;  // Shown in settings/UI
+  triggers: AddressBarTrigger[];
+  
+  // Called when user types matching trigger
+  onQuery(context: AddressBarQueryContext): Promise<AddressBarSuggestion[]>;
+  
+  // Optional: Called when a suggestion is selected
+  onSelect?(suggestion: AddressBarSuggestion): Promise<AddressBarAction>;
+}
+
+interface AddressBarTrigger {
+  type: 'prefix' | 'keyword' | 'regex' | 'always';
+  value: string;   // The trigger pattern
+  hint?: string;   // Shown in address bar as placeholder
+}
+```
+
+**Trigger Types:**
+
+| Type | Example | Behavior |
+|------|---------|----------|
+| `prefix` | `"@ai "` | Activates when user types `@ai ` followed by query |
+| `keyword` | `"ai"` | Activates when first word is `ai` |
+| `regex` | `"^\\?\\s"` | Activates when input matches regex |
+| `always` | N/A | Always receives queries (use sparingly) |
+
+**Returns:**
+```typescript
+{ providerId: string }  // Use this ID to unregister later
+```
+
+**Example - AI Search Enhancement (Use Case 1):**
+```javascript
+await window.agent.addressBar.registerProvider({
+  id: 'ai-search',
+  name: 'AI Search',
+  description: 'Get AI-powered search suggestions',
+  triggers: [
+    { type: 'prefix', value: '@ai ', hint: 'Ask AI anything...' },
+    { type: 'prefix', value: '? ', hint: 'Quick AI question...' },
+  ],
+  
+  async onQuery(ctx) {
+    // Don't query while user is actively typing
+    if (ctx.isTyping && ctx.timeSinceLastKeystroke < 300) {
+      return [];
+    }
+    
+    const session = await window.ai.createTextSession({
+      systemPrompt: 'Generate 5 search query suggestions based on the user input. Return as JSON array of strings.'
+    });
+    
+    try {
+      const result = await session.prompt(ctx.query);
+      const suggestions = JSON.parse(result);
+      
+      return suggestions.map((text, i) => ({
+        id: `ai-${i}`,
+        type: 'search',
+        title: text,
+        description: 'AI-suggested search',
+        url: `https://google.com/search?q=${encodeURIComponent(text)}`,
+        confidence: 1 - (i * 0.1),
+        provider: 'ai-search'
+      }));
+    } finally {
+      await session.destroy();
+    }
+  }
+});
+```
+
+**Example - Smart Navigation (Use Case 2):**
+```javascript
+await window.agent.addressBar.registerProvider({
+  id: 'smart-nav',
+  name: 'Smart Navigation',
+  description: 'Context-aware page suggestions',
+  triggers: [
+    { type: 'prefix', value: '@go ', hint: 'Navigate smartly...' },
+  ],
+  
+  async onQuery(ctx) {
+    // Use current tab context for relevance
+    const currentDomain = ctx.currentTab?.domain;
+    const suggestions = [];
+    
+    // Check recent history for related pages
+    if (ctx.recentHistory) {
+      const related = ctx.recentHistory
+        .filter(h => h.url.includes(ctx.query) || h.title.toLowerCase().includes(ctx.query.toLowerCase()))
+        .slice(0, 3);
+      
+      for (const page of related) {
+        suggestions.push({
+          id: `history-${page.url}`,
+          type: 'url',
+          title: page.title,
+          description: `Visited ${page.visitCount} times`,
+          url: page.url,
+          confidence: 0.8,
+          provider: 'smart-nav'
+        });
+      }
+    }
+    
+    // Add AI-generated suggestions
+    const session = await window.ai.createTextSession({
+      systemPrompt: `Suggest relevant URLs for a user currently on ${currentDomain}. Return JSON array with {title, url}.`
+    });
+    
+    try {
+      const result = await session.prompt(`User wants: ${ctx.query}`);
+      const aiSuggestions = JSON.parse(result);
+      
+      for (const s of aiSuggestions.slice(0, 2)) {
+        suggestions.push({
+          id: `ai-nav-${s.url}`,
+          type: 'url',
+          title: s.title,
+          description: 'AI suggested',
+          url: s.url,
+          confidence: 0.6,
+          provider: 'smart-nav'
+        });
+      }
+    } finally {
+      await session.destroy();
+    }
+    
+    return suggestions;
+  }
+});
+```
+
+---
+
+### agent.addressBar.registerToolShortcuts(options)
+
+Register MCP tools as address bar shortcuts for quick invocation.
+
+**Requires:** `addressBar:suggest` and `addressBar:execute` permissions
+
+**Signature:**
+```typescript
+agent.addressBar.registerToolShortcuts(options: ToolShortcutsOptions): Promise<{ registered: string[] }>
+```
+
+**Parameters:**
+```typescript
+interface ToolShortcutsOptions {
+  shortcuts: ToolShortcut[];
+  resultHandler: 'inline' | 'popup' | 'navigate' | 'clipboard';
+}
+
+interface ToolShortcut {
+  trigger: string;          // e.g., "@time", "@calc", "@weather"
+  tool: string;             // MCP tool name: "serverId/toolName"
+  description: string;      // Shown in suggestions
+  examples?: string[];      // Example usages
+  
+  // How to parse the query into tool arguments
+  argParser?: (query: string) => Record<string, unknown>;
+  
+  // Or use LLM to intelligently parse arguments
+  useLLMParser?: boolean;
+  llmParserPrompt?: string;  // Custom prompt for LLM parsing
+}
+```
+
+**Result Handlers:**
+
+| Handler | Behavior |
+|---------|----------|
+| `inline` | Show result directly in address bar dropdown |
+| `popup` | Show result in a small popup near address bar |
+| `navigate` | Navigate to a results page |
+| `clipboard` | Copy result to clipboard with notification |
+
+**Example - Tool Invocation (Use Case 3):**
+```javascript
+await window.agent.addressBar.registerToolShortcuts({
+  shortcuts: [
+    {
+      trigger: '@time',
+      tool: 'time-wasm/time.now',
+      description: 'Get current time',
+      examples: ['@time', '@time UTC', '@time America/New_York'],
+      argParser: (query) => ({ timezone: query.trim() || 'local' })
+    },
+    {
+      trigger: '@calc',
+      tool: 'calculator/evaluate',
+      description: 'Calculate expression',
+      examples: ['@calc 2+2', '@calc sin(pi/2)', '@calc 15% of 200'],
+      argParser: (query) => ({ expression: query })
+    },
+    {
+      trigger: '@weather',
+      tool: 'weather/current',
+      description: 'Get weather for location',
+      examples: ['@weather London', '@weather 90210'],
+      useLLMParser: true,
+      llmParserPrompt: 'Extract location from: "{query}". Return JSON: {location: string}'
+    },
+    {
+      trigger: '@search',
+      tool: 'brave-search/search',
+      description: 'Search the web',
+      examples: ['@search latest AI news'],
+      argParser: (query) => ({ query, count: 5 })
+    },
+    {
+      trigger: '@remember',
+      tool: 'memory-server/save_memory',
+      description: 'Save a quick note',
+      examples: ['@remember buy milk', '@remember meeting at 3pm'],
+      argParser: (query) => ({ content: query, metadata: { source: 'addressbar' } })
+    }
+  ],
+  resultHandler: 'inline'  // Show results right in the dropdown
+});
+```
+
+---
+
+### agent.addressBar.registerSiteProvider(options)
+
+Register a site-specific suggestion provider. Only works for the current origin.
+
+**Requires:** `addressBar:suggest` permission
+
+**Signature:**
+```typescript
+agent.addressBar.registerSiteProvider(options: SiteProviderOptions): Promise<{ providerId: string }>
+```
+
+**Parameters:**
+```typescript
+interface SiteProviderOptions {
+  origin: string;         // Must match window.location.origin
+  name: string;           // Human-readable name
+  description: string;    // Description of capabilities
+  patterns: string[];     // URL patterns this provider handles
+  icon?: string;          // Icon URL or data URI
+  
+  // Either endpoint OR onQuery (not both)
+  endpoint?: string;      // URL that accepts POST with {query: string}
+  onQuery?: (query: string) => Promise<AddressBarSuggestion[]>;
+}
+```
+
+**Example - Site-Specific Provider (Use Case 4):**
+```javascript
+// On docs.example.com
+await window.agent.addressBar.registerSiteProvider({
+  origin: 'https://docs.example.com',
+  name: 'Example Docs Search',
+  description: 'Search our documentation',
+  patterns: ['docs:*', 'api:*', 'guide:*'],
+  icon: '/favicon.ico',
+  
+  async onQuery(query) {
+    // Call your own search API
+    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    const results = await response.json();
+    
+    return results.map(r => ({
+      id: r.id,
+      type: 'url',
+      title: r.title,
+      description: r.excerpt,
+      url: r.url,
+      icon: r.icon,
+      provider: 'docs-search'
+    }));
+  }
+});
+
+// Or use endpoint-based approach
+await window.agent.addressBar.registerSiteProvider({
+  origin: 'https://shop.example.com',
+  name: 'Product Search',
+  description: 'Search products',
+  patterns: ['product:*', 'buy:*'],
+  endpoint: '/api/omnibox-suggestions'  // Server handles the query
+});
+```
+
+**HTML Declaration (Alternative):**
+```html
+<!-- Declare provider in HTML for automatic discovery -->
+<link 
+  rel="addressbar-provider" 
+  href="/api/omnibox-suggestions"
+  title="Search Our Docs"
+  data-description="AI-powered documentation search"
+  data-patterns="docs:*,api:*,guide:*"
+  data-icon="/favicon.ico"
+>
+```
+
+---
+
+### agent.addressBar.discover()
+
+Discover address bar providers declared via `<link rel="addressbar-provider">` on the current page.
+
+**Signature:**
+```typescript
+agent.addressBar.discover(): Promise<DeclaredAddressBarProvider[]>
+```
+
+**Returns:**
+```typescript
+interface DeclaredAddressBarProvider {
+  origin: string;
+  name: string;
+  description?: string;
+  endpoint: string;
+  patterns: string[];
+  icon?: string;
+}
+```
+
+---
+
+### Query Context
+
+When your `onQuery` handler is called, it receives rich context:
+
+```typescript
+interface AddressBarQueryContext {
+  // What the user typed (after trigger)
+  query: string;
+  
+  // Which trigger matched
+  trigger: AddressBarTrigger;
+  
+  // Current tab info (requires 'addressBar:context')
+  currentTab?: {
+    url: string;
+    title: string;
+    domain: string;
+  };
+  
+  // Recent history (requires 'addressBar:history')
+  recentHistory?: {
+    url: string;
+    title: string;
+    visitCount: number;
+    lastVisit: number;  // timestamp
+  }[];
+  
+  // Typing state (for debouncing)
+  isTyping: boolean;
+  timeSinceLastKeystroke: number;  // ms
+}
+```
+
+---
+
+### Suggestions
+
+Your provider returns an array of suggestions:
+
+```typescript
+interface AddressBarSuggestion {
+  id: string;           // Unique ID for this suggestion
+  
+  // Type determines behavior
+  type: 'url' | 'search' | 'tool' | 'action' | 'answer';
+  
+  // Display
+  title: string;
+  description?: string;
+  icon?: string;        // URL or data URI
+  
+  // For type='url' - navigate to URL
+  url?: string;
+  
+  // For type='search' - perform search
+  searchQuery?: string;
+  searchEngine?: string;  // 'google', 'duckduckgo', etc.
+  
+  // For type='tool' - execute MCP tool
+  tool?: {
+    name: string;                    // "serverId/toolName"
+    args: Record<string, unknown>;
+  };
+  
+  // For type='action' - custom action
+  action?: AddressBarAction;
+  
+  // For type='answer' - show inline answer
+  answer?: {
+    text: string;
+    source?: string;
+    copyable?: boolean;
+  };
+  
+  // Metadata
+  confidence?: number;  // 0-1, affects ranking
+  provider: string;     // Which provider generated this
+}
+```
+
+---
+
+### Actions
+
+When a suggestion is selected, it can trigger various actions:
+
+```typescript
+type AddressBarAction =
+  | { type: 'navigate'; url: string }
+  | { type: 'search'; query: string; engine?: string }
+  | { type: 'copy'; text: string; notify?: boolean }
+  | { type: 'execute'; tool: string; args: Record<string, unknown> }
+  | { type: 'show'; content: string; format: 'text' | 'markdown' | 'html' }
+  | { type: 'agent'; task: string; tools?: string[] };  // Trigger agent.run()
+```
+
+---
+
+### Management
+
+```typescript
+// List all registered providers
+agent.addressBar.listProviders(): Promise<AddressBarProviderInfo[]>
+
+// Unregister a provider
+agent.addressBar.unregisterProvider(providerId: string): Promise<void>
+
+// Set default provider for unmatched queries
+agent.addressBar.setDefaultProvider(providerId: string): Promise<void>
+
+// Get current default
+agent.addressBar.getDefaultProvider(): Promise<string | null>
+```
+
+---
+
+### Complete Example
+
+```javascript
+async function initAddressBarIntegration() {
+  // Check availability
+  if (await window.agent.addressBar.canProvide() !== 'readily') {
+    console.log('Address bar integration not available');
+    return;
+  }
+  
+  // Request permissions
+  const perms = await window.agent.requestPermissions({
+    scopes: ['addressBar:suggest', 'addressBar:execute', 'addressBar:context'],
+    reason: 'Enable AI-powered address bar suggestions and tool shortcuts'
+  });
+  
+  if (!perms.granted) {
+    console.log('Permissions not granted');
+    return;
+  }
+  
+  // Register AI search provider
+  const { providerId: aiId } = await window.agent.addressBar.registerProvider({
+    id: 'my-ai-search',
+    name: 'AI Search',
+    description: 'Smart search suggestions',
+    triggers: [
+      { type: 'prefix', value: '? ', hint: 'Ask anything...' }
+    ],
+    async onQuery(ctx) {
+      if (ctx.query.length < 3) return [];
+      
+      const session = await window.ai.createTextSession();
+      const result = await session.prompt(
+        `Generate 3 search suggestions for: "${ctx.query}". Return JSON array of strings.`
+      );
+      await session.destroy();
+      
+      return JSON.parse(result).map((text, i) => ({
+        id: `q-${i}`,
+        type: 'search',
+        title: text,
+        provider: 'my-ai-search'
+      }));
+    }
+  });
+  
+  // Register tool shortcuts
+  await window.agent.addressBar.registerToolShortcuts({
+    shortcuts: [
+      {
+        trigger: '@time',
+        tool: 'time-wasm/time.now',
+        description: 'Current time',
+        argParser: (q) => ({ timezone: q || 'local' })
+      }
+    ],
+    resultHandler: 'inline'
+  });
+  
+  console.log('Address bar integration ready!');
+}
+
+initAddressBarIntegration();
+```
+
+---
+
 ## Version
 
-This document describes **Web Agent API v1.1** as implemented by **Harbor v1**.
+This document describes **Web Agent API v1.2** as implemented by **Harbor v1**.
 
 **v1.1 additions:** BYOC APIs (`agent.mcp.*`, `agent.chat.*`)
+
+**v1.2 additions:** Address Bar API (`agent.addressBar.*`, `agent.commandBar.*`)
 

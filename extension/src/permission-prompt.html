@@ -3,73 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Harbor - Permission Request</title>
+  <title>Permission Request - Harbor</title>
+  <link rel="stylesheet" href="design-tokens.css">
   <style>
-    /**
-     * Permission Prompt - Firefox Dynamic Theme
-     * 
-     * Dynamically inherits colors from the user's Firefox theme using browser.theme API.
-     * CSS variables are set by JavaScript at runtime to match the active theme.
-     * Fallbacks use CSS System Colors for maximum compatibility.
-     */
-    
-    :root {
-      /* 
-       * These variables are dynamically set by JavaScript using browser.theme.getCurrent()
-       * Fallbacks use CSS System Colors which adapt to light/dark mode
-       */
-      
-      /* Panel/Popup colors - from Firefox theme */
-      --popup-background: Canvas;
-      --popup-text: CanvasText;
-      --popup-border: GrayText;
-      
-      /* Toolbar colors - from Firefox theme */
-      --toolbar-background: ButtonFace;
-      --toolbar-text: ButtonText;
-      
-      /* Frame/Chrome colors */
-      --frame-background: Canvas;
-      
-      /* Button colors */
-      --button-background: ButtonFace;
-      --button-text: ButtonText;
-      --button-hover: color-mix(in srgb, ButtonText 10%, ButtonFace);
-      --button-active: color-mix(in srgb, ButtonText 20%, ButtonFace);
-      
-      /* Primary/Accent - from theme or fallback to AccentColor */
-      --accent-color: AccentColor;
-      --accent-text: AccentColorText;
-      
-      /* Derived colors */
-      --text-secondary: GrayText;
-      --separator: color-mix(in srgb, CanvasText 15%, Canvas);
-      --surface-alt: color-mix(in srgb, CanvasText 5%, Canvas);
-      
-      /* Link color */
-      --link-color: LinkText;
-      
-      /* Focus outline */
-      --focus-outline: AccentColor;
-      
-      /* Warning colors - these don't come from theme, use sensible defaults */
-      --warning-background: color-mix(in srgb, #ffbd4f 15%, Canvas);
-      --warning-border: #ffbd4f;
-      --warning-text: CanvasText;
-      
-      /* Danger/Error color */
-      --danger-color: #d70022;
-      
-      color-scheme: light dark;
-    }
-    
-    /* Dark mode adjustments for hardcoded colors */
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --danger-color: #ff6b6b;
-      }
-    }
-    
     * {
       box-sizing: border-box;
       margin: 0;
@@ -77,410 +13,214 @@
     }
 
     body {
-      /* Firefox system fonts */
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Ubuntu", "Helvetica Neue", sans-serif;
-      font-size: 13px;
-      line-height: 1.4;
-      background: var(--popup-background);
-      color: var(--popup-text);
+      font-family: var(--font-family, system-ui, -apple-system, sans-serif);
+      background: var(--bg-primary, #1a1a2e);
+      color: var(--text-primary, #e8e8e8);
+      padding: 24px;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
     }
 
     .container {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      padding: 12px 16px 16px;
-      max-width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
     }
 
-    /* Header - Firefox panel style */
     .header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 12px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--separator);
+      gap: 12px;
+      margin-bottom: 20px;
     }
 
     .logo {
-      width: 32px;
-      height: 32px;
-      background: var(--accent-color);
-      border-radius: 4px;
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
+      font-size: 20px;
+    }
+
+    h1 {
+      font-size: 18px;
       font-weight: 600;
-      color: var(--accent-text);
-      flex-shrink: 0;
     }
 
-    .header-text h1 {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--popup-text);
-      line-height: 1.3;
-    }
-
-    .header-text p {
-      font-size: 12px;
-      color: var(--text-secondary);
-      margin-top: 2px;
-    }
-
-    /* Origin badge - similar to Firefox URL display */
     .origin-badge {
-      background: var(--surface-alt);
-      border-radius: 4px;
-      padding: 10px 12px;
-      margin-bottom: 12px;
-    }
-
-    .origin-label {
-      font-size: 11px;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      margin-bottom: 4px;
-      font-weight: 500;
-    }
-
-    .origin-value {
-      font-family: ui-monospace, "SF Mono", "Segoe UI Mono", "Roboto Mono", monospace;
-      font-size: 12px;
-      color: var(--link-color);
+      background: var(--bg-secondary, #252538);
+      border: 1px solid var(--border-color, #3a3a5c);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
       word-break: break-all;
-      font-weight: 500;
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--text-secondary, #a8a8b8);
     }
 
-    /* Reason quote */
     .reason {
-      background: var(--surface-alt);
-      border-radius: 4px;
-      padding: 10px 12px;
-      margin-bottom: 12px;
-      font-style: italic;
-      color: var(--text-secondary);
-      font-size: 12px;
-      border-left: 3px solid var(--accent-color);
+      background: var(--bg-tertiary, #2a2a42);
+      border-left: 3px solid var(--accent, #6366f1);
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-secondary, #a8a8b8);
     }
 
-    .reason::before {
-      content: '"';
-    }
-
-    .reason::after {
-      content: '"';
-    }
-
-    /* Scopes section */
-    .scopes-section {
-      margin-bottom: 12px;
-    }
-
-    .scopes-title {
-      font-size: 12px;
+    .section-title {
+      font-size: 14px;
       font-weight: 600;
-      color: var(--popup-text);
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
+      margin-bottom: 12px;
+      color: var(--text-secondary, #a8a8b8);
     }
 
-    .scope-list {
+    .scopes-list {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 10px;
+      margin-bottom: 20px;
     }
 
     .scope-item {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 10px;
-      background: var(--surface-alt);
-      border-radius: 4px;
+      background: var(--bg-secondary, #252538);
+      border: 1px solid var(--border-color, #3a3a5c);
+      border-radius: 8px;
+      padding: 12px;
     }
 
-    .scope-icon {
-      width: 24px;
-      height: 24px;
-      min-width: 24px;
-      border-radius: 4px;
+    .scope-header {
       display: flex;
       align-items: center;
-      justify-content: center;
-      font-size: 12px;
+      gap: 8px;
+      margin-bottom: 4px;
     }
 
-    .scope-icon.model {
-      background: var(--accent-color);
-      color: var(--accent-text);
-    }
-
-    .scope-icon.tools {
-      background: #058b00;
-      color: #fff;
-    }
-
-    .scope-icon.browser {
-      background: #d4b106;
-      color: #15141a;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      .scope-icon.tools {
-        background: #30e60b;
-        color: #15141a;
-      }
-      .scope-icon.browser {
-        background: #ffe900;
-        color: #15141a;
-      }
-    }
-
-    .scope-info {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .scope-name {
-      font-family: ui-monospace, "SF Mono", "Segoe UI Mono", monospace;
-      font-size: 10px;
-      color: var(--text-secondary);
-      margin-bottom: 2px;
-      text-transform: uppercase;
-      letter-spacing: 0.02em;
+    .scope-title {
+      font-weight: 500;
+      font-size: 14px;
     }
 
     .scope-description {
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--popup-text);
-    }
-
-    /* Tools Section */
-    .tools-section {
-      margin-bottom: 12px;
-      border: 1px solid var(--popup-border);
-      border-radius: 4px;
-      overflow: hidden;
-    }
-
-    .tools-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 10px;
-      background: var(--toolbar-background);
-      border-bottom: 1px solid var(--separator);
-    }
-
-    .tools-title {
       font-size: 12px;
-      font-weight: 600;
-      color: var(--toolbar-text);
+      color: var(--text-tertiary, #888898);
+      line-height: 1.4;
     }
 
-    .tools-actions {
-      display: flex;
-      gap: 4px;
-    }
-
-    .btn-link {
-      background: none;
-      border: none;
-      padding: 4px 8px;
-      font-size: 11px;
-      color: var(--link-color);
-      cursor: pointer;
+    .risk-badge {
+      font-size: 10px;
+      padding: 2px 6px;
       border-radius: 4px;
-      font-weight: 500;
+      font-weight: 600;
+      text-transform: uppercase;
     }
 
-    .btn-link:hover {
-      background: color-mix(in srgb, var(--link-color) 10%, transparent);
+    .risk-low {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
     }
 
-    .tools-description {
-      font-size: 11px;
-      color: var(--text-secondary);
-      padding: 8px 10px;
-      background: var(--surface-alt);
-      border-bottom: 1px solid var(--separator);
+    .risk-medium {
+      background: rgba(234, 179, 8, 0.2);
+      color: #eab308;
+    }
+
+    .risk-high {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+    }
+
+    .tools-section {
+      margin-bottom: 20px;
     }
 
     .tools-list {
-      max-height: 160px;
-      overflow-y: auto;
-      background: var(--popup-background);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     .tool-item {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--separator);
-      cursor: pointer;
+      gap: 10px;
+      background: var(--bg-secondary, #252538);
+      border: 1px solid var(--border-color, #3a3a5c);
+      border-radius: 8px;
+      padding: 10px 12px;
     }
 
-    .tool-item:last-child {
-      border-bottom: none;
-    }
-
-    .tool-item:hover {
-      background: var(--button-hover);
-    }
-
-    .tool-checkbox {
+    .tool-item input[type="checkbox"] {
       width: 16px;
       height: 16px;
-      flex-shrink: 0;
-      accent-color: var(--accent-color);
-      cursor: pointer;
-    }
-
-    .tool-info {
-      flex: 1;
-      min-width: 0;
+      accent-color: var(--accent, #6366f1);
     }
 
     .tool-name {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--popup-text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      font-family: monospace;
+      font-size: 13px;
     }
 
-    .tool-server {
-      font-size: 10px;
-      color: var(--text-secondary);
-      font-family: ui-monospace, "SF Mono", "Segoe UI Mono", monospace;
-    }
-
-    /* Warning box - Firefox-style info bar */
-    .warning-box {
-      background: var(--warning-background);
-      border: 1px solid var(--warning-border);
-      border-radius: 4px;
-      padding: 10px;
-      margin-bottom: 12px;
-      display: flex;
-      gap: 8px;
-      align-items: flex-start;
-    }
-
-    .warning-icon {
-      font-size: 14px;
-      flex-shrink: 0;
-      line-height: 1;
-    }
-
-    .warning-text {
-      font-size: 11px;
-      color: var(--warning-text);
-      line-height: 1.5;
-    }
-
-    /* Actions - Firefox button styling */
     .actions {
       display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: auto;
+      gap: 12px;
+      margin-top: 24px;
     }
 
-    /* Buttons using theme colors */
-    .btn {
-      padding: 8px 12px;
-      border-radius: 4px;
-      font-size: 13px;
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: background-color 0.15s ease;
-      text-align: center;
+      transition: all 0.2s;
       border: none;
-      min-height: 32px;
     }
 
-    .btn:active {
-      transform: translateY(0);
+    .btn-deny {
+      background: var(--bg-secondary, #252538);
+      color: var(--text-primary, #e8e8e8);
+      border: 1px solid var(--border-color, #3a3a5c);
     }
 
-    .btn-primary {
-      background: var(--accent-color);
-      color: var(--accent-text);
+    .btn-deny:hover {
+      background: var(--bg-tertiary, #2a2a42);
     }
 
-    .btn-primary:hover {
-      filter: brightness(1.1);
+    .btn-grant {
+      background: var(--accent, #6366f1);
+      color: white;
     }
 
-    .btn-primary:active {
-      filter: brightness(0.9);
+    .btn-grant:hover {
+      background: #5558e3;
     }
 
-    .btn-secondary {
-      background: var(--button-background);
-      color: var(--button-text);
-    }
-
-    .btn-secondary:hover {
-      background: var(--button-hover);
-    }
-
-    .btn-secondary:active {
-      background: var(--button-active);
-    }
-
-    .btn-danger {
-      background: var(--button-background);
-      color: var(--danger-color);
-    }
-
-    .btn-danger:hover {
-      background: color-mix(in srgb, var(--danger-color) 10%, var(--button-background));
-    }
-
-    .btn-danger:active {
-      background: color-mix(in srgb, var(--danger-color) 20%, var(--button-background));
-    }
-
-    .btn-group {
+    .grant-type {
       display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .grant-option {
+      display: flex;
+      align-items: center;
       gap: 8px;
+      cursor: pointer;
     }
 
-    .btn-group .btn {
-      flex: 1;
+    .grant-option input[type="radio"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent, #6366f1);
     }
 
-    /* Focus states - using theme focus color */
-    .btn:focus-visible {
-      outline: 2px solid var(--focus-outline);
-      outline-offset: 2px;
-    }
-    
-    .tool-checkbox:focus-visible,
-    .btn-link:focus-visible {
-      outline: 2px solid var(--focus-outline);
-      outline-offset: 1px;
-    }
-
-    /* Scrollbar styling for Firefox */
-    .tools-list {
-      scrollbar-width: thin;
-      scrollbar-color: var(--text-secondary) transparent;
+    .grant-option label {
+      font-size: 14px;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -488,61 +228,41 @@
   <div class="container">
     <div class="header">
       <div class="logo">H</div>
-      <div class="header-text">
-        <h1>Harbor Permission Request</h1>
-        <p>A website is requesting access</p>
-      </div>
+      <h1>Permission Request</h1>
     </div>
 
-    <div class="origin-badge">
-      <div class="origin-label">Requesting Origin</div>
-      <div class="origin-value" id="origin"></div>
-    </div>
+    <div class="origin-badge" id="origin"></div>
 
     <div class="reason" id="reason-container" style="display: none;">
       <span id="reason"></span>
     </div>
 
-    <div class="scopes-section">
-      <div class="scopes-title">Requested Permissions</div>
-      <div class="scope-list" id="scope-list"></div>
-    </div>
+    <div class="section-title">Requested Permissions</div>
+    <div class="scopes-list" id="scopes-list"></div>
 
-    <!-- Tools section (shown only when mcp:tools.call is requested) -->
     <div class="tools-section" id="tools-section" style="display: none;">
-      <div class="tools-header">
-        <div class="tools-title">Select Tools to Allow</div>
-        <div class="tools-actions">
-          <button class="btn-link" id="select-all">All</button>
-          <button class="btn-link" id="select-none">None</button>
-        </div>
-      </div>
-      <div class="tools-description">
-        Choose which tools this site can execute:
-      </div>
+      <div class="section-title">Requested Tools</div>
       <div class="tools-list" id="tools-list"></div>
     </div>
 
-    <div class="warning-box">
-      <span class="warning-icon">⚠️</span>
-      <div class="warning-text">
-        Only grant permissions to websites you trust. These permissions allow the site to interact with AI models and tools on your behalf.
+    <div class="section-title">Grant Duration</div>
+    <div class="grant-type">
+      <div class="grant-option">
+        <input type="radio" name="grant-type" id="grant-once" value="once" checked>
+        <label for="grant-once">This time only</label>
+      </div>
+      <div class="grant-option">
+        <input type="radio" name="grant-type" id="grant-always" value="always">
+        <label for="grant-always">Always allow</label>
       </div>
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" id="allow-always">Always Allow for This Site</button>
-      <div class="btn-group">
-        <button class="btn btn-secondary" id="allow-once">Allow Once</button>
-        <button class="btn btn-danger" id="deny">Deny</button>
-      </div>
+      <button class="btn-deny" id="btn-deny">Deny</button>
+      <button class="btn-grant" id="btn-grant">Allow</button>
     </div>
   </div>
 
-  <script type="module" src="permission-prompt.js"></script>
+  <script src="dist/permission-prompt.js"></script>
 </body>
 </html>
-
-
-
-

@@ -1,57 +1,46 @@
 {
   "manifest_version": 3,
-  "name": "Harbor",
-  "version": "0.260104.2113",
-  "description": "Native messaging bridge for Harbor - AI agents with MCP tools",
-  "permissions": [
-    "nativeMessaging",
-    "storage",
-    "tabs",
-    "activeTab",
-    "scripting",
-    "management",
-    "sidePanel"
-  ],
-  "host_permissions": [
-    "https://registry.modelcontextprotocol.io/*",
-    "https://raw.githubusercontent.com/*",
-    "<all_urls>"
-  ],
+  "name": "Harbor (WASM MCP)",
+  "version": "0.1.0",
+  "description": "WASM MCP extension with Web Agents API.",
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "dist/background.js",
     "type": "module"
   },
-  "side_panel": {
-    "default_path": "sidebar.html"
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs"
+  ],
+  "omnibox": {
+    "keyword": "h"
   },
-  "action": {
-    "default_title": "Harbor",
-    "default_icon": "icons/harbor-icon.svg"
-  },
+  "host_permissions": [
+    "http://localhost/*",
+    "https://*/*"
+  ],
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content-bridge.js"],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["vscode-detector.js"],
-      "run_at": "document_idle",
-      "all_frames": false
+      "matches": ["<all_urls>"],
+      "js": ["dist/agents/content-script.js"],
+      "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["provider-injected.js"],
-      "matches": ["http://*/*", "https://*/*"]
+      "resources": [
+        "dist/agents/injected.js",
+        "dist/permission-prompt.html",
+        "dist/permission-prompt.js",
+        "dist/design-tokens.css",
+        "assets/mcp-time.wasm"
+      ],
+      "matches": ["<all_urls>"]
     }
   ],
-  "icons": {
-    "16": "icons/harbor-icon.svg",
-    "48": "icons/harbor-icon.svg",
-    "128": "icons/harbor-icon.svg"
+  "action": {
+    "default_title": "Harbor",
+    "default_popup": "dist/directory.html"
   }
 }
-

@@ -1,0 +1,7 @@
+{
+  "name": "harbor_bridge",
+  "description": "Harbor Bridge - Local LLM and MCP server for Harbor extension",
+  "path": "{{BINARY_PATH}}",
+  "type": "stdio",
+  "allowed_extensions": ["harbor@anthropic.com"]
+}
