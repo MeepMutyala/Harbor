@@ -479,7 +479,7 @@ After getting a result, answer the user directly. Do NOT output another JSON too
           let iterations = 0;
           let currentMessage = task;
           let finalOutput = '';
-          let lastToolCall: string | null = null; // Track last tool call to prevent loops
+          const calledTools = new Set<string>(); // Track which tools have been called
           
           while (iterations < maxToolCalls) {
             iterations++;
@@ -487,7 +487,7 @@ After getting a result, answer the user directly. Do NOT output another JSON too
             
             let response: string;
             try {
-              // Pass tools for native tool calling models
+              // Always pass tools - allow chaining different tools
               response = await session.prompt(currentMessage, useNativeTools ? tools : undefined);
             } catch (err) {
               const errorMsg = err instanceof Error ? err.message : 'LLM request failed';
@@ -513,15 +513,27 @@ After getting a result, answer the user directly. Do NOT output another JSON too
               }
               
               const { name: toolName, parameters: args } = toolCall;
-              const toolCallKey = `${toolName}:${JSON.stringify(args)}`;
+              const shortToolName = toolName.split('/').pop() || toolName;
               
-              // Prevent calling the same tool with same args twice in a row
-              if (toolCallKey === lastToolCall) {
-                console.log(`[demo-bootstrap] Preventing duplicate tool call: ${toolName}`);
-                currentMessage = `You already called ${toolName.split('/').pop()} and received the result. Now please provide a direct answer to the user based on that result. Do not call tools again.`;
+              // Prevent calling the same tool twice (allow different tools)
+              if (calledTools.has(toolName)) {
+                console.log(`[demo-bootstrap] Preventing repeat call to: ${toolName}`);
+                // Force a response by prompting WITHOUT tools
+                try {
+                  const forceMessage = `You already have the result from "${shortToolName}". Now answer the user's question: "${task}"
+
+Respond in plain text only.`;
+                  const forcedResponse = await session.prompt(forceMessage, undefined); // No tools!
+                  if (forcedResponse && !parseToolCallFromText(forcedResponse, Object.keys(toolMap))) {
+                    finalOutput = forcedResponse;
+                    break;
+                  }
+                } catch {
+                  // Fall through to continue
+                }
                 continue;
               }
-              lastToolCall = toolCallKey;
+              calledTools.add(toolName);
               
               yield { type: 'tool_call', tool: toolName, args };
               
