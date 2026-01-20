@@ -291,15 +291,34 @@ export async function* runAgent(
   const messages: LLMMessage[] = [
     {
       role: 'system',
-      content: `You are a helpful assistant with access to tools. 
+      content: `You are a helpful assistant with access to tools.
 
-Available tools:
+## Available Tools
 ${routedTools.map((t) => `- ${t.name}: ${t.description || 'No description'}`).join('\n')}
 
+## TOOL SELECTION STRATEGY
+1. Before calling any tool, carefully analyze what the user is asking for
+2. Call a tool ONLY when you need information or capabilities you don't have
+3. Choose the most appropriate tool based on the user's actual intent
+4. Most requests need at most ONE tool call
+
+## ARGUMENT EXTRACTION - CRITICAL
+When determining tool arguments:
+1. Use EXACTLY what the user provides - never invent or assume values
+2. If the user references "this", "that", or similar pronouns, look for the actual content in their message or conversation history
+3. If the user's request is ambiguous or missing required information, ASK for clarification instead of guessing
+4. Do NOT use placeholder or example data - only use actual values from the user
+
+CORRECT: User says "reverse hello" → arguments: {"text": "hello"}
+INCORRECT: User says "reverse this" (no text given) → making up text (WRONG - should ask for the text)
+
+## How to Call a Tool
 When you need to use a tool, respond with a tool call in this format:
 <tool_call>{"name": "tool_name", "arguments": {"arg1": "value1"}}</tool_call>
 
-After receiving tool results, synthesize the information and provide a helpful response.`,
+## RESPONSE RULES
+After receiving tool results, synthesize the information and provide a helpful response.
+Do NOT call additional tools unless explicitly needed for the user's request.`,
     },
     {
       role: 'user',

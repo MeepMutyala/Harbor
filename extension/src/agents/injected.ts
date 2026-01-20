@@ -776,6 +776,37 @@ const harborApi = Object.freeze({
 // Register Global APIs
 // =============================================================================
 
+/**
+ * Safely define a property on window, avoiding conflicts with existing properties.
+ * Uses configurable: true to allow other scripts to work with these properties.
+ */
+function safeDefineProperty(
+  name: string,
+  value: unknown,
+  options: { enumerable?: boolean } = {},
+): boolean {
+  try {
+    // Check if property already exists and is non-configurable
+    const descriptor = Object.getOwnPropertyDescriptor(window, name);
+    if (descriptor && !descriptor.configurable) {
+      // Property exists and cannot be redefined - skip to avoid errors
+      console.debug(`[Harbor] Skipping ${name} - already defined and non-configurable`);
+      return false;
+    }
+
+    Object.defineProperty(window, name, {
+      value,
+      writable: false,
+      configurable: true, // Allow other scripts to reconfigure if needed
+      enumerable: options.enumerable ?? true,
+    });
+    return true;
+  } catch (error) {
+    console.debug(`[Harbor] Could not define window.${name}:`, error);
+    return false;
+  }
+}
+
 try {
   // Check if Chrome AI is already present
   const existingAi = (window as { ai?: unknown }).ai;
@@ -787,29 +818,24 @@ try {
     writable: false,
   });
 
-  // Register window.ai (may override Chrome AI for unified experience)
-  Object.defineProperty(window, 'ai', {
-    value: aiApi,
-    writable: false,
-    configurable: false,
-    enumerable: true,
-  });
+  // Register window.harbor first (guaranteed namespace that's unlikely to conflict)
+  safeDefineProperty('harbor', harborApi);
 
-  // Register window.agent
-  Object.defineProperty(window, 'agent', {
-    value: agentApi,
-    writable: false,
-    configurable: false,
-    enumerable: true,
-  });
+  // Register window.ai (may coexist with or override Chrome AI)
+  // Skip if Chrome AI is present to avoid breaking Chrome's built-in functionality
+  if (!chromeAiDetected) {
+    safeDefineProperty('ai', aiApi);
+  } else {
+    console.debug('[Harbor] Chrome AI detected, window.ai not overridden. Use window.harbor.ai instead.');
+  }
 
-  // Register window.harbor (guaranteed namespace)
-  Object.defineProperty(window, 'harbor', {
-    value: harborApi,
-    writable: false,
-    configurable: false,
-    enumerable: true,
-  });
+  // Register window.agent (skip if already defined to avoid conflicts)
+  const existingAgent = (window as { agent?: unknown }).agent;
+  if (existingAgent === undefined) {
+    safeDefineProperty('agent', agentApi);
+  } else {
+    console.debug('[Harbor] window.agent already defined, skipping. Use window.harbor.agent instead.');
+  }
 
   // Dispatch ready event
   window.dispatchEvent(
