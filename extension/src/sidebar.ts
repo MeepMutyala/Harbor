@@ -783,6 +783,143 @@ loadLlmProviders().catch((error) => {
 });
 
 // =============================================================================
+// Permissions Panel
+// =============================================================================
+
+const permissionsPanelHeader = document.getElementById('permissions-panel-header') as HTMLDivElement;
+const permissionsPanelToggle = document.getElementById('permissions-panel-toggle') as HTMLSpanElement;
+const permissionsList = document.getElementById('permissions-list') as HTMLDivElement;
+const refreshPermissionsBtn = document.getElementById('refresh-permissions-btn') as HTMLButtonElement;
+
+type PermissionStatusEntry = {
+  origin: string;
+  scopes: Record<string, string>;
+  allowedTools?: string[];
+};
+
+async function loadPermissions(): Promise<void> {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'list_all_permissions' }) as {
+      type: string;
+      permissions?: PermissionStatusEntry[];
+    };
+
+    if (response?.permissions) {
+      renderPermissions(response.permissions);
+    }
+  } catch (err) {
+    console.error('[Sidebar] Failed to load permissions:', err);
+    permissionsList.innerHTML = '<div class="empty-state">Failed to load permissions.</div>';
+  }
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function renderPermissions(permissions: PermissionStatusEntry[]): void {
+  if (permissions.length === 0) {
+    permissionsList.innerHTML = '<div class="empty-state">No site permissions granted yet.</div>';
+    return;
+  }
+
+  permissionsList.innerHTML = permissions.map((perm) => {
+    const grantedScopes = Object.entries(perm.scopes)
+      .filter(([, status]) => status === 'granted-always' || status === 'granted-once')
+      .map(([scope, status]) => ({ scope, status }));
+
+    const deniedScopes = Object.entries(perm.scopes)
+      .filter(([, status]) => status === 'denied')
+      .map(([scope]) => scope);
+
+    const scopeBadges = [
+      ...grantedScopes.map(({ scope, status }) => {
+        const label = scope.split(':')[1] || scope;
+        const isOnce = status === 'granted-once';
+        const badgeClass = isOnce ? 'permission-scope-badge temporary' : 'permission-scope-badge';
+        const suffix = isOnce ? ' <span class="permission-temp-label">⏱</span>' : '';
+        return `<span class="${badgeClass}">${escapeHtml(label)}${suffix}</span>`;
+      }),
+      ...deniedScopes.map((scope) => {
+        const label = scope.split(':')[1] || scope;
+        return `<span class="permission-scope-badge denied">${escapeHtml(label)} ✕</span>`;
+      }),
+    ].join('');
+
+    let toolsHtml = '';
+    if (perm.allowedTools && perm.allowedTools.length > 0) {
+      const toolBadges = perm.allowedTools.map((tool) => {
+        const toolName = tool.split('/')[1] || tool;
+        return `<span class="permission-tool-badge">${escapeHtml(toolName)}</span>`;
+      }).join('');
+
+      toolsHtml = `
+        <div class="permission-tools-section">
+          <div class="permission-tools-title">Allowed Tools</div>
+          <div class="permission-tools-list">${toolBadges}</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="permission-origin-item" data-origin="${escapeHtml(perm.origin)}">
+        <div class="permission-origin-header">
+          <span class="permission-origin-name">${escapeHtml(perm.origin)}</span>
+        </div>
+        <div class="permission-scopes">
+          ${scopeBadges || '<span style="color: var(--color-text-muted); font-size: 11px;">No scopes</span>'}
+        </div>
+        ${toolsHtml}
+        <div class="permission-actions">
+          <button class="btn btn-sm btn-danger revoke-permissions-btn" data-origin="${escapeHtml(perm.origin)}">Revoke All</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add event listeners for revoke buttons
+  permissionsList.querySelectorAll('.revoke-permissions-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const origin = (btn as HTMLElement).dataset.origin!;
+      if (!confirm(`Revoke all permissions for ${origin}?`)) return;
+
+      try {
+        await chrome.runtime.sendMessage({ type: 'revoke_origin_permissions', origin });
+        await loadPermissions();
+        showToast('Permissions revoked');
+      } catch (err) {
+        console.error('[Sidebar] Failed to revoke permissions:', err);
+        showToast('Failed to revoke permissions', 'error');
+      }
+    });
+  });
+}
+
+// Setup permissions panel toggle
+setupPanelToggle(permissionsPanelHeader, permissionsPanelToggle, permissionsList);
+
+// Refresh permissions button
+refreshPermissionsBtn?.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  refreshPermissionsBtn.disabled = true;
+  await loadPermissions();
+  refreshPermissionsBtn.disabled = false;
+});
+
+// Listen for permission changes from background
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === 'permissions_changed') {
+    loadPermissions();
+  }
+  return false;
+});
+
+// Load permissions on startup
+loadPermissions();
+
+// =============================================================================
 // Quick Actions Panel
 // =============================================================================
 
