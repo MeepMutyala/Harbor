@@ -1,0 +1,2 @@
+#!/bin/bash
+exec "/Users/raffi/stuff/code/harbor/bridge-rs/target/release/harbor-bridge" --native-messaging "$@"

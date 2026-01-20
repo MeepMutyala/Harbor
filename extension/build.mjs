@@ -21,6 +21,7 @@ const entryPoints = [
   'src/sidebar.ts',
   'src/permission-prompt.ts',
   'src/demo-bootstrap.ts',
+  'src/js-runtime/worker-loader.ts',
 ];
 
 async function copyStatic() {

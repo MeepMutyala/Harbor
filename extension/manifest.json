@@ -40,6 +40,7 @@
         "dist/permission-prompt.js",
         "dist/design-tokens.css",
         "dist/demo-bootstrap.js",
+        "dist/js-runtime/worker-loader.js",
         "demo/*",
         "assets/mcp-time.wasm"
       ],

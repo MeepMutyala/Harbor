@@ -119,17 +119,37 @@ export async function createJsSession(
   const serverCode = await loadServerCode(manifest);
   const wrappedCode = wrapServerCode(serverCode);
 
-  // Create worker from blob URL
-  const blob = new Blob([wrappedCode], { type: 'application/javascript' });
-  const blobUrl = URL.createObjectURL(blob);
+  // Create worker from static loader script (avoids blob URL CSP issues)
+  // The loader receives the actual code via postMessage
+  const loaderUrl = chrome.runtime.getURL('dist/js-runtime/worker-loader.js');
+  const worker = new Worker(loaderUrl);
 
-  let worker: Worker;
-  try {
-    worker = new Worker(blobUrl);
-  } finally {
-    // Clean up blob URL after worker is created
-    URL.revokeObjectURL(blobUrl);
-  }
+  // Wait for loader to be ready, then inject code
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Worker loader failed to initialize'));
+    }, 3000);
+
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'loader-ready') {
+        clearTimeout(timeout);
+        worker.removeEventListener('message', handler);
+        // Send the sandboxed code to the worker
+        worker.postMessage({ type: 'load-code', code: wrappedCode });
+        resolve();
+      } else if (event.data?.type === 'error') {
+        clearTimeout(timeout);
+        worker.removeEventListener('message', handler);
+        reject(new Error(event.data.message));
+      }
+    };
+
+    worker.addEventListener('message', handler);
+    worker.addEventListener('error', (e) => {
+      clearTimeout(timeout);
+      reject(new Error(`Worker load error: ${e.message}`));
+    });
+  });
 
   // Create stdio endpoint
   const { endpoint, attachWorker, close: closeEndpoint } =
