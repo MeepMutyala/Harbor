@@ -36,6 +36,10 @@ async function copyStatic() {
   
   // Copy demo files
   await cp('demo', 'dist/../demo', { recursive: true }).catch(() => {});
+  
+  // Copy bundled MCP servers from project root demo folder
+  await mkdir('bundled/gmail-harbor', { recursive: true });
+  await cp('../demo/gmail-mcp-server/harbor', 'bundled/gmail-harbor', { recursive: true }).catch(() => {});
 }
 
 if (isWatch) {

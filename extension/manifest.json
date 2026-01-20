@@ -42,7 +42,8 @@
         "dist/demo-bootstrap.js",
         "dist/js-runtime/builtin-echo-worker.js",
         "demo/*",
-        "assets/mcp-time.wasm"
+        "assets/*",
+        "bundled/*"
       ],
       "matches": ["<all_urls>"]
     }
