@@ -327,18 +327,35 @@ impl JsServer {
             let has_pending: bool = ctx.eval("!!globalThis.__mcp_pendingRead").unwrap_or(false);
             tracing::info!("[JS:{}] __mcp_pendingRead before: {}", server_id, has_pending);
 
-            let code = format!(r#"
-                const req = '{}';
-                if (globalThis.__mcp_pendingRead) {{
-                    const resolve = globalThis.__mcp_pendingRead;
-                    globalThis.__mcp_pendingRead = null;
-                    resolve(req);
-                }} else {{
-                    globalThis.__mcp_requests.push(req);
-                }}
-            "#, request_json.replace("'", "\\'").replace("\n", "\\n"));
+            // Properly escape for JavaScript string literal
+            let escaped_json = request_json
+                .replace('\\', "\\\\")  // Must be first!
+                .replace('\'', "\\'")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t");
 
-            ctx.eval::<(), _>(code.as_str())
+            let code = format!(r#"
+                try {{
+                    const req = '{}';
+                    if (globalThis.__mcp_pendingRead) {{
+                        const resolve = globalThis.__mcp_pendingRead;
+                        globalThis.__mcp_pendingRead = null;
+                        resolve(req);
+                    }} else {{
+                        globalThis.__mcp_requests.push(req);
+                    }}
+                }} catch (e) {{
+                    console.error('Inject error:', e, e.stack);
+                    throw e;
+                }}
+            "#, escaped_json);
+
+            ctx.eval::<(), _>(code.as_str()).map_err(|e| {
+                tracing::error!("[JS:{}] Eval error: {:?}", server_id, e);
+                tracing::error!("[JS:{}] Code was: {}", server_id, code);
+                e
+            })
         }).map_err(|e| format!("Failed to inject request: {}", e))?;
         
         tracing::info!("[JS:{}] Request injected", server_id);
@@ -372,12 +389,15 @@ impl JsServer {
             
             // Check for response INSIDE context lock
             let response_result: Result<Option<String>, String> = context.with(|ctx| {
-                let responses: Vec<String> = ctx.eval(r#"
-                    const r = globalThis.__mcp_responses.splice(0);
-                    r
-                "#).map_err(|e| e.to_string())?;
+                // Get responses as JSON string to avoid type conversion issues
+                let responses_json: String = ctx.eval(r#"
+                    JSON.stringify(globalThis.__mcp_responses.splice(0))
+                "#).map_err(|e| format!("Failed to get responses: {}", e))?;
 
                 Self::flush_console_logs(&ctx, server_id);
+
+                let responses: Vec<String> = serde_json::from_str(&responses_json)
+                    .map_err(|e| format!("Failed to parse responses: {}", e))?;
 
                 if !responses.is_empty() {
                     Ok(Some(responses.into_iter().last().unwrap()))
