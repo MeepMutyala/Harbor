@@ -3,6 +3,7 @@ node_modules/
 
 # Build outputs
 extension/dist/
+extension/bundled/
 
 # Python
 __pycache__/
