@@ -140,27 +140,8 @@
       color: var(--color-text-secondary);
       max-width: 400px;
       line-height: var(--leading-relaxed);
-      margin-bottom: var(--space-4);
       font-size: var(--text-sm);
     }
-
-    .empty-state-code {
-      background: var(--color-code-bg);
-      border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-md);
-      padding: var(--space-3);
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      text-align: left;
-      color: var(--color-code-text);
-      max-width: 360px;
-      overflow-x: auto;
-      line-height: var(--leading-relaxed);
-    }
-
-    .empty-state-code .keyword { color: var(--color-code-keyword); }
-    .empty-state-code .string { color: var(--color-code-string); }
-    .empty-state-code .comment { color: var(--color-text-muted); }
 
     /* Messages */
     .message {
@@ -534,20 +515,9 @@
         <div class="empty-state-icon">💬</div>
         <h2>Harbor Chat</h2>
         <p>
-          Chat interface using the Web Agent API. 
+          Test chat interface for debugging.<br>
           Toggle <strong>Tools</strong> to use MCP tools.
         </p>
-        <div class="empty-state-code">
-<span class="comment">// Create a session</span>
-<span class="keyword">const</span> session = <span class="keyword">await</span> window.ai.createTextSession();
-
-<span class="comment">// Or run an agent with tools</span>
-<span class="keyword">for await</span> (<span class="keyword">const</span> event <span class="keyword">of</span> window.agent.run({
-  task: <span class="string">"What time is it?"</span>
-})) {
-  console.log(event);
-}
-        </div>
       </div>
     </div>
   </div>
