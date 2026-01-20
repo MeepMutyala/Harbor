@@ -115,6 +115,7 @@ async function callLLMWithTools(
   content: string;
   tool_calls?: Array<{
     id: string;
+    type: 'function';
     function: { name: string; arguments: string };
   }>;
 }> {
@@ -139,11 +140,23 @@ async function callLLMWithTools(
 
   // Parse tool calls from content if not provided
   const content = response.message?.content || '';
-  let toolCalls = response.message?.tool_calls;
+  const rawToolCalls = response.message?.tool_calls;
+  
+  // Normalize tool_calls to have type: 'function'
+  let toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> | undefined;
 
-  if (!toolCalls) {
+  if (rawToolCalls) {
+    toolCalls = rawToolCalls.map(tc => ({
+      id: tc.id,
+      type: 'function' as const,
+      function: tc.function,
+    }));
+  } else {
     // Try to parse tool calls from text format
-    toolCalls = parseToolCallsFromText(content, tools);
+    const parsed = parseToolCallsFromText(content, tools);
+    if (parsed) {
+      toolCalls = parsed.map(tc => ({ ...tc, type: 'function' as const }));
+    }
   }
 
   return {
@@ -401,13 +414,11 @@ Do NOT call additional tools unless explicitly needed for the user's request.`,
             messages.push({
               role: 'assistant',
               content: '',
-              tool_calls: [
-                {
-                  id: toolCall.id,
-                  type: 'function',
-                  function: toolCall.function,
-                },
-              ],
+              tool_calls: [{
+                id: toolCall.id,
+                type: 'function' as const,
+                function: toolCall.function,
+              }],
             });
             messages.push({
               role: 'tool',
