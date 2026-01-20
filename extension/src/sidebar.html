@@ -13,7 +13,9 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: var(--space-3);
+        margin-bottom: var(--space-2);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--color-border-subtle);
       }
       .header-brand {
         display: flex;
@@ -21,8 +23,8 @@
         gap: var(--space-2);
       }
       .header-logo {
-        width: 28px;
-        height: 28px;
+        width: 22px;
+        height: 22px;
         background: var(--color-accent-primary);
         border-radius: var(--radius-sm);
         display: flex;
@@ -30,7 +32,7 @@
         justify-content: center;
         color: var(--color-text-inverse);
         font-weight: var(--weight-bold);
-        font-size: var(--text-sm);
+        font-size: var(--text-xs);
         cursor: pointer;
         transition: transform 0.15s, box-shadow 0.15s;
       }
@@ -42,15 +44,15 @@
         transform: scale(0.98);
       }
       .header-title {
-        font-size: var(--text-lg);
-        font-weight: var(--weight-bold);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-semibold);
         color: var(--color-text-primary);
       }
       .header-status {
         display: flex;
         align-items: center;
-        gap: var(--space-1);
-        margin-left: var(--space-2);
+        gap: 4px;
+        margin-left: var(--space-1);
         padding-left: var(--space-2);
         border-left: 1px solid var(--color-border-subtle);
       }
@@ -734,17 +736,28 @@
       /* Toast notification */
       .toast {
         position: fixed;
-        bottom: var(--space-3);
+        bottom: var(--space-4);
         left: 50%;
         transform: translateX(-50%);
-        background: var(--color-surface-tertiary);
-        color: var(--color-text-primary);
-        padding: var(--space-2) var(--space-3);
-        border-radius: var(--radius-sm);
+        background: var(--color-text-primary);
+        color: var(--color-bg-base);
+        padding: var(--space-3) var(--space-4);
+        border-radius: var(--radius-md);
         font-size: var(--text-sm);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        font-weight: var(--weight-medium);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
         z-index: 1000;
         animation: toast-in 0.2s ease-out;
+        max-width: 90%;
+        text-align: center;
+      }
+      .toast.error {
+        background: var(--color-error);
+        color: white;
+      }
+      .toast.success {
+        background: var(--color-success);
+        color: white;
       }
       @keyframes toast-in {
         from {
@@ -762,15 +775,13 @@
     <div class="header">
       <div class="header-brand">
         <div class="header-logo" id="header-logo" title="Open Firefox debugging page">H</div>
-        <div class="header-title">Harbor</div>
+        <span class="header-title">Harbor</span>
         <div class="header-status">
           <div id="bridge-status-indicator" class="status-indicator connecting"></div>
-          <span id="bridge-status-text" class="status-text connecting">Connecting...</span>
+          <span id="bridge-status-text" class="status-text connecting">...</span>
         </div>
       </div>
-      <div class="server-actions">
-        <button class="btn btn-secondary btn-sm" id="refresh">Refresh</button>
-      </div>
+      <button class="btn btn-ghost btn-sm" id="theme-toggle" title="Toggle theme">🖥️</button>
     </div>
 
     <div class="panel" id="llm-panel">

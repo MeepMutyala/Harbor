@@ -62,7 +62,6 @@ const headerLogo = document.getElementById('header-logo') as HTMLDivElement;
 
 // Server elements
 const serversEl = document.getElementById('servers') as HTMLDivElement;
-const refreshBtn = document.getElementById('refresh') as HTMLButtonElement;
 const addBtn = document.getElementById('add') as HTMLButtonElement;
 const fileInput = document.getElementById('file') as HTMLInputElement;
 
@@ -98,18 +97,66 @@ let cachedAvailableModels: ModelInfo[] = [];
 // Bridge status polling
 const BRIDGE_STATUS_POLL_INTERVAL = 5000; // 5 seconds
 
+// =============================================================================
+// Theme Management
+// =============================================================================
 
+type Theme = 'light' | 'dark' | 'system';
+
+function getSystemTheme(): 'light' | 'dark' {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme: Theme): void {
+  const effectiveTheme = theme === 'system' ? getSystemTheme() : theme;
+  document.documentElement.setAttribute('data-theme', effectiveTheme);
+  localStorage.setItem('harbor-theme', theme);
+  updateThemeToggle(theme);
+}
+
+function updateThemeToggle(theme: Theme): void {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  
+  const icons: Record<Theme, string> = { light: '☀️', dark: '🌙', system: '🖥️' };
+  btn.textContent = icons[theme];
+  btn.title = `Theme: ${theme} (click to change)`;
+}
+
+function initTheme(): void {
+  const saved = localStorage.getItem('harbor-theme') as Theme | null;
+  const theme = saved || 'system';
+  applyTheme(theme);
+  
+  // Listen for system theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    const current = localStorage.getItem('harbor-theme') as Theme | null;
+    if (current === 'system' || !current) {
+      applyTheme('system');
+    }
+  });
+}
+
+function cycleTheme(): void {
+  const current = localStorage.getItem('harbor-theme') as Theme | null || 'system';
+  const order: Theme[] = ['system', 'light', 'dark'];
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  applyTheme(next);
+}
+
+// Initialize theme on load
+initTheme();
 
 // =============================================================================
 // Toast notification helper
 // =============================================================================
 
-function showToast(message: string, duration = 2000): void {
+function showToast(message: string, type: 'info' | 'error' | 'success' = 'info', duration = 3000): void {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
 
   const toast = document.createElement('div');
-  toast.className = 'toast';
+  toast.className = `toast ${type !== 'info' ? type : ''}`;
   toast.textContent = message;
   document.body.appendChild(toast);
 
@@ -300,11 +347,9 @@ async function loadServers(): Promise<void> {
   servers.forEach((server) => serversEl.appendChild(renderServer(server)));
 }
 
-refreshBtn.addEventListener('click', () => {
-  loadServers().catch((error) => {
-    console.error('Failed to refresh servers', error);
-  });
-});
+// Theme toggle
+const themeToggle = document.getElementById('theme-toggle');
+themeToggle?.addEventListener('click', cycleTheme);
 
 addBtn.addEventListener('click', () => {
   fileInput.click();
@@ -563,6 +608,7 @@ function renderConfiguredModels(models: ConfiguredModel[]): void {
         <div class="configured-model-id">${model.model_id}</div>
       </div>
       <div class="configured-model-actions">
+        <button class="btn btn-ghost btn-sm test-model-btn" data-model="${model.model_id}" title="Test connection">⚡</button>
         ${!model.is_default ? `<button class="btn btn-ghost btn-sm set-default-model-btn" data-name="${model.name}" title="Set as default">★</button>` : ''}
         <button class="btn btn-ghost btn-sm remove-model-btn" data-name="${model.name}" title="Remove">✕</button>
       </div>
@@ -572,6 +618,35 @@ function renderConfiguredModels(models: ConfiguredModel[]): void {
   }
   
   // Event listeners
+  configuredModelsEl.querySelectorAll('.test-model-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const modelId = (btn as HTMLElement).dataset.model;
+      if (!modelId) return;
+      
+      const originalText = btn.textContent;
+      btn.textContent = '...';
+      (btn as HTMLButtonElement).disabled = true;
+      
+      try {
+        const result = await chrome.runtime.sendMessage({ 
+          type: 'llm_test_model', 
+          model: modelId 
+        }) as { ok: boolean; response?: string; error?: string };
+        
+        if (result.ok) {
+          showToast(`✓ Model works! Response: "${result.response?.slice(0, 50)}..."`, 'success');
+        } else {
+          showToast(`✗ Test failed: ${result.error}`, 'error');
+        }
+      } catch (err) {
+        showToast(`✗ Test failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      } finally {
+        btn.textContent = originalText;
+        (btn as HTMLButtonElement).disabled = false;
+      }
+    });
+  });
+  
   configuredModelsEl.querySelectorAll('.set-default-model-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const name = (btn as HTMLElement).dataset.name;
