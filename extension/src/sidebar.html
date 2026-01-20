@@ -64,6 +64,11 @@
         font-size: var(--text-xs);
         font-weight: var(--weight-medium);
       }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+      }
       .status-indicator {
         width: 8px;
         height: 8px;
@@ -781,7 +786,10 @@
           <span id="bridge-status-text" class="status-text connecting">...</span>
         </div>
       </div>
-      <button class="btn btn-ghost btn-sm" id="theme-toggle" title="Toggle theme">🖥️</button>
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" id="reload-extension-btn" title="Reload extension">🔄</button>
+        <button class="btn btn-ghost btn-sm" id="theme-toggle" title="Toggle theme">🖥️</button>
+      </div>
     </div>
 
     <div class="panel" id="llm-panel">
@@ -856,13 +864,13 @@
       </div>
       <div class="panel-body" id="quick-actions-body">
         <div class="quick-actions-grid">
+          <button class="quick-action-btn" id="open-directory-btn" title="Browse MCP server directory">
+            <span class="quick-action-icon">📚</span>
+            <span class="quick-action-label">Directory</span>
+          </button>
           <button class="quick-action-btn" id="open-chat-btn" title="Open debug chat in new tab">
             <span class="quick-action-icon">💬</span>
             <span class="quick-action-label">Open Chat</span>
-          </button>
-          <button class="quick-action-btn" id="reload-extension-btn" title="Reload the extension">
-            <span class="quick-action-icon">🔄</span>
-            <span class="quick-action-label">Reload</span>
           </button>
         </div>
       </div>

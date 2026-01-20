@@ -786,11 +786,24 @@ loadLlmProviders().catch((error) => {
 const quickActionsHeader = document.getElementById('quick-actions-header') as HTMLDivElement;
 const quickActionsToggle = document.getElementById('quick-actions-toggle') as HTMLSpanElement;
 const quickActionsBody = document.getElementById('quick-actions-body') as HTMLDivElement;
+const openDirectoryBtn = document.getElementById('open-directory-btn') as HTMLButtonElement;
 const openChatBtn = document.getElementById('open-chat-btn') as HTMLButtonElement;
 const reloadExtensionBtn = document.getElementById('reload-extension-btn') as HTMLButtonElement;
 
 // Set up panel toggle
 setupPanelToggle(quickActionsHeader, quickActionsToggle, quickActionsBody);
+
+// Open Directory button - opens the MCP server directory
+openDirectoryBtn.addEventListener('click', async () => {
+  try {
+    const directoryUrl = chrome.runtime.getURL('dist/directory.html');
+    console.log('[Sidebar] Opening directory at:', directoryUrl);
+    await chrome.tabs.create({ url: directoryUrl });
+  } catch (err) {
+    console.error('[Sidebar] Failed to open directory:', err);
+    showToast('Failed to open directory');
+  }
+});
 
 // Open Chat button - opens the chat demo in a new tab
 openChatBtn.addEventListener('click', async () => {
