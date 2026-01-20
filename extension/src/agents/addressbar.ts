@@ -52,7 +52,7 @@ export async function initializeAddressBar(): Promise<void> {
   // Load stored providers
   const result = await chrome.storage.local.get([STORAGE_KEY, DEFAULT_PROVIDER_KEY]);
   const stored = (result[STORAGE_KEY] || []) as StoredAddressBarProvider[];
-  defaultProviderId = result[DEFAULT_PROVIDER_KEY] || null;
+  defaultProviderId = (result[DEFAULT_PROVIDER_KEY] as string | undefined) || null;
 
   for (const provider of stored) {
     providers.set(provider.id, provider);
@@ -87,7 +87,7 @@ function setupOmniboxListeners(): void {
   // Input entered - execute action
   chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
     try {
-      await handleSelection(text, disposition);
+      await handleSelection(text, disposition as chrome.omnibox.OnInputEnteredDisposition);
     } catch (error) {
       console.error('[Harbor] Omnibox action error:', error);
     }
@@ -638,7 +638,7 @@ async function handleToolResult(
     case 'navigate':
       // If result is a URL, navigate to it
       if (typeof result === 'string' && result.startsWith('http')) {
-        await navigateTo(result, 'currentTab');
+        await navigateTo(result, 'currentTab' as chrome.omnibox.OnInputEnteredDisposition);
       }
       break;
 
