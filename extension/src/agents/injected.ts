@@ -7,6 +7,9 @@
  * - window.harbor - Guaranteed namespace with direct access to Harbor APIs
  */
 
+// Make this a module to avoid global scope conflicts with types
+export {};
+
 // =============================================================================
 // Types (subset needed for injected context)
 // =============================================================================
@@ -264,7 +267,15 @@ function createStreamIterable<T extends RunEvent | StreamToken>(
 // TextSession Implementation
 // =============================================================================
 
-function createTextSessionObject(sessionId: string, options: TextSessionOptions) {
+interface TextSession {
+  readonly sessionId: string;
+  prompt(input: string): Promise<string>;
+  promptStreaming(input: string): AsyncIterable<StreamToken>;
+  destroy(): Promise<void>;
+  clone(): Promise<TextSession>;
+}
+
+function createTextSessionObject(sessionId: string, options: TextSessionOptions): TextSession {
   return Object.freeze({
     sessionId,
 
@@ -280,7 +291,7 @@ function createTextSessionObject(sessionId: string, options: TextSessionOptions)
       await sendRequest('session.destroy', { sessionId });
     },
 
-    async clone(): Promise<typeof this> {
+    async clone(): Promise<TextSession> {
       const newSessionId = await sendRequest<string>('session.clone', { sessionId });
       return createTextSessionObject(newSessionId, options);
     },
@@ -291,7 +302,32 @@ function createTextSessionObject(sessionId: string, options: TextSessionOptions)
 // window.ai Implementation
 // =============================================================================
 
-const aiApi = Object.freeze({
+// Define the AI API interface to avoid circular type references
+interface AiApiInterface {
+  canCreateTextSession(): Promise<'readily' | 'after-download' | 'no'>;
+  createTextSession(options?: TextSessionOptions): Promise<TextSession>;
+  languageModel: {
+    capabilities(): Promise<{
+      available: 'readily' | 'after-download' | 'no';
+      defaultTopK?: number;
+      maxTopK?: number;
+      defaultTemperature?: number;
+    }>;
+    create(options?: AILanguageModelCreateOptions): Promise<TextSession>;
+  };
+  providers: {
+    list(): Promise<LLMProviderInfo[]>;
+    getActive(): Promise<{ provider: string | null; model: string | null }>;
+  };
+  runtime: {
+    readonly harbor: AiApiInterface;
+    readonly chrome: unknown;
+    getBest(): Promise<'harbor' | 'chrome' | null>;
+  };
+}
+
+// Create aiApi object (not frozen yet so we can add runtime)
+const aiApiBase: AiApiInterface = {
   async canCreateTextSession(): Promise<'readily' | 'after-download' | 'no'> {
     return sendRequest<'readily' | 'after-download' | 'no'>('ai.canCreateTextSession');
   },
@@ -335,34 +371,40 @@ const aiApi = Object.freeze({
     },
   }),
 
-  runtime: Object.freeze({
-    get harbor() {
-      return aiApi;
-    },
+  runtime: null as unknown as AiApiInterface['runtime'],
+};
 
-    get chrome() {
-      // Return Chrome's built-in AI if available
-      return (window as { ai?: unknown }).ai !== aiApi ? (window as { ai?: unknown }).ai : null;
-    },
+// Create runtime with getters that reference aiApiBase
+const aiRuntime: AiApiInterface['runtime'] = Object.freeze({
+  get harbor(): AiApiInterface {
+    return aiApiBase;
+  },
+  get chrome(): unknown {
+    // Return Chrome's built-in AI if available
+    const windowAi = (window as { ai?: unknown }).ai;
+    return windowAi && windowAi !== aiApiBase ? windowAi : null;
+  },
+  async getBest(): Promise<'harbor' | 'chrome' | null> {
+    const harborAvailable = await aiApiBase.canCreateTextSession();
+    if (harborAvailable === 'readily') return 'harbor';
 
-    async getBest(): Promise<'harbor' | 'chrome' | null> {
-      const harborAvailable = await aiApi.canCreateTextSession();
-      if (harborAvailable === 'readily') return 'harbor';
-
-      const chromeAi = this.chrome;
-      if (chromeAi && typeof chromeAi === 'object' && 'canCreateTextSession' in chromeAi) {
-        try {
-          const chromeAvailable = await (chromeAi as { canCreateTextSession: () => Promise<string> }).canCreateTextSession();
-          if (chromeAvailable === 'readily') return 'chrome';
-        } catch {
-          // Chrome AI not available
-        }
+    const chromeAi = this.chrome;
+    if (chromeAi && typeof chromeAi === 'object' && 'canCreateTextSession' in chromeAi) {
+      try {
+        const chromeAvailable = await (chromeAi as { canCreateTextSession: () => Promise<string> }).canCreateTextSession();
+        if (chromeAvailable === 'readily') return 'chrome';
+      } catch {
+        // Chrome AI not available
       }
+    }
 
-      return harborAvailable !== 'no' ? 'harbor' : null;
-    },
-  }),
+    return harborAvailable !== 'no' ? 'harbor' : null;
+  },
 });
+
+// Set the runtime and freeze
+aiApiBase.runtime = aiRuntime;
+const aiApi = Object.freeze(aiApiBase);
 
 // =============================================================================
 // window.agent Implementation
