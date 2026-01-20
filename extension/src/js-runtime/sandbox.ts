@@ -21,6 +21,12 @@ export function generateSandboxPreamble(): string {
 (function() {
   'use strict';
 
+  // Detect environment: Worker or iframe sandbox
+  const isWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+  const postToHost = isWorker 
+    ? (msg) => self.postMessage(msg)
+    : (msg) => window.parent.postMessage(msg, '*');
+
   // -------------------------------------------------------------------------
   // 1. Capture and remove dangerous globals
   // -------------------------------------------------------------------------
@@ -35,13 +41,12 @@ export function generateSandboxPreamble(): string {
   delete globalThis.WebSocket;
   delete globalThis.importScripts;
   
-  // Also remove from self (Worker global)
-  if (typeof self !== 'undefined') {
-    delete self.fetch;
-    delete self.XMLHttpRequest;
-    delete self.WebSocket;
-    delete self.importScripts;
-  }
+  // Also remove from self/window
+  const globalObj = isWorker ? self : window;
+  delete globalObj.fetch;
+  delete globalObj.XMLHttpRequest;
+  delete globalObj.WebSocket;
+  if (isWorker) delete globalObj.importScripts;
 
   // -------------------------------------------------------------------------
   // 2. Controlled fetch via postMessage proxy
@@ -83,7 +88,7 @@ export function generateSandboxPreamble(): string {
     return new Promise((resolve, reject) => {
       pendingFetchRequests.set(id, { resolve, reject });
       
-      self.postMessage({
+      postToHost({
         type: 'fetch-request',
         id,
         url,
@@ -129,7 +134,7 @@ export function generateSandboxPreamble(): string {
      * @param {string} json - The JSON string to write
      */
     writeLine: function(json) {
-      self.postMessage({ type: 'stdout', data: json });
+      postToHost({ type: 'stdout', data: json });
     },
   };
 
@@ -154,23 +159,23 @@ export function generateSandboxPreamble(): string {
   const _originalConsole = globalThis.console;
   globalThis.console = {
     log: function(...args) {
-      self.postMessage({ type: 'console', level: 'log', args: args.map(String) });
+      postToHost({ type: 'console', level: 'log', args: args.map(String) });
       _originalConsole.log('[MCP Server]', ...args);
     },
     warn: function(...args) {
-      self.postMessage({ type: 'console', level: 'warn', args: args.map(String) });
+      postToHost({ type: 'console', level: 'warn', args: args.map(String) });
       _originalConsole.warn('[MCP Server]', ...args);
     },
     error: function(...args) {
-      self.postMessage({ type: 'console', level: 'error', args: args.map(String) });
+      postToHost({ type: 'console', level: 'error', args: args.map(String) });
       _originalConsole.error('[MCP Server]', ...args);
     },
     info: function(...args) {
-      self.postMessage({ type: 'console', level: 'info', args: args.map(String) });
+      postToHost({ type: 'console', level: 'info', args: args.map(String) });
       _originalConsole.info('[MCP Server]', ...args);
     },
     debug: function(...args) {
-      self.postMessage({ type: 'console', level: 'debug', args: args.map(String) });
+      postToHost({ type: 'console', level: 'debug', args: args.map(String) });
       _originalConsole.debug('[MCP Server]', ...args);
     },
   };
@@ -179,7 +184,8 @@ export function generateSandboxPreamble(): string {
   // 6. Message handler for host communication
   // -------------------------------------------------------------------------
   
-  self.addEventListener('message', function(event) {
+  const messageTarget = isWorker ? self : window;
+  messageTarget.addEventListener('message', function(event) {
     const data = event.data;
     if (!data || !data.type) return;
     
@@ -221,7 +227,7 @@ export function generateSandboxPreamble(): string {
         
       case 'terminate':
         // Clean shutdown request
-        self.close();
+        if (isWorker) self.close();
         break;
     }
   });
@@ -230,7 +236,7 @@ export function generateSandboxPreamble(): string {
   // 7. Signal ready
   // -------------------------------------------------------------------------
   
-  self.postMessage({ type: 'ready' });
+  postToHost({ type: 'ready' });
 
 })();
 

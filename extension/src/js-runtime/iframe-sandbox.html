@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>JS MCP Sandbox</title>
+</head>
+<body>
+<script>
+// This runs in a sandboxed iframe context
+// Code will be injected via postMessage
+
+window.addEventListener('message', function initHandler(event) {
+  if (event.data?.type === 'load-code') {
+    window.removeEventListener('message', initHandler);
+    
+    const code = event.data.code;
+    
+    try {
+      // Create a script element to execute the code
+      const script = document.createElement('script');
+      script.textContent = code;
+      document.body.appendChild(script);
+    } catch (e) {
+      parent.postMessage({ 
+        type: 'error', 
+        message: e instanceof Error ? e.message : String(e) 
+      }, '*');
+    }
+  }
+});
+
+// Signal ready to receive code
+parent.postMessage({ type: 'loader-ready' }, '*');
+</script>
+</body>
+</html>

@@ -26,10 +26,12 @@ const entryPoints = [
 
 async function copyStatic() {
   await mkdir('dist', { recursive: true });
+  await mkdir('dist/js-runtime', { recursive: true });
   await copyFile('src/directory.html', 'dist/directory.html');
   await copyFile('src/sidebar.html', 'dist/sidebar.html');
   await copyFile('src/permission-prompt.html', 'dist/permission-prompt.html');
   await copyFile('src/design-tokens.css', 'dist/design-tokens.css');
+  await copyFile('src/js-runtime/sandbox.html', 'dist/js-runtime/sandbox.html');
   
   // Copy demo files
   await cp('demo', 'dist/../demo', { recursive: true }).catch(() => {});
