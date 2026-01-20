@@ -31,6 +31,15 @@ cleanupExpiredGrants();
 // Legacy Message Handlers (for sidebar and other internal UIs)
 // =============================================================================
 
+// Debug: log all incoming messages
+chrome.runtime.onMessage.addListener((message) => {
+  console.log('[Harbor] Incoming message:', message?.type, message);
+  return false; // Don't handle, let other listeners process
+});
+
+// Debug: expose callTool for console testing
+(globalThis as Record<string, unknown>).debugCallTool = callTool;
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'sidebar_get_servers') {
     return false;
@@ -454,18 +463,75 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'llm_test_model') {
+    return false;
+  }
+  const { model } = message as { model?: string };
+  if (!model) {
+    sendResponse({ ok: false, error: 'Missing model' });
+    return true;
+  }
+  (async () => {
+    console.log('[Harbor] Testing model:', model);
+    const result = await bridgeRequest<{ message?: { content?: string }; content?: string }>('llm.chat', {
+      model,
+      messages: [{ role: 'user', content: 'Say "hello" in exactly one word.' }],
+      max_tokens: 10,
+    });
+    const response = result.message?.content || result.content || '';
+    console.log('[Harbor] Test result:', response);
+    sendResponse({ ok: true, response });
+  })().catch((error) => {
+    console.error('[Harbor] Test failed:', error);
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+// Generic bridge RPC passthrough (used by demo-bootstrap)
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'bridge_rpc') {
+    return false;
+  }
+  const { method, params } = message as { method?: string; params?: unknown };
+  if (!method) {
+    sendResponse({ ok: false, error: 'Missing method' });
+    return true;
+  }
+  (async () => {
+    console.log('[Harbor] bridge_rpc:', method);
+    const result = await bridgeRequest(method, params);
+    sendResponse({ ok: true, result });
+  })().catch((error) => {
+    console.error('[Harbor] bridge_rpc error:', error);
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'sidebar_call_tool') {
     return false;
   }
   const { serverId, toolName, args } = message as { serverId?: string; toolName?: string; args?: Record<string, unknown> };
+  console.log('[Harbor] sidebar_call_tool:', serverId, toolName, args);
   if (!serverId || !toolName) {
     sendResponse({ ok: false, error: 'Missing serverId or toolName' });
     return true;
   }
   (async () => {
+    console.log('[Harbor] Calling tool...');
     const result = await callTool(serverId, toolName, args || {});
+    console.log('[Harbor] Tool result:', result);
     sendResponse(result);
   })().catch((error) => {
+    console.error('[Harbor] Tool error:', error);
     sendResponse({
       ok: false,
       error: error instanceof Error ? error.message : String(error),

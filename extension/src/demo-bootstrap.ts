@@ -2,10 +2,8 @@
  * Demo Bootstrap Script
  * 
  * Provides window.ai and window.agent APIs for the chat demo.
- * This is a simplified version that talks directly to the bridge.
+ * Communicates with the bridge via the extension's native messaging.
  */
-
-const BRIDGE_URL = 'http://localhost:9137/rpc';
 
 // Types
 interface TextSession {
@@ -22,23 +20,19 @@ interface ToolDescriptor {
   serverId?: string;
 }
 
-// Bridge RPC helper
+// Bridge RPC helper - goes through extension message passing
 async function bridgeRequest<T>(method: string, params?: unknown): Promise<T> {
-  const response = await fetch(BRIDGE_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      id: crypto.randomUUID(),
-      method,
-      params,
-    }),
-  });
+  // Use chrome.runtime.sendMessage to go through the background script
+  const response = await chrome.runtime.sendMessage({
+    type: 'bridge_rpc',
+    method,
+    params,
+  }) as { ok: boolean; result?: T; error?: string };
   
-  const json = await response.json();
-  if (json.error) {
-    throw new Error(json.error.message || 'Bridge request failed');
+  if (!response.ok) {
+    throw new Error(response.error || 'Bridge request failed');
   }
-  return json.result;
+  return response.result as T;
 }
 
 // Session counter for IDs
@@ -117,8 +111,20 @@ const ai = {
             const config = await bridgeRequest<{ default_model?: string }>('llm.get_config');
             model = config.default_model;
           }
-        } catch {
-          // Fall back to letting the bridge decide
+          
+          // If still no model, throw a clear error
+          if (!model) {
+            throw Object.assign(
+              new Error('No LLM model configured. Please add an LLM provider (like Ollama) in the Harbor sidebar.'),
+              { code: 'ERR_NO_MODEL' }
+            );
+          }
+        } catch (err) {
+          // Re-throw if it's our specific error
+          if (err && typeof err === 'object' && 'code' in err && err.code === 'ERR_NO_MODEL') {
+            throw err;
+          }
+          // Otherwise fall back to letting the bridge decide (may still fail)
         }
         
         // Build request params
@@ -408,19 +414,34 @@ const agent = {
             // For models with native tool support (llama3.1+, mistral-nemo, etc.)
             systemPrompt = `You are a helpful assistant with access to tools.
 
-IMPORTANT RULES:
-1. Call a tool ONLY if you need information you don't have
-2. After receiving a tool result, RESPOND to the user - do NOT call more tools unless absolutely necessary
-3. Most questions only need ONE tool call at most
-4. When you have the information needed, give a direct answer in plain text
+## TOOL SELECTION STRATEGY
+1. Before calling any tool, carefully analyze what the user is asking for
+2. Call a tool ONLY when you need information or capabilities you don't have
+3. Choose the most appropriate tool based on the user's actual intent
+4. Most requests need at most ONE tool call
 
-Example flow:
-- User: "What time is it?"
-- You: Call time.now tool
-- Tool returns: "2024-01-15T10:30:00Z"
-- You: "The current time is 10:30 AM UTC on January 15, 2024."
+## ARGUMENT EXTRACTION - CRITICAL
+When determining tool arguments:
+1. Use EXACTLY what the user provides - never invent or assume values
+2. If the user references "this", "that", or similar pronouns, look for the actual content in their message or conversation history
+3. If the user's request is ambiguous or missing required information, ASK for clarification instead of guessing
+4. Do NOT use placeholder or example data - only use actual values from the user
 
-Do NOT keep calling tools in a loop. After getting a result, answer the user.`;
+Examples of CORRECT behavior:
+- User: "reverse hello world" → Use "hello world" as the argument
+- User: "what time is it?" → Call time tool with no made-up arguments
+- User: "reverse this" (with no text provided) → Ask "What text would you like me to reverse?"
+
+Examples of INCORRECT behavior:
+- User: "reverse this string" → Using "this is a test string" (WRONG - made up data)
+- User: "translate this" → Using example text (WRONG - should ask what to translate)
+
+## RESPONSE RULES
+1. After receiving a tool result, RESPOND directly to the user
+2. Do NOT call additional tools unless the user's request explicitly requires it
+3. Synthesize tool results into a clear, helpful answer
+
+After getting a result, answer the user directly. Do NOT call more tools in a loop.`;
           } else {
             // For models WITHOUT native tool support (mistral 7b, llamafile, etc.)
             // Need explicit instructions on HOW to format tool calls as JSON
@@ -448,15 +469,33 @@ Do NOT keep calling tools in a loop. After getting a result, answer the user.`;
 ## Available Tools
 ${toolList}
 
+## TOOL SELECTION STRATEGY
+1. Before calling any tool, carefully analyze what the user is asking for
+2. Call a tool ONLY when you need information or capabilities you don't have
+3. Choose the most appropriate tool based on the user's actual intent
+4. Most requests need at most ONE tool call
+
+## ARGUMENT EXTRACTION - CRITICAL
+When determining tool arguments:
+1. Use EXACTLY what the user provides - never invent or assume values
+2. If the user references "this", "that", or similar pronouns, look for the actual content in their message or conversation history
+3. If the user's request is ambiguous or missing required information, ASK for clarification instead of guessing
+4. Do NOT use placeholder or example data - only use actual values from the user
+
+CORRECT: User says "reverse hello world" → parameters: {"text": "hello world"}
+INCORRECT: User says "reverse this string" → parameters: {"text": "this is a test string"} (WRONG - made up data)
+
+If the user doesn't provide the actual data needed, respond with a question asking for it.
+
 ## How to Call a Tool
 Output ONLY this JSON (nothing else):
 {"name": "tool_name", "parameters": {}}
 
-## CRITICAL RULES
-1. Call a tool ONLY if you need information you don't have
-2. After receiving tool results, RESPOND to the user in plain text - do NOT call more tools
-3. Most questions need only ONE tool call
-4. Do NOT call the same tool twice
+## RESPONSE RULES
+1. After receiving tool results, RESPOND to the user in plain text
+2. Do NOT call more tools unless explicitly needed
+3. Do NOT call the same tool twice
+4. Synthesize results into a clear answer
 
 ## Example Flow
 User: "What time is it?"
@@ -490,8 +529,9 @@ After getting a result, answer the user directly. Do NOT output another JSON too
               // Always pass tools - allow chaining different tools
               response = await session.prompt(currentMessage, useNativeTools ? tools : undefined);
             } catch (err) {
+              const errorCode = (err && typeof err === 'object' && 'code' in err) ? (err as { code: string }).code : 'ERR_LLM_FAILED';
               const errorMsg = err instanceof Error ? err.message : 'LLM request failed';
-              yield { type: 'error', error: { code: 'ERR_LLM_FAILED', message: errorMsg } };
+              yield { type: 'error', error: { code: errorCode, message: errorMsg } };
               return;
             }
             
