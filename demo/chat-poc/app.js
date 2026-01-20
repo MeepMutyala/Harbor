@@ -715,7 +715,7 @@ async function init() {
     let permissionsGranted = false;
     try {
       const permResult = await window.agent.requestPermissions({
-        scopes: ['model:prompt', 'model:tools', 'mcp:tools.list', 'mcp:tools.call'],
+        scopes: ['model:list', 'model:prompt', 'model:tools', 'mcp:tools.list', 'mcp:tools.call'],
         reason: 'Chat demo needs access to the LLM and MCP tools to answer your questions',
       });
       console.log('[Demo] Permission result:', permResult);
