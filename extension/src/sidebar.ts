@@ -2,7 +2,8 @@ type ServerStatus = {
   id: string;
   name: string;
   version: string;
-  entrypoint: string;
+  runtime?: 'wasm' | 'js';
+  entrypoint?: string;
   tools?: Array<{ name: string }>;
   running: boolean;
 };
@@ -182,8 +183,21 @@ function renderServer(server: ServerStatus): HTMLElement {
   const title = document.createElement('div');
   title.className = 'server-title';
 
+  const nameContainer = document.createElement('span');
+  nameContainer.style.display = 'flex';
+  nameContainer.style.alignItems = 'center';
+  nameContainer.style.gap = '6px';
+
   const name = document.createElement('span');
   name.textContent = server.name;
+  nameContainer.appendChild(name);
+
+  // Show runtime badge (JS or WASM)
+  const runtimeBadge = document.createElement('span');
+  runtimeBadge.className = 'badge badge-muted';
+  runtimeBadge.textContent = server.runtime === 'js' ? 'JS' : 'WASM';
+  runtimeBadge.style.fontSize = '9px';
+  nameContainer.appendChild(runtimeBadge);
 
   const status = document.createElement('span');
   status.className = 'server-actions';
@@ -245,7 +259,7 @@ function renderServer(server: ServerStatus): HTMLElement {
   });
   status.appendChild(removeButton);
 
-  title.appendChild(name);
+  title.appendChild(nameContainer);
   title.appendChild(status);
 
   const meta = document.createElement('div');
@@ -288,22 +302,61 @@ fileInput.addEventListener('change', async () => {
   if (!file) {
     return;
   }
-  const bytes = await file.arrayBuffer();
-  const manifest = {
-    id: `wasm-${Date.now()}`,
-    name: file.name.replace(/\.wasm$/i, ''),
-    version: '0.1.0',
-    entrypoint: file.name,
-    moduleBytesBase64: toBase64(bytes),
-    permissions: [],
-    tools: [],
-  };
+
+  let manifest: Record<string, unknown>;
+
+  if (file.name.endsWith('.json')) {
+    // Handle JSON manifest file
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      
+      // Validate required fields
+      if (!parsed.id && !parsed.name) {
+        showToast('Invalid manifest: missing id or name');
+        fileInput.value = '';
+        return;
+      }
+      
+      manifest = {
+        ...parsed,
+        // Generate id if not provided
+        id: parsed.id || `mcp-${Date.now()}`,
+        // Default runtime to 'js' if scriptBase64 or scriptUrl present
+        runtime: parsed.runtime || (parsed.scriptBase64 || parsed.scriptUrl ? 'js' : 'wasm'),
+        permissions: parsed.permissions || [],
+      };
+      
+      showToast(`Loading ${manifest.runtime === 'js' ? 'JS' : 'WASM'} server: ${manifest.name || manifest.id}`);
+    } catch (e) {
+      console.error('Failed to parse manifest:', e);
+      showToast('Failed to parse JSON manifest');
+      fileInput.value = '';
+      return;
+    }
+  } else {
+    // Handle WASM file (existing behavior)
+    const bytes = await file.arrayBuffer();
+    manifest = {
+      id: `wasm-${Date.now()}`,
+      name: file.name.replace(/\.wasm$/i, ''),
+      version: '0.1.0',
+      runtime: 'wasm',
+      entrypoint: file.name,
+      moduleBytesBase64: toBase64(bytes),
+      permissions: [],
+      tools: [],
+    };
+    showToast(`Loading WASM server: ${manifest.name}`);
+  }
+
   const response = await chrome.runtime.sendMessage({
     type: 'sidebar_install_server',
     manifest,
   });
   if (!response?.ok) {
     console.error(response?.error || 'Failed to install server');
+    showToast('Failed to install server');
   }
   fileInput.value = '';
   const validate = await chrome.runtime.sendMessage({
@@ -312,6 +365,9 @@ fileInput.addEventListener('change', async () => {
   });
   if (!validate?.ok) {
     console.error(validate?.error || 'Failed to validate server');
+    showToast('Failed to start server: ' + (validate?.error || 'unknown error'));
+  } else {
+    showToast('Server installed and started');
   }
   await loadServers();
 });
