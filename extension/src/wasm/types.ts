@@ -32,6 +32,20 @@ export type McpToolDefinition = {
 };
 
 /**
+ * OAuth configuration for servers that require API authentication.
+ */
+export type McpServerOAuth = {
+  /** OAuth provider (e.g., "google", "github") */
+  provider: 'google' | 'github';
+  /** Required OAuth scopes */
+  scopes: string[];
+  /** Environment variable name for the access token */
+  tokenEnvVar: string;
+  /** Environment variable name for the refresh token (optional) */
+  refreshTokenEnvVar?: string;
+};
+
+/**
  * Unified manifest type for both WASM and JS MCP servers.
  */
 export type McpServerManifest = {
@@ -49,8 +63,12 @@ export type McpServerManifest = {
   entrypoint?: string;
   /** URL to fetch WASM module from */
   moduleUrl?: string;
+  /** URL to fetch WASM module from (alias for moduleUrl) */
+  wasmUrl?: string;
   /** Base64-encoded WASM module bytes */
   moduleBytesBase64?: string;
+  /** Base64-encoded WASM module bytes (alias for moduleBytesBase64) */
+  wasmBase64?: string;
 
   // JS-specific fields
   /** URL to fetch JS bundle from */
@@ -69,6 +87,10 @@ export type McpServerManifest = {
   env?: string[];
   /** Secret values to inject as process.env (name -> value) */
   secrets?: Record<string, string>;
+
+  // OAuth configuration
+  /** OAuth requirements for this server */
+  oauth?: McpServerOAuth;
 
   /** Tool definitions exposed by this server */
   tools?: McpToolDefinition[];

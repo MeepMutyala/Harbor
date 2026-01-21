@@ -40,6 +40,53 @@ async function loadServerCode(manifest: McpServerManifest): Promise<string> {
 }
 
 /**
+ * Fetch OAuth tokens for a server if it requires OAuth.
+ * Returns the access token or throws if not authenticated.
+ */
+async function fetchOAuthTokens(manifest: McpServerManifest): Promise<Record<string, string>> {
+  if (!manifest.oauth) {
+    return {};
+  }
+
+  const { provider, scopes, tokenEnvVar, refreshTokenEnvVar } = manifest.oauth;
+  
+  // Check OAuth status
+  const statusResult = await bridgeRequest<{
+    authenticated: boolean;
+    is_expired?: boolean;
+  }>('oauth.status', { server_id: manifest.id });
+
+  if (!statusResult.authenticated) {
+    throw new Error(
+      `Server "${manifest.name}" requires ${provider} authentication. ` +
+      `Please sign in first.`
+    );
+  }
+
+  if (statusResult.is_expired) {
+    console.log('[Harbor] OAuth token expired for', manifest.id, '- refresh should happen automatically');
+  }
+
+  // Get the actual tokens
+  const tokensResult = await bridgeRequest<{
+    has_tokens: boolean;
+    access_token?: string;
+  }>('oauth.get_tokens', { server_id: manifest.id });
+
+  if (!tokensResult.has_tokens || !tokensResult.access_token) {
+    throw new Error(`OAuth tokens not found for server "${manifest.name}"`);
+  }
+
+  const oauthEnv: Record<string, string> = {
+    [tokenEnvVar]: tokensResult.access_token,
+  };
+
+  console.log('[Harbor] Injecting OAuth token into', tokenEnvVar);
+  
+  return oauthEnv;
+}
+
+/**
  * Creates a JS MCP server session using the native bridge.
  * The bridge runs the JS code in QuickJS with sandboxed capabilities.
  */
@@ -47,10 +94,15 @@ async function createBridgeSession(manifest: McpServerManifest): Promise<JsSessi
   // Load the server code
   const code = await loadServerCode(manifest);
 
-  // Build environment variables from manifest secrets
+  // Build environment variables
+  // Note: manifest.secrets is metadata about what secrets are needed, not actual values.
+  // Actual secret values come from OAuth tokens or user configuration.
   const env: Record<string, string> = {};
-  if (manifest.secrets) {
-    Object.assign(env, manifest.secrets);
+
+  // Fetch and inject OAuth tokens if required
+  if (manifest.oauth) {
+    const oauthEnv = await fetchOAuthTokens(manifest);
+    Object.assign(env, oauthEnv);
   }
 
   // Build capabilities from manifest

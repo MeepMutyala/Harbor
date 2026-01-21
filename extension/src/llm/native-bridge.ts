@@ -257,11 +257,11 @@ export async function rpcRequest<T>(method: string, params?: unknown): Promise<T
   const id = crypto.randomUUID();
   
   return new Promise<T>((resolve, reject) => {
-    // Set up timeout
+    // Set up timeout (120 seconds for slow MCP tools like Gmail)
     const timeout = setTimeout(() => {
       pendingRequests.delete(id);
       reject(new Error('RPC request timed out'));
-    }, 30000);
+    }, 120000);
 
     pendingRequests.set(id, {
       resolve: (result) => {
