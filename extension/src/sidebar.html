@@ -921,6 +921,43 @@
       </div>
     </div>
 
+    <!-- OAuth App Credentials Panel -->
+    <div class="panel" id="oauth-panel">
+      <div class="panel-header" id="oauth-panel-header">
+        <div class="panel-header-left">
+          <span class="panel-collapse-icon" id="oauth-panel-toggle">&#9660;</span>
+          <div class="panel-title">🔑 App Credentials</div>
+        </div>
+        <div class="panel-header-right">
+          <div id="oauth-status-indicator" class="status-indicator disconnected"></div>
+          <span id="oauth-status-text" class="status-text disconnected">Not configured</span>
+        </div>
+      </div>
+      <div class="panel-body" id="oauth-panel-body">
+        <div class="section-hint">OAuth client credentials for MCP servers that need API access (Gmail, GitHub, etc.)</div>
+        
+        <div id="oauth-providers-list" class="detected-providers-list"></div>
+        
+        <!-- OAuth Credentials Config Form (hidden by default) -->
+        <div id="oauth-config-form" class="api-key-config" style="display: none;">
+          <div class="api-key-header">
+            <span id="oauth-config-provider-name">Configure Google</span>
+            <button class="btn btn-ghost btn-sm" id="oauth-config-cancel">×</button>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="oauth-client-id">Client ID</label>
+            <input type="text" class="form-input" id="oauth-client-id" placeholder="your-client-id.apps.googleusercontent.com" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="oauth-client-secret">Client Secret</label>
+            <input type="password" class="form-input" id="oauth-client-secret" placeholder="Enter client secret" />
+          </div>
+          <div class="form-hint">Get credentials from <a href="#" id="oauth-help-link" target="_blank">developer console</a></div>
+          <button class="btn btn-primary btn-sm" id="oauth-config-save" style="width: 100%; margin-top: var(--space-2);">Save</button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="panel-header" id="servers-panel-header">
         <div class="panel-header-left">
@@ -933,6 +970,42 @@
         </div>
       </div>
       <div class="panel-body" id="servers"></div>
+    </div>
+
+    <!-- Tool Tester Panel -->
+    <div class="panel" id="tool-tester-panel">
+      <div class="panel-header" id="tool-tester-header">
+        <div class="panel-header-left">
+          <span class="panel-collapse-icon collapsed" id="tool-tester-toggle">&#9660;</span>
+          <div class="panel-title">🧪 Tool Tester</div>
+        </div>
+      </div>
+      <div class="panel-body collapsed" id="tool-tester-body">
+        <div class="form-group">
+          <label class="form-label">Server</label>
+          <select class="form-input" id="tool-tester-server">
+            <option value="">Select a server...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tool</label>
+          <select class="form-input" id="tool-tester-tool" disabled>
+            <option value="">Select a tool...</option>
+          </select>
+        </div>
+        <div id="tool-tester-schema" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">Arguments (JSON)</label>
+            <textarea class="form-input" id="tool-tester-args" rows="4" placeholder='{"query": "example"}'></textarea>
+          </div>
+          <div class="form-hint" id="tool-tester-hint" style="margin-bottom: var(--space-2);"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="tool-tester-run" disabled style="width: 100%;">Run Tool</button>
+        <div id="tool-tester-result" style="display: none; margin-top: var(--space-3);">
+          <div class="form-label">Result</div>
+          <pre style="background: var(--color-surface-secondary); padding: var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); overflow-x: auto; max-height: 300px; white-space: pre-wrap; word-break: break-word;"><code id="tool-tester-output"></code></pre>
+        </div>
+      </div>
     </div>
 
     <!-- Site Permissions Panel -->
@@ -961,11 +1034,7 @@
       </div>
       <div class="panel-body" id="quick-actions-body">
         <div class="quick-actions-grid">
-          <button class="quick-action-btn" id="chat-about-page-btn" title="Chat about the current page">
-            <span class="quick-action-icon">📝</span>
-            <span class="quick-action-label">Chat Page</span>
-          </button>
-          <button class="quick-action-btn" id="open-chat-btn" title="Open debug chat in new tab">
+          <button class="quick-action-btn" id="open-chat-btn" title="Open chat in new tab">
             <span class="quick-action-icon">💬</span>
             <span class="quick-action-label">Open Chat</span>
           </button>

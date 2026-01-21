@@ -94,6 +94,24 @@ const serversPanelToggle = document.getElementById('servers-panel-toggle') as HT
 // Track which provider is being configured
 let configuringProviderId: string | null = null;
 
+// OAuth App Credentials elements
+const oauthPanelHeader = document.getElementById('oauth-panel-header') as HTMLDivElement;
+const oauthPanelToggle = document.getElementById('oauth-panel-toggle') as HTMLSpanElement;
+const oauthPanelBody = document.getElementById('oauth-panel-body') as HTMLDivElement;
+const oauthStatusIndicator = document.getElementById('oauth-status-indicator') as HTMLDivElement;
+const oauthStatusText = document.getElementById('oauth-status-text') as HTMLSpanElement;
+const oauthProvidersList = document.getElementById('oauth-providers-list') as HTMLDivElement;
+const oauthConfigForm = document.getElementById('oauth-config-form') as HTMLDivElement;
+const oauthConfigProviderName = document.getElementById('oauth-config-provider-name') as HTMLSpanElement;
+const oauthClientIdInput = document.getElementById('oauth-client-id') as HTMLInputElement;
+const oauthClientSecretInput = document.getElementById('oauth-client-secret') as HTMLInputElement;
+const oauthConfigSaveBtn = document.getElementById('oauth-config-save') as HTMLButtonElement;
+const oauthConfigCancelBtn = document.getElementById('oauth-config-cancel') as HTMLButtonElement;
+const oauthHelpLink = document.getElementById('oauth-help-link') as HTMLAnchorElement;
+
+// Track which OAuth provider is being configured
+let configuringOAuthProvider: string | null = null;
+
 // Cache available models
 let cachedAvailableModels: ModelInfo[] = [];
 
@@ -335,19 +353,37 @@ function renderServer(server: ServerStatus): HTMLElement {
   return item;
 }
 
+let isLoadingServers = false;
 async function loadServers(): Promise<void> {
-  serversEl.innerHTML = '';
-  const response = await chrome.runtime.sendMessage({ type: 'sidebar_get_servers' });
-  if (!response?.ok) {
-    serversEl.textContent = response?.error || 'Failed to load servers';
+  if (isLoadingServers) {
+    console.log('[Sidebar] Already loading servers, skipping...');
     return;
   }
-  const servers = response.servers as ServerStatus[];
-  if (!servers || servers.length === 0) {
-    serversEl.textContent = 'No servers installed.';
-    return;
+  isLoadingServers = true;
+  
+  try {
+    serversEl.innerHTML = '';
+    const response = await chrome.runtime.sendMessage({ type: 'sidebar_get_servers' });
+    if (!response?.ok) {
+      serversEl.textContent = response?.error || 'Failed to load servers';
+      return;
+    }
+    const servers = response.servers as ServerStatus[];
+    if (!servers || servers.length === 0) {
+      serversEl.textContent = 'No servers installed.';
+      return;
+    }
+    // Deduplicate by ID just in case
+    const seen = new Set<string>();
+    const uniqueServers = servers.filter(s => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+    uniqueServers.forEach((server) => serversEl.appendChild(renderServer(server)));
+  } finally {
+    isLoadingServers = false;
   }
-  servers.forEach((server) => serversEl.appendChild(renderServer(server)));
 }
 
 // Theme toggle
@@ -435,6 +471,14 @@ fileInput.addEventListener('change', async () => {
 
 loadServers().catch((error) => {
   console.error('Failed to load servers', error);
+});
+
+// Auto-refresh servers when storage changes (e.g., from Directory page)
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.harbor_mcp_servers) {
+    console.log('[Sidebar] Server storage changed, refreshing...');
+    loadServers();
+  }
 });
 
 // Start bridge status polling
@@ -920,52 +964,244 @@ chrome.runtime.onMessage.addListener((message) => {
 loadPermissions();
 
 // =============================================================================
+// OAuth App Credentials Panel
+// =============================================================================
+
+const oauthProviderConfigs: Array<{ id: string; name: string; icon: string; helpUrl: string }> = [
+  {
+    id: 'google',
+    name: 'Google',
+    icon: '🔵',
+    helpUrl: 'https://console.cloud.google.com/apis/credentials',
+  },
+  {
+    id: 'github',
+    name: 'GitHub',
+    icon: '⚫',
+    helpUrl: 'https://github.com/settings/developers',
+  },
+];
+
+async function loadOAuthCredentialsStatus(): Promise<void> {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'oauth_get_credentials_status' }) as {
+      ok: boolean;
+      providers?: Record<string, { configured: boolean; client_id_preview?: string }>;
+      error?: string;
+    };
+
+    if (response?.ok && response.providers) {
+      renderOAuthProviders(response.providers);
+      
+      // Update header status
+      const configuredCount = Object.values(response.providers).filter(p => p.configured).length;
+      if (configuredCount > 0) {
+        oauthStatusIndicator.className = 'status-indicator connected';
+        oauthStatusText.className = 'status-text connected';
+        oauthStatusText.textContent = `${configuredCount} configured`;
+      } else {
+        oauthStatusIndicator.className = 'status-indicator disconnected';
+        oauthStatusText.className = 'status-text disconnected';
+        oauthStatusText.textContent = 'Not configured';
+      }
+    } else {
+      // Bridge not connected or error - show a simple message, don't block
+      oauthProvidersList.innerHTML = '<div class="no-providers">Waiting for bridge...</div>';
+      oauthStatusIndicator.className = 'status-indicator connecting';
+      oauthStatusText.className = 'status-text connecting';
+      oauthStatusText.textContent = 'Loading...';
+    }
+  } catch (err) {
+    console.error('[Sidebar] Failed to load OAuth credentials status:', err);
+    oauthProvidersList.innerHTML = '<div class="no-providers">Failed to load</div>';
+    oauthStatusIndicator.className = 'status-indicator disconnected';
+    oauthStatusText.className = 'status-text disconnected';
+    oauthStatusText.textContent = 'Error';
+  }
+}
+
+function renderOAuthProviders(providers: Record<string, { configured: boolean; client_id_preview?: string }>): void {
+  oauthProvidersList.innerHTML = '';
+  
+  for (const config of oauthProviderConfigs) {
+    const status = providers[config.id];
+    const isConfigured = status?.configured ?? false;
+    
+    const el = document.createElement('div');
+    el.className = `detected-provider ${isConfigured ? 'available' : 'needs-config'}`;
+    
+    const statusText = isConfigured 
+      ? `✓ Configured${status?.client_id_preview ? ` (${status.client_id_preview})` : ''}`
+      : '○ Not configured';
+    const statusClass = isConfigured ? 'available' : 'needs-config';
+    
+    const actionHtml = isConfigured
+      ? `<button class="btn btn-ghost btn-sm oauth-remove-btn" data-provider="${config.id}" title="Remove credentials">✕</button>`
+      : `<button class="btn btn-secondary btn-sm oauth-configure-btn" data-provider="${config.id}">Configure</button>`;
+    
+    el.innerHTML = `
+      <div class="detected-provider-info">
+        <div class="detected-provider-name">${config.icon} ${config.name}</div>
+        <div class="detected-provider-status ${statusClass}">${statusText}</div>
+      </div>
+      <div class="detected-provider-action">${actionHtml}</div>
+    `;
+    
+    oauthProvidersList.appendChild(el);
+  }
+  
+  // Event listeners for configure buttons
+  oauthProvidersList.querySelectorAll('.oauth-configure-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const provider = (btn as HTMLElement).dataset.provider;
+      if (provider) showOAuthConfigForm(provider);
+    });
+  });
+  
+  // Event listeners for remove buttons
+  oauthProvidersList.querySelectorAll('.oauth-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const provider = (btn as HTMLElement).dataset.provider;
+      if (!provider) return;
+      if (!confirm(`Remove ${provider} OAuth credentials?`)) return;
+      
+      (btn as HTMLButtonElement).disabled = true;
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: 'oauth_remove_credentials',
+          provider,
+        }) as { ok: boolean; error?: string };
+        
+        if (response.ok) {
+          showToast(`Removed ${provider} credentials`);
+          await loadOAuthCredentialsStatus();
+        } else {
+          showToast(`Failed: ${response.error}`, 'error');
+        }
+      } catch (err) {
+        showToast('Failed to remove credentials', 'error');
+      }
+      (btn as HTMLButtonElement).disabled = false;
+    });
+  });
+}
+
+function showOAuthConfigForm(provider: string): void {
+  configuringOAuthProvider = provider;
+  const config = oauthProviderConfigs.find(p => p.id === provider);
+  const displayName = config?.name ?? provider;
+  
+  oauthConfigProviderName.textContent = `Configure ${displayName}`;
+  oauthHelpLink.href = config?.helpUrl ?? '#';
+  oauthClientIdInput.value = '';
+  oauthClientSecretInput.value = '';
+  oauthConfigForm.style.display = 'block';
+  oauthClientIdInput.focus();
+}
+
+function hideOAuthConfigForm(): void {
+  configuringOAuthProvider = null;
+  oauthConfigForm.style.display = 'none';
+  oauthClientIdInput.value = '';
+  oauthClientSecretInput.value = '';
+}
+
+// OAuth config save button
+oauthConfigSaveBtn?.addEventListener('click', async () => {
+  if (!configuringOAuthProvider) return;
+  
+  const clientId = oauthClientIdInput.value.trim();
+  const clientSecret = oauthClientSecretInput.value.trim();
+  
+  if (!clientId || !clientSecret) {
+    showToast('Please enter both Client ID and Client Secret', 'error');
+    return;
+  }
+  
+  oauthConfigSaveBtn.disabled = true;
+  oauthConfigSaveBtn.textContent = 'Saving...';
+  
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'oauth_set_credentials',
+      provider: configuringOAuthProvider,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }) as { ok: boolean; error?: string };
+    
+    if (response.ok) {
+      showToast(`${configuringOAuthProvider} credentials saved!`, 'success');
+      hideOAuthConfigForm();
+      await loadOAuthCredentialsStatus();
+    } else {
+      showToast(`Failed: ${response.error}`, 'error');
+    }
+  } catch (err) {
+    showToast('Failed to save credentials', 'error');
+    console.error('Failed to save OAuth credentials:', err);
+  }
+  
+  oauthConfigSaveBtn.disabled = false;
+  oauthConfigSaveBtn.textContent = 'Save';
+});
+
+// OAuth config cancel button
+oauthConfigCancelBtn?.addEventListener('click', hideOAuthConfigForm);
+
+// Setup OAuth panel toggle
+setupPanelToggle(oauthPanelHeader, oauthPanelToggle, oauthPanelBody);
+
+// Load OAuth credentials status on startup (with retry until bridge is ready)
+(async function loadOAuthWithRetry() {
+  const maxRetries = 10;
+  const retryDelay = 1000;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'oauth_get_credentials_status' }) as {
+        ok: boolean;
+        providers?: Record<string, { configured: boolean; client_id_preview?: string }>;
+      };
+      
+      if (response?.ok && response.providers) {
+        renderOAuthProviders(response.providers);
+        const configuredCount = Object.values(response.providers).filter(p => p.configured).length;
+        if (configuredCount > 0) {
+          oauthStatusIndicator.className = 'status-indicator connected';
+          oauthStatusText.className = 'status-text connected';
+          oauthStatusText.textContent = `${configuredCount} configured`;
+        } else {
+          oauthStatusIndicator.className = 'status-indicator disconnected';
+          oauthStatusText.className = 'status-text disconnected';
+          oauthStatusText.textContent = 'Not configured';
+        }
+        return; // Success, stop retrying
+      }
+    } catch {
+      // Will retry
+    }
+    
+    // Wait before retrying
+    await new Promise(resolve => setTimeout(resolve, retryDelay));
+  }
+  
+  // Max retries reached
+  console.warn('[Sidebar] Failed to load OAuth status after retries');
+})();
+
+// =============================================================================
 // Quick Actions Panel
 // =============================================================================
 
 const quickActionsHeader = document.getElementById('quick-actions-header') as HTMLDivElement;
 const quickActionsToggle = document.getElementById('quick-actions-toggle') as HTMLSpanElement;
 const quickActionsBody = document.getElementById('quick-actions-body') as HTMLDivElement;
-const chatAboutPageBtn = document.getElementById('chat-about-page-btn') as HTMLButtonElement;
 const openDirectoryBtn = document.getElementById('open-directory-btn') as HTMLButtonElement;
 const openChatBtn = document.getElementById('open-chat-btn') as HTMLButtonElement;
 const reloadExtensionBtn = document.getElementById('reload-extension-btn') as HTMLButtonElement;
 
 // Set up panel toggle
 setupPanelToggle(quickActionsHeader, quickActionsToggle, quickActionsBody);
-
-// Chat About Page button - injects page chat sidebar into current tab
-chatAboutPageBtn.addEventListener('click', async () => {
-  try {
-    // Get the active tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) {
-      showToast('No active tab found');
-      return;
-    }
-    
-    // Check if we can inject into this tab
-    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('moz-extension://') || tab.url?.startsWith('about:')) {
-      showToast('Cannot chat on this page');
-      return;
-    }
-    
-    console.log('[Sidebar] Opening page chat on tab:', tab.id);
-    
-    // Send message to background to inject page-chat
-    const response = await chrome.runtime.sendMessage({
-      type: 'open_page_chat',
-      tabId: tab.id,
-    }) as { ok: boolean; error?: string };
-    
-    if (!response.ok) {
-      showToast(response.error || 'Failed to open chat');
-    }
-  } catch (err) {
-    console.error('[Sidebar] Failed to open page chat:', err);
-    showToast('Failed to open page chat');
-  }
-});
 
 // Open Directory button - opens the MCP server directory
 openDirectoryBtn.addEventListener('click', async () => {
@@ -1000,4 +1236,234 @@ reloadExtensionBtn.addEventListener('click', async () => {
     console.error('[Sidebar] Failed to reload:', err);
     showToast('Failed to reload extension');
   }
+});
+
+// =============================================================================
+// Tool Tester Panel
+// =============================================================================
+
+const toolTesterHeader = document.getElementById('tool-tester-header') as HTMLDivElement;
+const toolTesterToggle = document.getElementById('tool-tester-toggle') as HTMLSpanElement;
+const toolTesterBody = document.getElementById('tool-tester-body') as HTMLDivElement;
+const toolTesterServerSelect = document.getElementById('tool-tester-server') as HTMLSelectElement;
+const toolTesterToolSelect = document.getElementById('tool-tester-tool') as HTMLSelectElement;
+const toolTesterSchemaDiv = document.getElementById('tool-tester-schema') as HTMLDivElement;
+const toolTesterArgsInput = document.getElementById('tool-tester-args') as HTMLTextAreaElement;
+const toolTesterHint = document.getElementById('tool-tester-hint') as HTMLDivElement;
+const toolTesterRunBtn = document.getElementById('tool-tester-run') as HTMLButtonElement;
+const toolTesterResultDiv = document.getElementById('tool-tester-result') as HTMLDivElement;
+const toolTesterOutput = document.getElementById('tool-tester-output') as HTMLElement;
+
+type ToolInfo = {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+};
+
+type ServerWithTools = {
+  id: string;
+  name: string;
+  running: boolean;
+  tools?: ToolInfo[];
+};
+
+let cachedServersWithTools: ServerWithTools[] = [];
+
+// Setup panel toggle
+setupPanelToggle(toolTesterHeader, toolTesterToggle, toolTesterBody);
+
+// Load servers into the dropdown when panel opens
+async function loadToolTesterServers(): Promise<void> {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'sidebar_get_servers' });
+    console.log('[Tool Tester] Got servers response:', response);
+    if (!response?.ok) return;
+    
+    cachedServersWithTools = response.servers as ServerWithTools[];
+    console.log('[Tool Tester] Servers:', cachedServersWithTools.map(s => ({ 
+      id: s.id, 
+      name: s.name, 
+      running: s.running, 
+      toolCount: s.tools?.length 
+    })));
+    
+    // Populate server dropdown
+    toolTesterServerSelect.innerHTML = '<option value="">Select a server...</option>';
+    for (const server of cachedServersWithTools) {
+      // Show all running servers, even if tools aren't populated yet
+      if (server.running) {
+        const option = document.createElement('option');
+        option.value = server.id;
+        const toolCount = server.tools?.length || 0;
+        option.textContent = `${server.name} (${toolCount} tools)`;
+        toolTesterServerSelect.appendChild(option);
+      }
+    }
+  } catch (err) {
+    console.error('[Sidebar] Failed to load servers for tool tester:', err);
+  }
+}
+
+// When server is selected, populate tools dropdown
+toolTesterServerSelect.addEventListener('change', async () => {
+  const serverId = toolTesterServerSelect.value;
+  toolTesterToolSelect.innerHTML = '<option value="">Loading tools...</option>';
+  toolTesterToolSelect.disabled = true;
+  toolTesterSchemaDiv.style.display = 'none';
+  toolTesterRunBtn.disabled = true;
+  toolTesterResultDiv.style.display = 'none';
+  
+  if (!serverId) {
+    toolTesterToolSelect.innerHTML = '<option value="">Select a tool...</option>';
+    return;
+  }
+  
+  // Try to get tools from cached data first
+  let server = cachedServersWithTools.find(s => s.id === serverId);
+  let tools = server?.tools || [];
+  
+  // If no tools in cache, fetch them via tools/list
+  if (tools.length === 0) {
+    console.log('[Tool Tester] No cached tools, fetching via MCP...');
+    try {
+      const listResponse = await chrome.runtime.sendMessage({
+        type: 'mcp_call_method',
+        serverId,
+        method: 'tools/list',
+      });
+      console.log('[Tool Tester] tools/list response:', listResponse);
+      if (listResponse?.ok && listResponse.result?.tools) {
+        tools = listResponse.result.tools;
+        // Update cache
+        if (server) {
+          server.tools = tools;
+        }
+      }
+    } catch (err) {
+      console.error('[Tool Tester] Failed to fetch tools:', err);
+    }
+  }
+  
+  toolTesterToolSelect.innerHTML = '<option value="">Select a tool...</option>';
+  
+  if (tools.length === 0) {
+    toolTesterToolSelect.innerHTML = '<option value="">No tools available</option>';
+    return;
+  }
+  
+  toolTesterToolSelect.disabled = false;
+  for (const tool of tools) {
+    const option = document.createElement('option');
+    option.value = tool.name;
+    option.textContent = tool.name;
+    toolTesterToolSelect.appendChild(option);
+  }
+});
+
+// When tool is selected, show schema and enable run button
+toolTesterToolSelect.addEventListener('change', () => {
+  const serverId = toolTesterServerSelect.value;
+  const toolName = toolTesterToolSelect.value;
+  
+  toolTesterSchemaDiv.style.display = 'none';
+  toolTesterRunBtn.disabled = true;
+  toolTesterResultDiv.style.display = 'none';
+  
+  if (!serverId || !toolName) return;
+  
+  const server = cachedServersWithTools.find(s => s.id === serverId);
+  const tool = server?.tools?.find(t => t.name === toolName);
+  
+  if (!tool) return;
+  
+  toolTesterSchemaDiv.style.display = 'block';
+  toolTesterRunBtn.disabled = false;
+  
+  // Show description and schema hint
+  let hint = tool.description || 'No description';
+  if (tool.inputSchema) {
+    const schema = tool.inputSchema as { required?: string[]; properties?: Record<string, { type?: string; description?: string }> };
+    const required = schema.required || [];
+    const props = schema.properties || {};
+    const propHints = Object.entries(props).map(([key, val]) => {
+      const req = required.includes(key) ? ' (required)' : '';
+      return `• ${key}: ${val.type || 'any'}${req}${val.description ? ' - ' + val.description : ''}`;
+    });
+    if (propHints.length > 0) {
+      hint += '\n\nParameters:\n' + propHints.join('\n');
+    }
+  }
+  toolTesterHint.textContent = hint;
+  toolTesterHint.style.whiteSpace = 'pre-wrap';
+  
+  // Pre-populate args with empty object or example
+  if (tool.inputSchema) {
+    const schema = tool.inputSchema as { properties?: Record<string, unknown> };
+    const props = schema.properties || {};
+    const example: Record<string, string> = {};
+    for (const key of Object.keys(props)) {
+      example[key] = '';
+    }
+    toolTesterArgsInput.value = JSON.stringify(example, null, 2);
+  } else {
+    toolTesterArgsInput.value = '{}';
+  }
+});
+
+// Run the tool
+toolTesterRunBtn.addEventListener('click', async () => {
+  const serverId = toolTesterServerSelect.value;
+  const toolName = toolTesterToolSelect.value;
+  
+  if (!serverId || !toolName) return;
+  
+  let args: Record<string, unknown> = {};
+  try {
+    const argsText = toolTesterArgsInput.value.trim();
+    if (argsText) {
+      args = JSON.parse(argsText);
+    }
+  } catch (err) {
+    showToast('Invalid JSON in arguments', 'error');
+    return;
+  }
+  
+  toolTesterRunBtn.disabled = true;
+  toolTesterRunBtn.textContent = 'Running...';
+  toolTesterResultDiv.style.display = 'block';
+  toolTesterOutput.textContent = 'Executing...';
+  
+  try {
+    console.log(`[Tool Tester] Calling ${serverId}/${toolName} with:`, args);
+    const response = await chrome.runtime.sendMessage({
+      type: 'sidebar_call_tool',
+      serverId,
+      toolName,
+      args,
+    });
+    
+    console.log('[Tool Tester] Response:', response);
+    
+    if (response?.ok) {
+      toolTesterOutput.textContent = JSON.stringify(response.result, null, 2);
+    } else {
+      toolTesterOutput.textContent = `Error: ${response?.error || 'Unknown error'}`;
+    }
+  } catch (err) {
+    console.error('[Tool Tester] Error:', err);
+    toolTesterOutput.textContent = `Exception: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  
+  toolTesterRunBtn.disabled = false;
+  toolTesterRunBtn.textContent = 'Run Tool';
+});
+
+// Load servers when the panel body becomes visible (on expand)
+toolTesterHeader.addEventListener('click', () => {
+  // Small delay to let the toggle happen first
+  setTimeout(() => {
+    if (!toolTesterBody.classList.contains('collapsed')) {
+      loadToolTesterServers();
+    }
+  }, 50);
 });
