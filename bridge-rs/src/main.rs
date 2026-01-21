@@ -2,6 +2,7 @@ mod fs;
 mod js;
 mod llm;
 mod native_messaging;
+mod oauth;
 mod rpc;
 
 use std::env;
@@ -41,6 +42,9 @@ async fn main() {
       tracing::warn!("Failed to load LLM config, using defaults: {}", e);
     }
   }
+
+  // Initialize OAuth module (loads credentials and stored tokens)
+  oauth::init().await;
 
   tracing::info!("Harbor bridge starting (native_mode={})", native_mode);
 

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{fs, js, llm};
+use crate::{fs, js, llm, oauth};
 
 #[derive(Debug, Deserialize)]
 pub struct RpcRequest {
@@ -82,6 +82,16 @@ pub async fn handle(request: RpcRequest) -> RpcResponse {
     "js.stop_server" => js::stop_server(request.params.clone()).await,
     "js.call" => js::call_server(request.params.clone()).await,
     "js.list_servers" => js::list_servers().await,
+
+    // OAuth
+    "oauth.start_flow" => oauth::rpc_start_flow(request.params.clone()).await,
+    "oauth.get_tokens" => oauth::rpc_get_tokens(request.params.clone()).await,
+    "oauth.status" => oauth::rpc_status(request.params.clone()).await,
+    "oauth.revoke" => oauth::rpc_revoke(request.params.clone()).await,
+    "oauth.list_providers" => oauth::rpc_list_providers(request.params.clone()).await,
+    "oauth.get_credentials_status" => oauth::rpc_get_credentials_status(request.params.clone()).await,
+    "oauth.set_credentials" => oauth::rpc_set_credentials(request.params.clone()).await,
+    "oauth.remove_credentials" => oauth::rpc_remove_credentials(request.params.clone()).await,
 
     _ => Err(RpcError {
       code: -32601,

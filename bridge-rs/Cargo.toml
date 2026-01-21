@@ -20,3 +20,10 @@ rquickjs = { version = "0.6", features = ["bindgen", "loader", "parallel"] }
 
 # Local LLM provider library
 any-llm = { path = "any-llm-rust" }
+
+# OAuth dependencies
+axum = "0.7"
+base64 = "0.21"
+sha2 = "0.10"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
