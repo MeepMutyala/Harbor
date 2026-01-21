@@ -337,6 +337,7 @@ async function handleSessionPrompt(
 
     // Call LLM
     const result = await bridgeRequest<{
+      choices?: Array<{ message?: { role: string; content: string } }>;
       response?: { role: string; content: string };
       message?: { role: string; content: string };
       content?: string;
@@ -345,7 +346,14 @@ async function handleSessionPrompt(
       model: session.options.model,
     });
 
-    const content = result.response?.content || result.message?.content || result.content || '';
+    // Extract content - bridge returns in choices[0].message.content format
+    const content = result.choices?.[0]?.message?.content 
+      || result.response?.content 
+      || result.message?.content 
+      || result.content 
+      || '';
+
+    log('Session prompt result:', content.slice(0, 100));
 
     // Add assistant response to history
     session.history.push({ role: 'assistant', content });
