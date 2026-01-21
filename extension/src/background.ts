@@ -540,6 +540,36 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
+// Handler for calling MCP methods directly (e.g., tools/list)
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'mcp_call_method') {
+    return false;
+  }
+  const { serverId, method, params } = message as { serverId?: string; method?: string; params?: Record<string, unknown> };
+  console.log('[Harbor] mcp_call_method:', serverId, method, params);
+  if (!serverId || !method) {
+    sendResponse({ ok: false, error: 'Missing serverId or method' });
+    return true;
+  }
+  (async () => {
+    const { callMcpMethod } = await import('./wasm/runtime');
+    const result = await callMcpMethod(serverId, method, params);
+    console.log('[Harbor] MCP method result:', result);
+    if (result.error) {
+      sendResponse({ ok: false, error: result.error.message });
+    } else {
+      sendResponse({ ok: true, result: result.result });
+    }
+  })().catch((error) => {
+    console.error('[Harbor] MCP method error:', error);
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'llm_chat') {
     return false;
@@ -615,6 +645,214 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // Notify sidebar to refresh
     chrome.runtime.sendMessage({ type: 'permissions_changed' }).catch(() => {});
     sendResponse({ ok: true });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+// =============================================================================
+// OAuth Handlers
+// =============================================================================
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'oauth_start_flow') {
+    return false;
+  }
+  const { provider, server_id, scopes } = message as {
+    provider?: string;
+    server_id?: string;
+    scopes?: string[];
+  };
+  if (!provider || !server_id || !scopes?.length) {
+    sendResponse({ ok: false, error: 'Missing provider, server_id, or scopes' });
+    return true;
+  }
+  (async () => {
+    const result = await bridgeRequest<{ auth_url: string; state: string }>('oauth.start_flow', {
+      provider,
+      server_id,
+      scopes,
+    });
+    // Open the auth URL in a new tab
+    chrome.tabs.create({ url: result.auth_url });
+    sendResponse({ ok: true, state: result.state });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'oauth_status') {
+    return false;
+  }
+  const { server_id } = message as { server_id?: string };
+  if (!server_id) {
+    sendResponse({ ok: false, error: 'Missing server_id' });
+    return true;
+  }
+  (async () => {
+    const result = await bridgeRequest<{
+      authenticated: boolean;
+      provider?: string;
+      scopes?: string[];
+      is_expired?: boolean;
+      expires_at?: number;
+      has_refresh_token?: boolean;
+    }>('oauth.status', { server_id });
+    sendResponse({ ok: true, ...result });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'oauth_get_tokens') {
+    return false;
+  }
+  const { server_id } = message as { server_id?: string };
+  if (!server_id) {
+    sendResponse({ ok: false, error: 'Missing server_id' });
+    return true;
+  }
+  (async () => {
+    const result = await bridgeRequest<{
+      has_tokens: boolean;
+      access_token?: string;
+      expires_at?: number;
+      provider?: string;
+      scopes?: string[];
+    }>('oauth.get_tokens', { server_id });
+    sendResponse({ ok: true, ...result });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'oauth_revoke') {
+    return false;
+  }
+  const { server_id } = message as { server_id?: string };
+  if (!server_id) {
+    sendResponse({ ok: false, error: 'Missing server_id' });
+    return true;
+  }
+  (async () => {
+    await bridgeRequest<{ success: boolean }>('oauth.revoke', { server_id });
+    sendResponse({ ok: true });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'oauth_list_providers') {
+    return false;
+  }
+  (async () => {
+    const result = await bridgeRequest<{
+      providers: Array<{
+        id: string;
+        name: string;
+        configured: boolean;
+        scopes?: Record<string, string>;
+      }>;
+    }>('oauth.list_providers');
+    sendResponse({ ok: true, providers: result.providers });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+// OAuth Credentials Management
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'oauth_get_credentials_status') {
+    return false;
+  }
+  (async () => {
+    const result = await bridgeRequest<{
+      providers: Record<string, {
+        configured: boolean;
+        client_id_preview?: string;
+      }>;
+    }>('oauth.get_credentials_status');
+    sendResponse({ ok: true, ...result });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'oauth_set_credentials') {
+    return false;
+  }
+  const { provider, client_id, client_secret } = message as {
+    provider?: string;
+    client_id?: string;
+    client_secret?: string;
+  };
+  if (!provider || !client_id || !client_secret) {
+    sendResponse({ ok: false, error: 'Missing required fields' });
+    return true;
+  }
+  (async () => {
+    const result = await bridgeRequest<{
+      success: boolean;
+      provider: string;
+    }>('oauth.set_credentials', { provider, client_id, client_secret });
+    sendResponse({ ok: true, ...result });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'oauth_remove_credentials') {
+    return false;
+  }
+  const { provider } = message as { provider?: string };
+  if (!provider) {
+    sendResponse({ ok: false, error: 'Missing provider' });
+    return true;
+  }
+  (async () => {
+    const result = await bridgeRequest<{
+      success: boolean;
+      provider: string;
+    }>('oauth.remove_credentials', { provider });
+    sendResponse({ ok: true, ...result });
   })().catch((error) => {
     sendResponse({
       ok: false,
