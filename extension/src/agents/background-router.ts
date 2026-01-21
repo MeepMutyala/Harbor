@@ -50,7 +50,25 @@ const textSessions = new Map<string, {
   createdAt: number;
 }>();
 
-// Session ID counter
+// Active page chats
+const activeChats = new Map<string, {
+  chatId: string;
+  tabId: number;
+  origin: string;
+  config: {
+    initialMessage?: string;
+    systemPrompt?: string;
+    tools?: string[];
+    style?: {
+      theme?: 'light' | 'dark' | 'auto';
+      accentColor?: string;
+      position?: 'right' | 'left' | 'center';
+    };
+  };
+  createdAt: number;
+}>();
+
+// Session/Chat ID counter
 let sessionIdCounter = 0;
 
 function generateSessionId(): string {
@@ -742,6 +760,162 @@ Available tools: ${toolNames}`
 // =============================================================================
 // Not Implemented Handlers
 // =============================================================================
+// Chat Handlers
+// =============================================================================
+
+function handleChatCanOpen(ctx: RequestContext, sender: ResponseSender): void {
+  // Chat is available as long as we have the scripting permission
+  sender.sendResponse({
+    id: ctx.id,
+    ok: true,
+    result: 'readily',
+  });
+}
+
+async function handleChatOpen(ctx: RequestContext, sender: ResponseSender): Promise<void> {
+  const payload = ctx.payload as {
+    initialMessage?: string;
+    systemPrompt?: string;
+    tools?: string[];
+    sessionId?: string;
+    style?: {
+      theme?: 'light' | 'dark' | 'auto';
+      accentColor?: string;
+      position?: 'right' | 'left' | 'center';
+    };
+  } | undefined;
+
+  // Check permission
+  const hasPermission = await checkPermissions(ctx.origin, ['chat:open']);
+  if (!hasPermission) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: {
+        code: 'ERR_PERMISSION_DENIED',
+        message: 'Permission "chat:open" is required. Call agent.requestPermissions() first.',
+      },
+    });
+    return;
+  }
+
+  // Get the tab ID
+  const tabId = ctx.tabId;
+  if (!tabId) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: {
+        code: 'ERR_INTERNAL',
+        message: 'No tab ID available',
+      },
+    });
+    return;
+  }
+
+  // Generate chat ID
+  const chatId = `chat-${Date.now()}-${++sessionIdCounter}`;
+
+  // Store chat state
+  activeChats.set(chatId, {
+    chatId,
+    tabId,
+    origin: ctx.origin,
+    config: {
+      initialMessage: payload?.initialMessage,
+      systemPrompt: payload?.systemPrompt,
+      tools: payload?.tools,
+      style: payload?.style,
+    },
+    createdAt: Date.now(),
+  });
+
+  try {
+    // Inject config first
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (config: unknown) => {
+        (window as unknown as { __harborPageChatConfig: unknown }).__harborPageChatConfig = config;
+      },
+      args: [{
+        chatId,
+        initialMessage: payload?.initialMessage,
+        systemPrompt: payload?.systemPrompt,
+        tools: payload?.tools,
+        style: payload?.style,
+      }],
+    });
+
+    // Then inject page-chat.js
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['dist/page-chat.js'],
+    });
+
+    log('Page chat injected into tab', tabId, 'with chatId', chatId);
+
+    sender.sendResponse({
+      id: ctx.id,
+      ok: true,
+      result: { success: true, chatId },
+    });
+  } catch (err) {
+    log('Failed to inject page chat:', err);
+    activeChats.delete(chatId);
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: {
+        code: 'ERR_INTERNAL',
+        message: `Failed to open chat: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      },
+    });
+  }
+}
+
+async function handleChatClose(ctx: RequestContext, sender: ResponseSender): Promise<void> {
+  const payload = ctx.payload as { chatId?: string } | undefined;
+  const chatId = payload?.chatId;
+
+  if (chatId) {
+    // Close specific chat
+    const chat = activeChats.get(chatId);
+    if (chat) {
+      try {
+        await chrome.tabs.sendMessage(chat.tabId, {
+          type: 'harbor_chat_close',
+          chatId,
+        });
+      } catch {
+        // Tab might be closed
+      }
+      activeChats.delete(chatId);
+    }
+  } else {
+    // Close all chats for this origin
+    for (const [id, chat] of activeChats) {
+      if (chat.origin === ctx.origin) {
+        try {
+          await chrome.tabs.sendMessage(chat.tabId, {
+            type: 'harbor_chat_close',
+            chatId: id,
+          });
+        } catch {
+          // Tab might be closed
+        }
+        activeChats.delete(id);
+      }
+    }
+  }
+
+  sender.sendResponse({
+    id: ctx.id,
+    ok: true,
+    result: { success: true },
+  });
+}
+
+// =============================================================================
 
 function handleNotImplemented(ctx: RequestContext, sender: ResponseSender): void {
   sender.sendResponse({
@@ -814,6 +988,14 @@ async function routeMessage(ctx: RequestContext, sender: ResponseSender): Promis
     case 'session.promptStreaming':
       return handleStreamingNotImplemented(ctx, sender);
 
+    // Chat API
+    case 'agent.chat.canOpen':
+      return handleChatCanOpen(ctx, sender);
+    case 'agent.chat.open':
+      return handleChatOpen(ctx, sender);
+    case 'agent.chat.close':
+      return handleChatClose(ctx, sender);
+
     // Regular methods not yet implemented
     case 'session.clone':
     case 'ai.providers.getActive':
@@ -826,9 +1008,6 @@ async function routeMessage(ctx: RequestContext, sender: ResponseSender): Promis
     case 'agent.mcp.discover':
     case 'agent.mcp.register':
     case 'agent.mcp.unregister':
-    case 'agent.chat.canOpen':
-    case 'agent.chat.open':
-    case 'agent.chat.close':
     case 'agent.addressBar.canProvide':
     case 'agent.addressBar.registerProvider':
     case 'agent.addressBar.registerToolShortcuts':

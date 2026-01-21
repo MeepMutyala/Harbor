@@ -624,4 +624,108 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
+// =============================================================================
+// Page Chat Message Handler
+// =============================================================================
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'page_chat_message') {
+    return false;
+  }
+  
+  const { chatId, message: userMessage, systemPrompt, tools, pageContext } = message as {
+    chatId?: string;
+    message?: string;
+    systemPrompt?: string;
+    tools?: string[];
+    pageContext?: { url: string; title: string };
+  };
+
+  console.log('[Harbor] page_chat_message:', chatId, userMessage?.slice(0, 50));
+
+  if (!userMessage) {
+    sendResponse({ type: 'error', error: { message: 'Missing message' } });
+    return true;
+  }
+
+  (async () => {
+    try {
+      // Build messages array
+      const messages = [
+        { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
+        { role: 'user', content: userMessage },
+      ];
+
+      // If tools are requested, we could add them here
+      // For now, do a simple chat request
+      const toolsUsed: Array<{ name: string }> = [];
+
+      // Call the LLM via bridge
+      const result = await bridgeRequest<{
+        choices?: Array<{ message?: { content?: string; role?: string } }>;
+        message?: { content?: string };
+        content?: string;
+      }>('llm.chat', {
+        messages,
+        max_tokens: 2000,
+      });
+
+      // Extract response text
+      let responseText = result.choices?.[0]?.message?.content
+        || result.message?.content
+        || result.content
+        || '';
+
+      console.log('[Harbor] page_chat_message response:', responseText.slice(0, 100));
+
+      sendResponse({
+        type: 'page_chat_response',
+        response: responseText,
+        toolsUsed,
+      });
+    } catch (err) {
+      console.error('[Harbor] page_chat_message error:', err);
+      sendResponse({
+        type: 'error',
+        error: { message: err instanceof Error ? err.message : 'Unknown error' },
+      });
+    }
+  })();
+
+  return true;
+});
+
+// =============================================================================
+// Open Page Chat Handler (for sidebar button)
+// =============================================================================
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'open_page_chat') {
+    return false;
+  }
+  const tabId = message.tabId as number | undefined;
+  if (!tabId) {
+    sendResponse({ ok: false, error: 'Missing tabId' });
+    return true;
+  }
+  (async () => {
+    try {
+      // Inject page-chat.js into the tab
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['dist/page-chat.js'],
+      });
+      console.log('[Harbor] Page chat injected into tab', tabId);
+      sendResponse({ ok: true });
+    } catch (err) {
+      console.error('[Harbor] Failed to inject page chat:', err);
+      sendResponse({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Failed to open page chat',
+      });
+    }
+  })();
+  return true;
+});
+
 console.log('[Harbor] WASM MCP extension initialized.');

@@ -17,6 +17,7 @@ const entryPoints = [
   'src/background.ts',
   'src/agents/content-script.ts',
   'src/agents/injected.ts',
+  'src/page-chat.ts',
   'src/directory.ts',
   'src/sidebar.ts',
   'src/permission-prompt.ts',

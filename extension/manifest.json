@@ -36,6 +36,7 @@
     {
       "resources": [
         "dist/agents/injected.js",
+        "dist/page-chat.js",
         "dist/permission-prompt.html",
         "dist/permission-prompt.js",
         "dist/design-tokens.css",
