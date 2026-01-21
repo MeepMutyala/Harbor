@@ -297,6 +297,121 @@
       color: var(--color-text-secondary);
       line-height: var(--leading-relaxed);
     }
+
+    /* Install from URL section */
+    .install-section {
+      margin-bottom: var(--space-4);
+      padding: var(--space-4);
+      background: var(--color-surface-primary);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+    }
+
+    .install-section-title {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-primary);
+      margin-bottom: var(--space-3);
+    }
+
+    .install-row {
+      display: flex;
+      gap: var(--space-2);
+      margin-bottom: var(--space-2);
+    }
+
+    .install-input {
+      flex: 1;
+      height: var(--height-btn);
+      padding: 0 var(--space-3);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-base);
+      color: var(--color-text-primary);
+      font-size: var(--text-sm);
+    }
+
+    .install-input:focus {
+      outline: none;
+      border-color: var(--color-accent-primary);
+      box-shadow: 0 0 0 2px var(--color-accent-primary-subtle);
+    }
+
+    .install-input::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    .install-hint {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .install-formats {
+      display: flex;
+      gap: var(--space-2);
+    }
+
+    .install-formats code {
+      font-size: var(--text-2xs);
+      padding: 1px 4px;
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-xs);
+    }
+
+    /* Drop zone for file upload */
+    .drop-zone {
+      border: 2px dashed var(--color-border-default);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      margin-top: var(--space-2);
+    }
+
+    .drop-zone:hover {
+      border-color: var(--color-accent-primary);
+      background: var(--color-accent-primary-subtle);
+    }
+
+    .drop-zone.dragging {
+      border-color: var(--color-accent-primary);
+      background: var(--color-accent-primary-subtle);
+    }
+
+    .drop-zone-text {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .drop-zone input[type="file"] {
+      display: none;
+    }
+
+    /* Section divider */
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+
+    .section-divider-line {
+      flex: 1;
+      height: 1px;
+      background: var(--color-border-subtle);
+    }
+
+    .section-divider-text {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
   </style>
 </head>
 <body>
@@ -317,6 +432,34 @@
         These MCP servers are bundled with Harbor and can be installed with one click.
         They run entirely in your browser using WebAssembly or JavaScript sandboxes.
       </p>
+    </div>
+
+    <!-- Install from URL/File section -->
+    <div class="install-section">
+      <div class="install-section-title">Install from URL or File</div>
+      <div class="install-row">
+        <input type="text" id="install-url" class="install-input" 
+               placeholder="https://example.com/server.mcp.json or .zip">
+        <button id="install-url-btn" class="btn btn-primary">Install</button>
+      </div>
+      <div class="install-hint">
+        <span>Supported formats:</span>
+        <div class="install-formats">
+          <code>.json</code>
+          <code>.mcp.json</code>
+          <code>.zip</code>
+        </div>
+      </div>
+      <div id="drop-zone" class="drop-zone">
+        <span class="drop-zone-text">Or drag &amp; drop a file here, or click to browse</span>
+        <input type="file" id="file-input" accept=".json,.zip,.mcp.json">
+      </div>
+    </div>
+
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-text">Bundled Servers</span>
+      <div class="section-divider-line"></div>
     </div>
 
     <div id="list" class="list"></div>

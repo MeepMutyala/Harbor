@@ -2,7 +2,13 @@
  * Harbor Directory - Bundled MCP Servers
  * 
  * Shows a list of bundled/curated MCP servers that can be installed with one click.
+ * Supports installing from:
+ * - Bundled servers (shipped with extension)
+ * - URL (single-file distributable, zip package, or manifest URL)
+ * - File upload (drag-drop or file picker)
  */
+
+import { loadFromUrl, loadFromFile, type LoadResult } from './storage/package-loader';
 
 // Make this a module to avoid global scope conflicts
 export {};
@@ -22,6 +28,11 @@ type BundledServer = {
     name: string;
     description?: string;
   }>;
+  // OAuth configuration
+  oauth?: {
+    provider: 'google' | 'github';
+    scopes: string[];
+  };
 };
 
 type InstalledServer = {
@@ -81,6 +92,14 @@ const BUNDLED_SERVERS: BundledServer[] = [
       { name: 'modify_email', description: 'Add or remove labels from emails' },
       { name: 'delete_email', description: 'Permanently delete an email' },
     ],
+    oauth: {
+      provider: 'google',
+      scopes: [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.modify',
+      ],
+    },
   },
 ];
 
@@ -89,6 +108,10 @@ const STORAGE_KEY = 'harbor_wasm_servers';
 // DOM elements
 const list = document.getElementById('list') as HTMLDivElement;
 const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
+const installUrlInput = document.getElementById('install-url') as HTMLInputElement;
+const installUrlBtn = document.getElementById('install-url-btn') as HTMLButtonElement;
+const dropZone = document.getElementById('drop-zone') as HTMLDivElement;
+const fileInput = document.getElementById('file-input') as HTMLInputElement;
 
 // Track installed servers
 let installedServerIds = new Set<string>();
@@ -137,6 +160,14 @@ function renderServerCard(server: BundledServer): HTMLElement {
     badges.appendChild(installedBadge);
   }
 
+  // OAuth badge (just informational, no separate sign-in flow needed)
+  if (server.oauth) {
+    const oauthBadge = document.createElement('span');
+    oauthBadge.className = 'badge badge-warning';
+    oauthBadge.textContent = 'Requires OAuth';
+    badges.appendChild(oauthBadge);
+  }
+
   nameRow.appendChild(name);
   nameRow.appendChild(badges);
 
@@ -175,7 +206,7 @@ function renderServerCard(server: BundledServer): HTMLElement {
     tags.appendChild(tagEl);
   });
 
-  // Action button
+  // Action buttons
   const actions = document.createElement('div');
   actions.className = 'server-card-actions';
 
@@ -267,6 +298,49 @@ async function installServer(server: BundledServer): Promise<void> {
       const manifestResponse = await fetch(chrome.runtime.getURL(server.manifestUrl));
       const manifest = await manifestResponse.json();
 
+      // Check if OAuth is required
+      if (manifest.oauth) {
+        console.log('[Directory] Server requires OAuth:', manifest.oauth);
+        if (btn) btn.textContent = 'Authenticating...';
+        
+        // Check if already authenticated
+        const statusResponse = await chrome.runtime.sendMessage({
+          type: 'oauth_status',
+          server_id: server.id,
+        });
+        console.log('[Directory] Initial OAuth status:', statusResponse);
+        
+        if (!statusResponse?.ok || !statusResponse.authenticated) {
+          // Need to do OAuth - start the flow
+          console.log('[Directory] Starting OAuth flow...');
+          const flowResponse = await chrome.runtime.sendMessage({
+            type: 'oauth_start_flow',
+            provider: manifest.oauth.provider,
+            server_id: server.id,
+            scopes: manifest.oauth.scopes,
+          });
+          console.log('[Directory] OAuth flow response:', flowResponse);
+          
+          if (!flowResponse?.ok) {
+            throw new Error(flowResponse?.error || 'Failed to start OAuth flow');
+          }
+          
+          showToast('Complete sign-in in the new tab...', 'info');
+          
+          // Wait for OAuth to complete (poll for status)
+          console.log('[Directory] Waiting for OAuth completion...');
+          const authenticated = await waitForOAuthCompletion(server.id);
+          console.log('[Directory] OAuth wait result:', authenticated);
+          if (!authenticated) {
+            throw new Error('OAuth authentication was not completed');
+          }
+          
+          showToast('Authentication successful!', 'success');
+        }
+        
+        if (btn) btn.textContent = 'Installing...';
+      }
+
       // Load the script
       const scriptUrl = new URL(manifest.scriptUrl, chrome.runtime.getURL(server.manifestUrl)).href;
       const scriptResponse = await fetch(scriptUrl);
@@ -306,6 +380,43 @@ async function installServer(server: BundledServer): Promise<void> {
       btn.textContent = 'Install';
     }
   }
+}
+
+/**
+ * Wait for OAuth authentication to complete by polling.
+ */
+async function waitForOAuthCompletion(serverId: string, timeoutMs = 300000): Promise<boolean> {
+  const pollInterval = 2000; // 2 seconds
+  const maxAttempts = timeoutMs / pollInterval;
+  let attempts = 0;
+  
+  console.log(`[Directory] Starting OAuth poll for server: ${serverId}`);
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'oauth_status',
+        server_id: serverId,
+      });
+      
+      console.log(`[Directory] OAuth poll #${attempts} response:`, response);
+      
+      if (response?.ok && response.authenticated) {
+        console.log('[Directory] OAuth completed successfully!');
+        return true;
+      }
+    } catch (err) {
+      console.warn('[Directory] OAuth poll error:', err);
+    }
+    
+    // Wait before next poll
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+  
+  console.warn(`[Directory] OAuth polling timed out after ${attempts} attempts`);
+  return false;
 }
 
 async function uninstallServer(server: BundledServer): Promise<void> {
@@ -359,7 +470,7 @@ async function refreshList(): Promise<void> {
     await loadInstalledServers();
     renderServerList();
   } catch (err) {
-    console.error('[Directory] Failed to check installed servers:', err);
+    console.error('[Directory] Failed to check server status:', err);
   }
 }
 
@@ -380,6 +491,168 @@ function renderServerList(): void {
 
   BUNDLED_SERVERS.forEach((server) => {
     list.appendChild(renderServerCard(server));
+  });
+}
+
+/**
+ * Install a server from a URL.
+ */
+async function installFromUrl(url: string): Promise<void> {
+  if (!url.trim()) {
+    showToast('Please enter a URL', 'error');
+    return;
+  }
+
+  installUrlBtn.disabled = true;
+  installUrlBtn.textContent = 'Loading...';
+
+  try {
+    const result = await loadFromUrl(url);
+    await handleLoadResult(result);
+  } finally {
+    installUrlBtn.disabled = false;
+    installUrlBtn.textContent = 'Install';
+  }
+}
+
+/**
+ * Install a server from a File.
+ */
+async function installFromFile(file: File): Promise<void> {
+  showToast(`Loading ${file.name}...`, 'info');
+
+  try {
+    const result = await loadFromFile(file);
+    await handleLoadResult(result);
+  } catch (err) {
+    showToast(`Failed to load file: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  }
+}
+
+/**
+ * Handle the result of loading a package.
+ */
+async function handleLoadResult(result: LoadResult): Promise<void> {
+  if (!result.success) {
+    showToast(`Failed to load: ${result.error}`, 'error');
+    return;
+  }
+
+  const manifest = result.manifest;
+  console.log('[Directory] Loaded manifest:', manifest);
+
+  // Check if server is already installed
+  if (installedServerIds.has(manifest.id)) {
+    showToast(`Server "${manifest.name}" is already installed`, 'error');
+    return;
+  }
+
+  // Ensure runtime is set
+  if (!manifest.runtime) {
+    if (manifest.scriptBase64 || manifest.scriptUrl) {
+      manifest.runtime = 'js';
+    } else if (manifest.wasmBase64 || manifest.moduleBytesBase64 || manifest.moduleUrl) {
+      manifest.runtime = 'wasm';
+    }
+  }
+
+  // Check for OAuth requirements
+  if (manifest.oauth) {
+    // Check OAuth status
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'oauth_status',
+        server_id: manifest.id,
+      });
+      if (!response?.ok || !response.authenticated) {
+        showToast(`Server "${manifest.name}" requires OAuth. Sign in first via the OAuth setup flow.`, 'error');
+        return;
+      }
+    } catch {
+      showToast(`Server "${manifest.name}" requires OAuth which could not be verified.`, 'error');
+      return;
+    }
+  }
+
+  // Install the server
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'sidebar_install_server',
+      manifest,
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Failed to install server');
+    }
+
+    // Start the server to validate it
+    await chrome.runtime.sendMessage({
+      type: 'sidebar_validate_server',
+      serverId: manifest.id,
+    });
+
+    installedServerIds.add(manifest.id);
+    showToast(`Installed ${manifest.name}`, 'success');
+    refreshList();
+  } catch (err) {
+    showToast(`Failed to install: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  }
+}
+
+/**
+ * Setup drop zone for file upload.
+ */
+function setupDropZone(): void {
+  if (!dropZone || !fileInput) return;
+
+  // Click to browse
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  // File input change
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) {
+      installFromFile(file);
+      fileInput.value = ''; // Reset for next use
+    }
+  });
+
+  // Drag and drop events
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragging');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragging');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragging');
+
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      installFromFile(file);
+    }
+  });
+}
+
+/**
+ * Setup URL install button.
+ */
+function setupUrlInstall(): void {
+  if (!installUrlBtn || !installUrlInput) return;
+
+  installUrlBtn.addEventListener('click', () => {
+    installFromUrl(installUrlInput.value);
+  });
+
+  // Install on Enter key
+  installUrlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      installFromUrl(installUrlInput.value);
+    }
   });
 }
 
@@ -440,6 +713,10 @@ function init(): void {
 
   initTheme();
   themeToggle?.addEventListener('click', cycleTheme);
+
+  // Setup URL and file install handlers
+  setupUrlInstall();
+  setupDropZone();
 
   if (list) {
     refreshList().catch((error) => {
