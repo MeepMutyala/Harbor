@@ -1,0 +1,1014 @@
+/**
+ * Web Agents API - Background Script
+ *
+ * Routes messages from content scripts to Harbor extension.
+ * Handles permissions and session management.
+ */
+
+import {
+  harborRequest,
+  harborStreamRequest,
+  discoverHarbor,
+  setHarborExtensionId,
+  getHarborState,
+  type StreamEvent,
+} from './harbor-client';
+import type {
+  TransportResponse,
+  TransportStreamEvent,
+  PermissionScope,
+  PermissionGrantType,
+  StreamToken,
+  CreateSessionOptions,
+  SessionSummary,
+} from './types';
+
+console.log('[Web Agents API] Extension starting...');
+
+// =============================================================================
+// State Management
+// =============================================================================
+
+// Permission storage key prefix
+const PERMISSION_KEY_PREFIX = 'permissions:';
+
+// Active text sessions (sessionId -> session info)
+const textSessions = new Map<string, {
+  sessionId: string;
+  origin: string;
+  options: Record<string, unknown>;
+  history: Array<{ role: string; content: string }>;
+  createdAt: number;
+}>();
+
+let sessionIdCounter = 0;
+
+function generateSessionId(): string {
+  return `session-${Date.now()}-${++sessionIdCounter}`;
+}
+
+// =============================================================================
+// Permission Management
+// =============================================================================
+
+interface StoredPermissions {
+  scopes: Record<PermissionScope, { type: PermissionGrantType; expiresAt?: number; grantedAt: number }>;
+  allowedTools?: string[];
+}
+
+async function getPermissions(origin: string): Promise<StoredPermissions> {
+  const key = PERMISSION_KEY_PREFIX + origin;
+  const result = await chrome.storage.local.get(key);
+  return result[key] || { scopes: {} };
+}
+
+async function savePermissions(origin: string, permissions: StoredPermissions): Promise<void> {
+  const key = PERMISSION_KEY_PREFIX + origin;
+  await chrome.storage.local.set({ [key]: permissions });
+}
+
+async function checkPermission(origin: string, scope: PermissionScope): Promise<PermissionGrantType> {
+  const permissions = await getPermissions(origin);
+  const grant = permissions.scopes[scope];
+  
+  if (!grant) {
+    return 'not-granted';
+  }
+  
+  // Check expiration for granted-once
+  if (grant.type === 'granted-once' && grant.expiresAt) {
+    if (Date.now() > grant.expiresAt) {
+      return 'not-granted';
+    }
+  }
+  
+  return grant.type;
+}
+
+async function hasPermission(origin: string, scope: PermissionScope): Promise<boolean> {
+  const status = await checkPermission(origin, scope);
+  return status === 'granted-once' || status === 'granted-always';
+}
+
+// =============================================================================
+// Permission Prompt
+// =============================================================================
+
+async function showPermissionPrompt(
+  origin: string,
+  scopes: PermissionScope[],
+  reason?: string,
+  tools?: string[],
+): Promise<{ granted: boolean; scopes: Record<PermissionScope, PermissionGrantType>; allowedTools?: string[] }> {
+  // For now, auto-grant in development. In production, this would show a popup.
+  // TODO: Implement proper permission prompt UI
+  
+  const permissions = await getPermissions(origin);
+  const result: Record<PermissionScope, PermissionGrantType> = {};
+  
+  for (const scope of scopes) {
+    // Check if already granted
+    const existing = await checkPermission(origin, scope);
+    if (existing === 'granted-once' || existing === 'granted-always') {
+      result[scope] = existing;
+      continue;
+    }
+    
+    if (existing === 'denied') {
+      result[scope] = 'denied';
+      continue;
+    }
+    
+    // Auto-grant for development (10 minute grant-once)
+    const grant = {
+      type: 'granted-once' as PermissionGrantType,
+      grantedAt: Date.now(),
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+    };
+    permissions.scopes[scope] = grant;
+    result[scope] = 'granted-once';
+  }
+  
+  // Store tool allowlist if provided
+  if (tools && tools.length > 0) {
+    permissions.allowedTools = [...new Set([...(permissions.allowedTools || []), ...tools])];
+  }
+  
+  await savePermissions(origin, permissions);
+  
+  const allGranted = scopes.every(s => result[s] === 'granted-once' || result[s] === 'granted-always');
+  
+  return {
+    granted: allGranted,
+    scopes: result,
+    allowedTools: permissions.allowedTools,
+  };
+}
+
+// =============================================================================
+// Message Handlers
+// =============================================================================
+
+interface RequestContext {
+  id: string;
+  type: string;
+  payload: unknown;
+  origin: string;
+  tabId?: number;
+}
+
+type HandlerResponse = Promise<TransportResponse>;
+
+async function handleAiCanCreateTextSession(ctx: RequestContext): HandlerResponse {
+  try {
+    const harborState = getHarborState();
+    if (!harborState.connected) {
+      await discoverHarbor();
+    }
+    
+    const capabilities = await harborRequest<{ bridgeReady: boolean }>('system.getCapabilities');
+    return { id: ctx.id, ok: true, result: capabilities.bridgeReady ? 'readily' : 'no' };
+  } catch {
+    return { id: ctx.id, ok: true, result: 'no' };
+  }
+}
+
+async function handleAiCreateTextSession(ctx: RequestContext): HandlerResponse {
+  // Check permission
+  if (!await hasPermission(ctx.origin, 'model:prompt')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission model:prompt required' },
+    };
+  }
+
+  const options = (ctx.payload || {}) as Record<string, unknown>;
+  const sessionId = generateSessionId();
+  
+  textSessions.set(sessionId, {
+    sessionId,
+    origin: ctx.origin,
+    options,
+    history: [],
+    createdAt: Date.now(),
+  });
+
+  return { id: ctx.id, ok: true, result: sessionId };
+}
+
+async function handleSessionPrompt(ctx: RequestContext): HandlerResponse {
+  const { sessionId, input } = ctx.payload as { sessionId: string; input: string };
+  
+  const session = textSessions.get(sessionId);
+  if (!session) {
+    return { id: ctx.id, ok: false, error: { code: 'ERR_SESSION_NOT_FOUND', message: 'Session not found' } };
+  }
+  
+  if (session.origin !== ctx.origin) {
+    return { id: ctx.id, ok: false, error: { code: 'ERR_PERMISSION_DENIED', message: 'Session belongs to different origin' } };
+  }
+
+  try {
+    // Add user message to history
+    session.history.push({ role: 'user', content: input });
+    
+    // Build messages array
+    const messages: Array<{ role: string; content: string }> = [];
+    if (session.options.systemPrompt) {
+      messages.push({ role: 'system', content: session.options.systemPrompt as string });
+    }
+    messages.push(...session.history);
+    
+    // Call Harbor
+    const result = await harborRequest<{ content: string; model?: string }>('llm.chat', {
+      messages,
+      model: session.options.model,
+      temperature: session.options.temperature,
+    });
+    
+    // Add assistant response to history
+    session.history.push({ role: 'assistant', content: result.content });
+    
+    return { id: ctx.id, ok: true, result: result.content };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_MODEL_FAILED', message: e instanceof Error ? e.message : 'LLM request failed' },
+    };
+  }
+}
+
+async function handleSessionDestroy(ctx: RequestContext): HandlerResponse {
+  const { sessionId } = ctx.payload as { sessionId: string };
+  textSessions.delete(sessionId);
+  return { id: ctx.id, ok: true, result: null };
+}
+
+async function handleLanguageModelCapabilities(ctx: RequestContext): HandlerResponse {
+  try {
+    const harborState = getHarborState();
+    if (!harborState.connected) {
+      await discoverHarbor();
+    }
+    
+    const capabilities = await harborRequest<{ bridgeReady: boolean }>('system.getCapabilities');
+    return {
+      id: ctx.id,
+      ok: true,
+      result: {
+        available: capabilities.bridgeReady ? 'readily' : 'no',
+        defaultTemperature: 0.7,
+        defaultTopK: 40,
+        maxTopK: 100,
+      },
+    };
+  } catch {
+    return { id: ctx.id, ok: true, result: { available: 'no' } };
+  }
+}
+
+async function handleProviderslist(ctx: RequestContext): HandlerResponse {
+  if (!await hasPermission(ctx.origin, 'model:list')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission model:list required' },
+    };
+  }
+
+  try {
+    const result = await harborRequest<{ providers: unknown[] }>('llm.listProviders');
+    return { id: ctx.id, ok: true, result: result.providers };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Failed to list providers' },
+    };
+  }
+}
+
+async function handleProvidersGetActive(ctx: RequestContext): HandlerResponse {
+  try {
+    const result = await harborRequest<{ default_model?: string }>('llm.getActiveProvider');
+    return { id: ctx.id, ok: true, result: { provider: null, model: result.default_model || null } };
+  } catch {
+    return { id: ctx.id, ok: true, result: { provider: null, model: null } };
+  }
+}
+
+async function handleRequestPermissions(ctx: RequestContext): HandlerResponse {
+  const { scopes, reason, tools } = ctx.payload as {
+    scopes: PermissionScope[];
+    reason?: string;
+    tools?: string[];
+  };
+
+  const result = await showPermissionPrompt(ctx.origin, scopes, reason, tools);
+  return { id: ctx.id, ok: true, result };
+}
+
+async function handlePermissionsList(ctx: RequestContext): HandlerResponse {
+  const permissions = await getPermissions(ctx.origin);
+  const scopes: Record<string, PermissionGrantType> = {};
+  
+  for (const [scope, grant] of Object.entries(permissions.scopes)) {
+    // Check expiration
+    if (grant.type === 'granted-once' && grant.expiresAt && Date.now() > grant.expiresAt) {
+      scopes[scope] = 'not-granted';
+    } else {
+      scopes[scope] = grant.type;
+    }
+  }
+  
+  return {
+    id: ctx.id,
+    ok: true,
+    result: {
+      origin: ctx.origin,
+      scopes,
+      allowedTools: permissions.allowedTools,
+    },
+  };
+}
+
+async function handleToolsList(ctx: RequestContext): HandlerResponse {
+  if (!await hasPermission(ctx.origin, 'mcp:tools.list')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission mcp:tools.list required' },
+    };
+  }
+
+  try {
+    const result = await harborRequest<{ tools: unknown[] }>('mcp.listTools', {});
+    return { id: ctx.id, ok: true, result: result.tools };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Failed to list tools' },
+    };
+  }
+}
+
+async function handleToolsCall(ctx: RequestContext): HandlerResponse {
+  if (!await hasPermission(ctx.origin, 'mcp:tools.call')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission mcp:tools.call required' },
+    };
+  }
+
+  const { tool, args } = ctx.payload as { tool: string; args?: Record<string, unknown> };
+  
+  // Check tool allowlist
+  const permissions = await getPermissions(ctx.origin);
+  if (permissions.allowedTools && !permissions.allowedTools.includes(tool)) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_TOOL_NOT_ALLOWED', message: `Tool ${tool} not in allowlist` },
+    };
+  }
+
+  // Parse tool name (may be "serverId/toolName" or just "toolName")
+  let serverId: string;
+  let toolName: string;
+  
+  if (tool.includes('/')) {
+    [serverId, toolName] = tool.split('/', 2);
+  } else {
+    // Need to find which server has this tool
+    const toolsResult = await harborRequest<{ tools: Array<{ serverId: string; name: string }> }>('mcp.listTools', {});
+    const found = toolsResult.tools.find(t => t.name === tool);
+    if (!found) {
+      return {
+        id: ctx.id,
+        ok: false,
+        error: { code: 'ERR_TOOL_NOT_FOUND', message: `Tool ${tool} not found` },
+      };
+    }
+    serverId = found.serverId;
+    toolName = tool;
+  }
+
+  try {
+    const result = await harborRequest<{ result: unknown }>('mcp.callTool', {
+      serverId,
+      toolName,
+      args: args || {},
+    });
+    return { id: ctx.id, ok: true, result: result.result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_TOOL_FAILED', message: e instanceof Error ? e.message : 'Tool call failed' },
+    };
+  }
+}
+
+// =============================================================================
+// Session Handlers (Explicit Sessions via Harbor)
+// =============================================================================
+
+/**
+ * Create an explicit session with specified capabilities.
+ * This proxies to Harbor's session.create endpoint.
+ */
+async function handleSessionsCreate(ctx: RequestContext): HandlerResponse {
+  const options = ctx.payload as CreateSessionOptions;
+  
+  if (!options || !options.capabilities) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_REQUEST', message: 'Missing capabilities in session options' },
+    };
+  }
+
+  // Check required permissions based on requested capabilities
+  const requiredScopes: PermissionScope[] = [];
+  if (options.capabilities.llm) {
+    requiredScopes.push('model:prompt');
+  }
+  if (options.capabilities.tools && options.capabilities.tools.length > 0) {
+    requiredScopes.push('mcp:tools.call');
+  }
+  // TODO: Add browser permission checks when those scopes are supported
+
+  // Check permissions
+  for (const scope of requiredScopes) {
+    if (!await hasPermission(ctx.origin, scope)) {
+      return {
+        id: ctx.id,
+        ok: false,
+        error: { code: 'ERR_PERMISSION_DENIED', message: `Permission ${scope} required` },
+      };
+    }
+  }
+
+  // Get allowed tools for this origin
+  const permissions = await getPermissions(ctx.origin);
+  const allowedTools = permissions.allowedTools || [];
+
+  try {
+    const result = await harborRequest<{
+      sessionId: string;
+      capabilities: unknown;
+    }>('session.create', {
+      origin: ctx.origin,
+      tabId: ctx.tabId,
+      options,
+    });
+
+    return {
+      id: ctx.id,
+      ok: true,
+      result: {
+        success: true,
+        sessionId: result.sessionId,
+        capabilities: result.capabilities,
+      },
+    };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Session creation failed' },
+    };
+  }
+}
+
+/**
+ * Get a session by ID.
+ */
+async function handleSessionsGet(ctx: RequestContext): HandlerResponse {
+  const { sessionId } = ctx.payload as { sessionId: string };
+
+  if (!sessionId) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_REQUEST', message: 'Missing sessionId' },
+    };
+  }
+
+  try {
+    const result = await harborRequest<{ session: SessionSummary | null }>('session.get', {
+      sessionId,
+      origin: ctx.origin,
+    });
+
+    return { id: ctx.id, ok: true, result: result.session };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_SESSION_NOT_FOUND', message: e instanceof Error ? e.message : 'Session not found' },
+    };
+  }
+}
+
+/**
+ * List sessions for the requesting origin.
+ */
+async function handleSessionsList(ctx: RequestContext): HandlerResponse {
+  try {
+    const result = await harborRequest<{ sessions: SessionSummary[] }>('session.list', {
+      origin: ctx.origin,
+      activeOnly: true,
+    });
+
+    return { id: ctx.id, ok: true, result: result.sessions };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Failed to list sessions' },
+    };
+  }
+}
+
+/**
+ * Terminate a session.
+ */
+async function handleSessionsTerminate(ctx: RequestContext): HandlerResponse {
+  const { sessionId } = ctx.payload as { sessionId: string };
+
+  if (!sessionId) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_REQUEST', message: 'Missing sessionId' },
+    };
+  }
+
+  try {
+    const result = await harborRequest<{ terminated: boolean }>('session.terminate', {
+      sessionId,
+      origin: ctx.origin,
+    });
+
+    return { id: ctx.id, ok: true, result: { terminated: result.terminated } };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_SESSION_NOT_FOUND', message: e instanceof Error ? e.message : 'Session not found' },
+    };
+  }
+}
+
+// =============================================================================
+// Agent Run Handler (Agentic Loop)
+// =============================================================================
+
+interface AgentRunEvent {
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'final' | 'error';
+  content?: string;
+  tool?: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  output?: string;
+  error?: string;
+}
+
+async function handleAgentRun(
+  ctx: RequestContext,
+  sendEvent: (event: TransportStreamEvent) => void,
+): Promise<void> {
+  const { task, maxToolCalls = 5, systemPrompt } = ctx.payload as {
+    task: string;
+    maxToolCalls?: number;
+    systemPrompt?: string;
+  };
+
+  console.log('[Web Agents API] agent.run starting:', { task, maxToolCalls, origin: ctx.origin });
+
+  // Check permissions
+  if (!await hasPermission(ctx.origin, 'model:prompt')) {
+    console.log('[Web Agents API] agent.run: Missing model:prompt permission');
+    sendEvent({
+      id: ctx.id,
+      event: { type: 'error', error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission model:prompt required' } },
+      done: true,
+    });
+    return;
+  }
+
+  try {
+    // Get available tools
+    let tools: Array<{ serverId: string; name: string; description?: string; inputSchema?: unknown }> = [];
+    
+    const hasToolsListPerm = await hasPermission(ctx.origin, 'mcp:tools.list');
+    console.log('[Web Agents API] agent.run: mcp:tools.list permission:', hasToolsListPerm);
+    
+    if (hasToolsListPerm) {
+      const toolsResult = await harborRequest<{ tools: typeof tools }>('mcp.listTools', {});
+      tools = toolsResult.tools || [];
+      console.log('[Web Agents API] agent.run: Found', tools.length, 'tools');
+      
+      // Filter to allowed tools (only if there's an explicit allowlist)
+      const permissions = await getPermissions(ctx.origin);
+      if (permissions.allowedTools && permissions.allowedTools.length > 0) {
+        tools = tools.filter(t => 
+          permissions.allowedTools!.includes(t.name) || 
+          permissions.allowedTools!.includes(`${t.serverId}/${t.name}`)
+        );
+        console.log('[Web Agents API] agent.run: After filtering:', tools.length, 'tools');
+      }
+    }
+
+    // Build tool definitions for the LLM (bridge expects {name, description, input_schema})
+    const llmTools = tools.map(t => ({
+      name: `${t.serverId}_${t.name}`.replace(/[^a-zA-Z0-9_]/g, '_'), // LLM-safe name
+      description: t.description || `Tool: ${t.serverId}/${t.name}`,
+      input_schema: t.inputSchema || { type: 'object', properties: {} },
+      // Keep original info for later
+      _serverId: t.serverId,
+      _toolName: t.name,
+    }));
+
+    console.log('[Web Agents API] agent.run: LLM tools:', llmTools.map(t => t.name));
+
+    // Send thinking event with available tools
+    if (llmTools.length > 0) {
+      sendEvent({
+        id: ctx.id,
+        event: { type: 'token', token: JSON.stringify({ 
+          type: 'thinking', 
+          content: `Available tools: ${tools.map(t => `${t.serverId}/${t.name}`).join(', ')}` 
+        }) },
+      });
+    } else {
+      sendEvent({
+        id: ctx.id,
+        event: { type: 'token', token: JSON.stringify({ 
+          type: 'thinking', 
+          content: 'No tools available (check mcp:tools.list permission)' 
+        }) },
+      });
+    }
+
+    // Agentic loop - use native tool calling
+    const messages: Array<{ role: string; content: string }> = [];
+    const fullSystemPrompt = systemPrompt || 'You are a helpful assistant that can use tools to help users.';
+
+    messages.push({ role: 'system', content: fullSystemPrompt });
+    messages.push({ role: 'user', content: task });
+
+    let toolCallCount = 0;
+
+    while (toolCallCount < maxToolCalls) {
+      // Call LLM with tools (native tool calling)
+      console.log('[Web Agents API] agent.run: Calling LLM with', messages.length, 'messages and', llmTools.length, 'tools');
+      
+      type LLMResponse = {
+        content?: string;
+        choices?: Array<{
+          message: {
+            role: string;
+            content: string;
+            tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+          };
+          finish_reason?: string;
+        }>;
+      };
+      
+      let result: LLMResponse;
+      try {
+        result = await harborRequest<LLMResponse>('llm.chat', { 
+          messages,
+          tools: llmTools.length > 0 ? llmTools.map(t => ({
+            name: t.name,
+            description: t.description,
+            input_schema: t.input_schema,
+          })) : undefined,
+        });
+        console.log('[Web Agents API] agent.run: LLM result:', JSON.stringify(result).substring(0, 500));
+      } catch (e) {
+        console.error('[Web Agents API] agent.run: LLM request failed:', e);
+        sendEvent({
+          id: ctx.id,
+          event: { type: 'token', token: JSON.stringify({ type: 'error', error: `LLM request failed: ${e}` }) },
+        });
+        sendEvent({ id: ctx.id, event: { type: 'done' }, done: true });
+        return;
+      }
+
+      // Extract response - handle both formats (direct content or choices array)
+      const choice = result.choices?.[0];
+      const responseContent = choice?.message?.content || result.content || '';
+      const toolCalls = choice?.message?.tool_calls;
+      
+      console.log('[Web Agents API] agent.run: Response content:', responseContent?.substring(0, 200));
+      console.log('[Web Agents API] agent.run: Tool calls:', toolCalls);
+
+      // If there are tool calls, execute them
+      if (toolCalls && toolCalls.length > 0) {
+        // Check if we can call tools
+        const hasToolsCallPerm = await hasPermission(ctx.origin, 'mcp:tools.call');
+        if (!hasToolsCallPerm) {
+          messages.push({ role: 'assistant', content: responseContent || 'I need to use tools but permission was denied.' });
+          messages.push({ role: 'user', content: 'Tool calling is not permitted. Please provide an answer without using tools.' });
+          continue;
+        }
+
+        // Process each tool call
+        for (const tc of toolCalls) {
+          const llmToolName = tc.function.name;
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(tc.function.arguments || '{}');
+          } catch {
+            args = {};
+          }
+
+          // Find the original tool info
+          const toolInfo = llmTools.find(t => t.name === llmToolName);
+          const serverId = toolInfo?._serverId || '';
+          const actualToolName = toolInfo?._toolName || llmToolName;
+          const displayName = `${serverId}/${actualToolName}`;
+
+          console.log('[Web Agents API] agent.run: Calling tool:', displayName, 'with args:', args);
+
+          // Send tool_call event
+          sendEvent({
+            id: ctx.id,
+            event: { type: 'token', token: JSON.stringify({ type: 'tool_call', tool: displayName, args }) },
+          });
+
+          // Call the tool
+          let toolResult: unknown;
+          try {
+            const callResult = await harborRequest<{ result: unknown }>('mcp.callTool', {
+              serverId,
+              toolName: actualToolName,
+              args,
+            });
+            toolResult = callResult.result;
+            console.log('[Web Agents API] agent.run: Tool result:', toolResult);
+          } catch (e) {
+            console.error('[Web Agents API] agent.run: Tool call failed:', e);
+            toolResult = { error: e instanceof Error ? e.message : 'Tool call failed' };
+          }
+
+          // Send tool_result event
+          sendEvent({
+            id: ctx.id,
+            event: { type: 'token', token: JSON.stringify({ type: 'tool_result', tool: displayName, result: toolResult }) },
+          });
+
+          // Add tool call and result to messages
+          // WORKAROUND: Encode tool call info in assistant message since some bridges don't support tool_calls
+          messages.push({ 
+            role: 'assistant', 
+            content: `[Called tool: ${displayName}(${JSON.stringify(args)})]` 
+          });
+          messages.push({ 
+            role: 'user', 
+            content: `Tool "${displayName}" returned: ${JSON.stringify(toolResult)}` 
+          });
+
+          toolCallCount++;
+        }
+      } else {
+        // No tool calls, this is the final response
+        console.log('[Web Agents API] agent.run: Final response (no tool calls)');
+        sendEvent({
+          id: ctx.id,
+          event: { type: 'token', token: JSON.stringify({ type: 'final', output: responseContent }) },
+        });
+        sendEvent({ id: ctx.id, event: { type: 'done' }, done: true });
+        return;
+      }
+    }
+
+    // Max tool calls reached, get final answer
+    console.log('[Web Agents API] agent.run: Max tool calls reached, getting final answer');
+    messages.push({ role: 'user', content: 'Please provide your final answer based on the information gathered.' });
+    const finalResult = await harborRequest<{ content?: string; choices?: Array<{ message: { content: string } }> }>('llm.chat', { messages });
+    const finalContent = finalResult.choices?.[0]?.message?.content || finalResult.content || '';
+    
+    sendEvent({
+      id: ctx.id,
+      event: { type: 'token', token: JSON.stringify({ type: 'final', output: finalContent }) },
+    });
+    sendEvent({ id: ctx.id, event: { type: 'done' }, done: true });
+
+  } catch (e) {
+    console.error('[Web Agents API] agent.run: Error:', e);
+    sendEvent({
+      id: ctx.id,
+      event: { type: 'error', error: { code: 'ERR_AGENT_FAILED', message: e instanceof Error ? e.message : 'Agent run failed' } },
+      done: true,
+    });
+  }
+}
+
+// =============================================================================
+// Streaming Handler
+// =============================================================================
+
+async function handleSessionPromptStreaming(
+  ctx: RequestContext,
+  sendEvent: (event: TransportStreamEvent) => void,
+): Promise<void> {
+  const { sessionId, input } = ctx.payload as { sessionId: string; input: string };
+  
+  const session = textSessions.get(sessionId);
+  if (!session) {
+    sendEvent({ id: ctx.id, event: { type: 'error', error: { code: 'ERR_SESSION_NOT_FOUND', message: 'Session not found' } }, done: true });
+    return;
+  }
+  
+  if (session.origin !== ctx.origin) {
+    sendEvent({ id: ctx.id, event: { type: 'error', error: { code: 'ERR_PERMISSION_DENIED', message: 'Session belongs to different origin' } }, done: true });
+    return;
+  }
+
+  try {
+    // Add user message to history
+    session.history.push({ role: 'user', content: input });
+    
+    // Build messages array
+    const messages: Array<{ role: string; content: string }> = [];
+    if (session.options.systemPrompt) {
+      messages.push({ role: 'system', content: session.options.systemPrompt as string });
+    }
+    messages.push(...session.history);
+    
+    // Stream from Harbor
+    const { stream, cancel } = harborStreamRequest('llm.chatStream', {
+      messages,
+      model: session.options.model,
+      temperature: session.options.temperature,
+    });
+
+    let fullContent = '';
+    
+    for await (const event of stream) {
+      if (event.type === 'token' && event.token) {
+        fullContent += event.token;
+        sendEvent({ id: ctx.id, event: { type: 'token', token: event.token } });
+      } else if (event.type === 'done') {
+        // Add assistant response to history
+        session.history.push({ role: 'assistant', content: fullContent });
+        sendEvent({ id: ctx.id, event: { type: 'done' }, done: true });
+        break;
+      } else if (event.type === 'error') {
+        sendEvent({ 
+          id: ctx.id, 
+          event: { type: 'error', error: { code: 'ERR_MODEL_FAILED', message: event.error?.message || 'Stream error' } }, 
+          done: true 
+        });
+        break;
+      }
+    }
+  } catch (e) {
+    sendEvent({
+      id: ctx.id,
+      event: { type: 'error', error: { code: 'ERR_MODEL_FAILED', message: e instanceof Error ? e.message : 'Streaming failed' } },
+      done: true,
+    });
+  }
+}
+
+// =============================================================================
+// Message Router
+// =============================================================================
+
+async function routeMessage(ctx: RequestContext): HandlerResponse {
+  switch (ctx.type) {
+    // AI operations
+    case 'ai.canCreateTextSession':
+      return handleAiCanCreateTextSession(ctx);
+    case 'ai.createTextSession':
+    case 'ai.languageModel.create':
+      return handleAiCreateTextSession(ctx);
+    case 'session.prompt':
+      return handleSessionPrompt(ctx);
+    case 'session.destroy':
+      return handleSessionDestroy(ctx);
+    case 'ai.languageModel.capabilities':
+      return handleLanguageModelCapabilities(ctx);
+    case 'ai.providers.list':
+      return handleProviderslist(ctx);
+    case 'ai.providers.getActive':
+      return handleProvidersGetActive(ctx);
+
+    // Permission operations
+    case 'agent.requestPermissions':
+      return handleRequestPermissions(ctx);
+    case 'agent.permissions.list':
+      return handlePermissionsList(ctx);
+
+    // Tool operations
+    case 'agent.tools.list':
+      return handleToolsList(ctx);
+    case 'agent.tools.call':
+      return handleToolsCall(ctx);
+
+    // Session operations (explicit sessions)
+    case 'agent.sessions.create':
+      return handleSessionsCreate(ctx);
+    case 'agent.sessions.get':
+      return handleSessionsGet(ctx);
+    case 'agent.sessions.list':
+      return handleSessionsList(ctx);
+    case 'agent.sessions.terminate':
+      return handleSessionsTerminate(ctx);
+
+    default:
+      return {
+        id: ctx.id,
+        ok: false,
+        error: { code: 'ERR_INTERNAL', message: `Unknown message type: ${ctx.type}` },
+      };
+  }
+}
+
+// =============================================================================
+// Port Connection Handler
+// =============================================================================
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'web-agent-transport') return;
+
+  port.onMessage.addListener(async (message: RequestContext & { type: string }) => {
+    const ctx: RequestContext = {
+      id: message.id,
+      type: message.type,
+      payload: message.payload,
+      origin: message.origin || '',
+      tabId: port.sender?.tab?.id,
+    };
+
+    // Handle streaming requests
+    if (ctx.type === 'session.promptStreaming') {
+      const sendEvent = (event: TransportStreamEvent) => {
+        try {
+          port.postMessage(event);
+        } catch {
+          // Port disconnected
+        }
+      };
+      await handleSessionPromptStreaming(ctx, sendEvent);
+      return;
+    }
+
+    // Handle agent.run (agentic loop)
+    if (ctx.type === 'agent.run') {
+      const sendEvent = (event: TransportStreamEvent) => {
+        try {
+          port.postMessage(event);
+        } catch {
+          // Port disconnected
+        }
+      };
+      await handleAgentRun(ctx, sendEvent);
+      return;
+    }
+
+    // Handle regular requests
+    const response = await routeMessage(ctx);
+    try {
+      port.postMessage(response);
+    } catch {
+      // Port disconnected
+    }
+  });
+});
+
+// =============================================================================
+// Harbor Discovery Handler
+// =============================================================================
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'harbor_discovered' && message.extensionId) {
+    setHarborExtensionId(message.extensionId);
+    sendResponse({ ok: true });
+  }
+  return false;
+});
+
+// =============================================================================
+// Initialization
+// =============================================================================
+
+// Try to discover Harbor on startup
+discoverHarbor().then((id) => {
+  if (id) {
+    console.log('[Web Agents API] Harbor found:', id);
+  } else {
+    console.log('[Web Agents API] Harbor not found - will retry on first request');
+  }
+});
+
+console.log('[Web Agents API] Extension initialized.');

@@ -1,0 +1,17 @@
+{
+  "name": "web-agents-api",
+  "version": "0.1.0",
+  "description": "Web Agents API extension - Exposes AI capabilities to web pages via Harbor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:chrome": "node build.mjs --chrome",
+    "dev": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.35",
+    "esbuild": "latest",
+    "typescript": "latest"
+  }
+}
