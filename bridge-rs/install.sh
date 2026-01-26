@@ -69,7 +69,7 @@ install_manifest() {
   "description": "Harbor Bridge - Local LLM and MCP server for Harbor extension",
   "path": "$WRAPPER_PATH",
   "type": "stdio",
-  "allowed_extensions": ["harbor@anthropic.com"]
+  "allowed_extensions": ["harbor@mozilla.org"]
 }
 EOF
         echo "  Manifest installed: $manifest_dir/harbor_bridge.json"
