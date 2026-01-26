@@ -1467,3 +1467,191 @@ toolTesterHeader.addEventListener('click', () => {
     }
   }, 50);
 });
+
+// =============================================================================
+// Agent Sessions Panel
+// =============================================================================
+
+type SessionSummary = {
+  sessionId: string;
+  type: 'implicit' | 'explicit';
+  origin: string;
+  status: 'active' | 'suspended' | 'terminated';
+  name?: string;
+  createdAt: number;
+  lastActiveAt: number;
+  capabilities: {
+    hasLLM: boolean;
+    toolCount: number;
+    hasBrowserAccess: boolean;
+  };
+  usage: {
+    promptCount: number;
+    toolCallCount: number;
+  };
+};
+
+const sessionsPanelHeader = document.getElementById('sessions-panel-header') as HTMLDivElement;
+const sessionsPanelToggle = document.getElementById('sessions-panel-toggle') as HTMLSpanElement;
+const sessionsList = document.getElementById('sessions-list') as HTMLDivElement;
+const sessionsStatusIndicator = document.getElementById('sessions-status-indicator') as HTMLDivElement;
+const sessionsCount = document.getElementById('sessions-count') as HTMLSpanElement;
+const refreshSessionsBtn = document.getElementById('refresh-sessions-btn') as HTMLButtonElement;
+
+async function loadSessions(): Promise<void> {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'session.list' }) as {
+      ok: boolean;
+      sessions?: SessionSummary[];
+      error?: string;
+    };
+
+    if (response?.ok && response.sessions) {
+      renderSessions(response.sessions);
+      
+      // Update status indicator
+      const activeCount = response.sessions.filter(s => s.status === 'active').length;
+      if (activeCount > 0) {
+        sessionsStatusIndicator.className = 'status-indicator connected';
+        sessionsCount.className = 'status-text connected';
+        sessionsCount.textContent = String(activeCount);
+      } else {
+        sessionsStatusIndicator.className = 'status-indicator disconnected';
+        sessionsCount.className = 'status-text disconnected';
+        sessionsCount.textContent = '0';
+      }
+    } else {
+      sessionsList.innerHTML = '<div class="empty-state">Failed to load sessions.</div>';
+    }
+  } catch (err) {
+    console.error('[Sidebar] Failed to load sessions:', err);
+    sessionsList.innerHTML = '<div class="empty-state">Failed to load sessions.</div>';
+  }
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+  
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return `${Math.floor(diff / 86400000)}d ago`;
+}
+
+function renderSessions(sessions: SessionSummary[]): void {
+  if (sessions.length === 0) {
+    sessionsList.innerHTML = '<div class="empty-state">No active sessions.</div>';
+    return;
+  }
+
+  // Sort: active first, then by lastActiveAt descending
+  const sorted = [...sessions].sort((a, b) => {
+    if (a.status === 'active' && b.status !== 'active') return -1;
+    if (a.status !== 'active' && b.status === 'active') return 1;
+    return b.lastActiveAt - a.lastActiveAt;
+  });
+
+  sessionsList.innerHTML = sorted.map((session) => {
+    const typeClass = session.type === 'explicit' ? 'explicit' : 'implicit';
+    const statusClass = session.status === 'terminated' ? 'terminated' : '';
+    const displayName = session.name || (session.type === 'implicit' ? 'Anonymous Session' : 'Agent Session');
+    
+    // Build capability badges
+    const capBadges: string[] = [];
+    if (session.capabilities.hasLLM) {
+      capBadges.push('<span class="session-cap-badge llm">LLM</span>');
+    }
+    if (session.capabilities.toolCount > 0) {
+      capBadges.push(`<span class="session-cap-badge tools">${session.capabilities.toolCount} Tools</span>`);
+    }
+    if (session.capabilities.hasBrowserAccess) {
+      capBadges.push('<span class="session-cap-badge browser">Browser</span>');
+    }
+    
+    // Truncate origin for display
+    const originDisplay = session.origin.length > 40 
+      ? session.origin.slice(0, 37) + '...' 
+      : session.origin;
+
+    return `
+      <div class="session-item ${typeClass} ${statusClass}" data-session-id="${session.sessionId}">
+        <div class="session-header">
+          <div class="session-name">
+            ${escapeHtml(displayName)}
+            <span class="session-type-badge ${typeClass}">${session.type}</span>
+          </div>
+          <span class="session-time">${formatRelativeTime(session.lastActiveAt)}</span>
+        </div>
+        <div class="session-origin" title="${escapeHtml(session.origin)}">${escapeHtml(originDisplay)}</div>
+        <div class="session-capabilities">
+          ${capBadges.length > 0 ? capBadges.join('') : '<span style="color: var(--color-text-muted); font-size: 10px;">No capabilities</span>'}
+        </div>
+        <div class="session-stats">
+          <span class="session-stat">💬 ${session.usage.promptCount} prompts</span>
+          <span class="session-stat">⚡ ${session.usage.toolCallCount} tool calls</span>
+        </div>
+        ${session.status === 'active' ? `
+          <div class="session-actions">
+            <button class="btn btn-sm btn-danger terminate-session-btn" data-session-id="${session.sessionId}" data-origin="${escapeHtml(session.origin)}">Terminate</button>
+          </div>
+        ` : `
+          <div class="session-actions">
+            <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Session ${session.status}</span>
+          </div>
+        `}
+      </div>
+    `;
+  }).join('');
+
+  // Add event listeners for terminate buttons
+  sessionsList.querySelectorAll('.terminate-session-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const sessionId = (btn as HTMLElement).dataset.sessionId!;
+      const origin = (btn as HTMLElement).dataset.origin!;
+      
+      (btn as HTMLButtonElement).disabled = true;
+      (btn as HTMLButtonElement).textContent = '...';
+      
+      try {
+        await chrome.runtime.sendMessage({
+          type: 'session.terminate',
+          sessionId,
+          origin,
+        });
+        await loadSessions();
+        showToast('Session terminated');
+      } catch (err) {
+        console.error('[Sidebar] Failed to terminate session:', err);
+        showToast('Failed to terminate session', 'error');
+      }
+    });
+  });
+}
+
+// Setup sessions panel toggle
+setupPanelToggle(sessionsPanelHeader, sessionsPanelToggle, sessionsList);
+
+// Refresh sessions button
+refreshSessionsBtn?.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  refreshSessionsBtn.disabled = true;
+  await loadSessions();
+  refreshSessionsBtn.disabled = false;
+});
+
+// Listen for session changes from background
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === 'session_created' || 
+      message?.type === 'session_terminated' || 
+      message?.type === 'session_updated') {
+    loadSessions();
+  }
+  return false;
+});
+
+// Load sessions on startup
+loadSessions();
+
+// Auto-refresh sessions every 30 seconds
+setInterval(loadSessions, 30000);

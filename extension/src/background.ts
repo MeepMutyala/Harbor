@@ -9,11 +9,11 @@ import { initializePolicyStore } from './policy/store';
 import { initializeBridgeClient, getBridgeConnectionState, checkBridgeHealth, bridgeRequest } from './llm/bridge-client';
 import { getConnectionState as getNativeConnectionState } from './llm/native-bridge';
 import { initializeMcpHost, addServer, startServer, stopServer, validateAndStartServer, removeServer, listServersWithStatus, callTool } from './mcp/host';
-import { initializeRouter } from './agents/background-router';
 import { cleanupExpiredGrants, listAllPermissions, revokePermissions } from './policy/permissions';
-import { initializeAddressBar } from './agents/addressbar';
+import { initializeExtensionApi } from './extension-api';
+import { SessionRegistry } from './sessions';
 
-console.log('[Harbor] WASM MCP extension starting...');
+console.log('[Harbor] Extension starting...');
 
 // Initialize modules
 initializePolicyStore();
@@ -21,8 +21,9 @@ initializePolicyStore();
 // Connect to native bridge (all communication goes through stdio)
 initializeBridgeClient();
 initializeMcpHost();
-initializeRouter();
-initializeAddressBar();
+
+// Initialize extension API for other extensions to call Harbor
+initializeExtensionApi();
 
 // Cleanup expired permission grants on startup
 cleanupExpiredGrants();
@@ -863,6 +864,78 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 // =============================================================================
+// Session Handlers (for sidebar)
+// =============================================================================
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'session.list') {
+    return false;
+  }
+  const { origin, status, type, activeOnly } = message as {
+    origin?: string;
+    status?: 'active' | 'suspended' | 'terminated';
+    type?: 'implicit' | 'explicit';
+    activeOnly?: boolean;
+  };
+  try {
+    const sessions = SessionRegistry.listSessions({ origin, status, type, activeOnly });
+    sendResponse({ ok: true, sessions });
+  } catch (error) {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'session.terminate') {
+    return false;
+  }
+  const { sessionId, origin } = message as { sessionId?: string; origin?: string };
+  if (!sessionId || !origin) {
+    sendResponse({ ok: false, error: 'Missing sessionId or origin' });
+    return true;
+  }
+  try {
+    const terminated = SessionRegistry.terminateSession(sessionId, origin);
+    sendResponse({ ok: true, terminated });
+  } catch (error) {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'session.get') {
+    return false;
+  }
+  const { sessionId } = message as { sessionId?: string };
+  if (!sessionId) {
+    sendResponse({ ok: false, error: 'Missing sessionId' });
+    return true;
+  }
+  try {
+    const session = SessionRegistry.getSession(sessionId);
+    if (!session) {
+      sendResponse({ ok: false, error: 'Session not found' });
+    } else {
+      sendResponse({ ok: true, session });
+    }
+  } catch (error) {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return true;
+});
+
+// =============================================================================
 // Page Chat Message Handler
 // =============================================================================
 
@@ -966,4 +1039,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
-console.log('[Harbor] WASM MCP extension initialized.');
+console.log('[Harbor] Extension initialized.');
