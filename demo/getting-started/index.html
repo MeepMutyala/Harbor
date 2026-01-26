@@ -447,6 +447,7 @@ console.<span class="method">log</span>(response);</pre>
           // Store the response for the next step
           window._webAgentDemoResponse = '';
           window._webAgentDemoToolCalls = [];
+          window._webAgentDemoThinking = [];
           let tokenText = '';
           
           // Use the agent API to run with tools (matches displayed code)
@@ -456,6 +457,11 @@ console.<span class="method">log</span>(response);</pre>
           })) {
             // Log all events for debugging
             console.log('[Demo] Agent event:', event.type, event);
+            
+            // Capture thinking events for display
+            if (event.type === 'thinking') {
+              window._webAgentDemoThinking.push(event.content);
+            }
             
             // These match what's shown in the UI
             if (event.type === 'tool_call') {
@@ -482,6 +488,14 @@ console.<span class="method">log</span>(response);</pre>
           }
           
           let output = '✓ Request sent to AI agent\n';
+          
+          // Show thinking/debug info
+          if (window._webAgentDemoThinking.length > 0) {
+            output += `\n[Debug]:\n`;
+            output += window._webAgentDemoThinking.map(t => `  ${t}`).join('\n');
+            output += '\n';
+          }
+          
           if (window._webAgentDemoToolCalls.length > 0) {
             output += `\nTools used:\n`;
             output += window._webAgentDemoToolCalls.map(t => `  • ${t}`).join('\n');
