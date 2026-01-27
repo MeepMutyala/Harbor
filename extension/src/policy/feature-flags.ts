@@ -2,22 +2,41 @@
  * Feature Flags
  * 
  * Gates experimental and advanced features behind toggles.
- * By default, Harbor exposes the conservative Web Agent API:
+ * 
+ * ## API Tiers
+ * 
+ * **Core Web Agents API (always enabled):**
  * - LLM access (window.ai)
  * - MCP tools (agent.tools)
  * - Page readability (agent.browser.activeTab.readability)
  * - Agent run loop (agent.run)
  * - BYOC/Chat APIs
  * 
- * Advanced features require explicit opt-in:
- * - Browser interaction (click, fill, scroll)
- * - Screenshots
- * - Future: Navigation, tab management, multi-agent
+ * **Browser Control (Extension 2 - opt-in via `browserControl`):**
+ * - Navigation (agent.browser.navigate)
+ * - Tab management (agent.browser.tabs.*)
+ * - Spawned tab control (agent.browser.tab.*)
+ * - Web fetch proxy (agent.fetch)
+ * 
+ * **Multi-Agent (Extension 3 - opt-in via `multiAgent`):**
+ * - Agent registration (agent.agents.register)
+ * - Agent discovery (agent.agents.discover)
+ * - A2A communication (agent.agents.invoke, send)
+ * - Orchestration (agent.agents.orchestrate.*)
+ * - Remote agents (agent.agents.remote.*)
+ * 
+ * Advanced features within Core require explicit opt-in:
+ * - Browser interaction (click, fill, scroll) via `browserInteraction`
+ * - Screenshots via `screenshots`
  */
 
 const STORAGE_KEY = 'harbor_feature_flags';
 
 export interface FeatureFlags {
+  // =========================================================================
+  // Core API Feature Flags (granular control within Extension 1)
+  // =========================================================================
+
   /**
    * Enable browser interaction APIs (click, fill, scroll, select).
    * When disabled, these APIs return ERR_FEATURE_DISABLED.
@@ -38,12 +57,49 @@ export interface FeatureFlags {
    * Default: false
    */
   experimental: boolean;
+
+  // =========================================================================
+  // Extension 2: Browser Control
+  // =========================================================================
+
+  /**
+   * Enable Browser Control APIs (Extension 2).
+   * When enabled, exposes:
+   * - agent.browser.navigate(url)
+   * - agent.browser.waitForNavigation()
+   * - agent.browser.tabs.* (list, get, create, close)
+   * - agent.browser.tab.* (control spawned tabs)
+   * - agent.fetch() (CORS-bypassing fetch)
+   * Default: false
+   */
+  browserControl: boolean;
+
+  // =========================================================================
+  // Extension 3: Multi-Agent
+  // =========================================================================
+
+  /**
+   * Enable Multi-Agent APIs (Extension 3).
+   * When enabled, exposes:
+   * - agent.agents.register/unregister
+   * - agent.agents.discover/list
+   * - agent.agents.invoke/send
+   * - agent.agents.orchestrate.* (pipeline, parallel, route)
+   * - agent.agents.remote.* (connect, disconnect, list, ping, discover)
+   * Default: false
+   */
+  multiAgent: boolean;
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
+  // Core API flags
   browserInteraction: false,
   screenshots: false,
   experimental: false,
+  // Extension 2
+  browserControl: false,
+  // Extension 3
+  multiAgent: false,
 };
 
 let cachedFlags: FeatureFlags | null = null;

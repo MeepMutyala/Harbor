@@ -83,15 +83,86 @@ function getBackgroundPort(): RuntimePort {
 }
 
 /**
- * Inject the Web Agent API script into the page.
+ * Fetch feature flags from background script.
  */
-function injectAgentsAPI(): void {
+async function getFeatureFlags(): Promise<{
+  browserInteraction: boolean;
+  screenshots: boolean;
+  experimental: boolean;
+  browserControl: boolean;
+  multiAgent: boolean;
+}> {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'getFeatureFlags' }, (response) => {
+      if (chrome.runtime.lastError || !response) {
+        // Default to safe mode if we can't get flags
+        resolve({
+          browserInteraction: false,
+          screenshots: false,
+          experimental: false,
+          browserControl: false,
+          multiAgent: false,
+        });
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
+/**
+ * Inject the Web Agent API script into the page with feature flags.
+ */
+let injected = false;
+
+function appendInjectedScripts(flags: {
+  browserInteraction: boolean;
+  screenshots: boolean;
+  experimental: boolean;
+  browserControl: boolean;
+  multiAgent: boolean;
+}): boolean {
+  if (injected) return true;
+  const root = document.head || document.documentElement;
+  if (!root) return false;
+
+  const flagsScript = document.createElement('script');
+  flagsScript.type = 'application/json';
+  flagsScript.id = 'harbor-feature-flags';
+  flagsScript.textContent = JSON.stringify(flags);
+  root.appendChild(flagsScript);
+
   const script = document.createElement('script');
   script.src = chrome.runtime.getURL('dist/agents/injected.js');
   script.async = false;
-  (document.head || document.documentElement).appendChild(script);
-  script.remove();
+  script.onload = () => {
+    script.remove();
+  };
+  script.onerror = () => {
+    script.remove();
+  };
+  root.appendChild(script);
+  injected = true;
+  return true;
 }
+
+async function injectAgentsAPI(): Promise<void> {
+  const flags = await getFeatureFlags();
+  if (appendInjectedScripts(flags)) return;
+
+  const retry = () => {
+    if (appendInjectedScripts(flags)) {
+      document.removeEventListener('readystatechange', retry);
+      window.removeEventListener('DOMContentLoaded', retry);
+    }
+  };
+
+  document.addEventListener('readystatechange', retry);
+  window.addEventListener('DOMContentLoaded', retry);
+}
+
+// Mark content script presence for debugging.
+document.documentElement?.setAttribute('data-harbor-content-script', 'true');
 
 /**
  * Listen for messages from the page.
@@ -146,4 +217,4 @@ window.addEventListener('message', async (event: MessageEvent) => {
 });
 
 // Initialize
-injectAgentsAPI();
+injectAgentsAPI().catch(console.error);

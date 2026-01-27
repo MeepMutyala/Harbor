@@ -1,0 +1,320 @@
+/**
+ * Agent Messaging
+ * 
+ * Handles inter-agent communication for Extension 3.
+ * 
+ * Supports:
+ * - Direct messages between agents
+ * - Request/response pattern
+ * - Event broadcasting
+ * - Cross-origin messaging (with permission)
+ */
+
+import type {
+  AgentId,
+  AgentMessage,
+  AgentInvocationRequest,
+  AgentInvocationResponse,
+  AgentEvent,
+} from './types';
+import {
+  getAgent,
+  touchAgent,
+  recordMessageSent,
+  recordInvocationMade,
+  recordInvocationReceived,
+} from './registry';
+import { checkPermissions } from '../policy/permissions';
+
+// Message handlers registered by agents
+type MessageHandler = (message: AgentMessage) => void;
+type InvocationHandler = (request: AgentInvocationRequest) => Promise<AgentInvocationResponse>;
+type EventHandler = (event: AgentEvent) => void;
+
+const messageHandlers = new Map<AgentId, MessageHandler>();
+const invocationHandlers = new Map<AgentId, InvocationHandler>();
+const eventSubscriptions = new Map<string, Set<AgentId>>(); // eventType -> agentIds
+
+// Pending invocations waiting for response
+interface PendingInvocation {
+  resolve: (response: AgentInvocationResponse) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+const pendingInvocations = new Map<string, PendingInvocation>();
+
+// Message ID counter
+let messageIdCounter = 0;
+
+function generateMessageId(): string {
+  return `msg-${Date.now()}-${++messageIdCounter}`;
+}
+
+// =============================================================================
+// Message Handlers Registration
+// =============================================================================
+
+/**
+ * Register a message handler for an agent.
+ */
+export function registerMessageHandler(agentId: AgentId, handler: MessageHandler): void {
+  messageHandlers.set(agentId, handler);
+}
+
+/**
+ * Unregister a message handler.
+ */
+export function unregisterMessageHandler(agentId: AgentId): void {
+  messageHandlers.delete(agentId);
+}
+
+/**
+ * Register an invocation handler for an agent.
+ */
+export function registerInvocationHandler(agentId: AgentId, handler: InvocationHandler): void {
+  invocationHandlers.set(agentId, handler);
+}
+
+/**
+ * Unregister an invocation handler.
+ */
+export function unregisterInvocationHandler(agentId: AgentId): void {
+  invocationHandlers.delete(agentId);
+}
+
+/**
+ * Subscribe an agent to an event type.
+ */
+export function subscribeToEvent(agentId: AgentId, eventType: string): void {
+  if (!eventSubscriptions.has(eventType)) {
+    eventSubscriptions.set(eventType, new Set());
+  }
+  eventSubscriptions.get(eventType)!.add(agentId);
+}
+
+/**
+ * Unsubscribe an agent from an event type.
+ */
+export function unsubscribeFromEvent(agentId: AgentId, eventType: string): void {
+  eventSubscriptions.get(eventType)?.delete(agentId);
+}
+
+/**
+ * Unsubscribe an agent from all events.
+ */
+export function unsubscribeFromAllEvents(agentId: AgentId): void {
+  for (const subscribers of eventSubscriptions.values()) {
+    subscribers.delete(agentId);
+  }
+}
+
+// =============================================================================
+// Messaging
+// =============================================================================
+
+/**
+ * Send a message from one agent to another.
+ */
+export async function sendMessage(
+  fromAgentId: AgentId,
+  toAgentId: AgentId,
+  payload: unknown,
+  fromOrigin: string,
+): Promise<{ delivered: boolean; error?: string }> {
+  const fromAgent = getAgent(fromAgentId);
+  const toAgent = getAgent(toAgentId);
+
+  if (!fromAgent) {
+    return { delivered: false, error: 'Sender agent not found' };
+  }
+
+  if (!toAgent) {
+    return { delivered: false, error: 'Recipient agent not found' };
+  }
+
+  // Check if recipient accepts messages
+  if (!toAgent.acceptsMessages) {
+    return { delivered: false, error: 'Recipient does not accept messages' };
+  }
+
+  // Check cross-origin permission
+  if (fromAgent.origin !== toAgent.origin) {
+    const check = await checkPermissions(fromOrigin, ['agents:crossOrigin']);
+    if (!check.granted) {
+      return { delivered: false, error: 'Cross-origin messaging requires agents:crossOrigin permission' };
+    }
+  }
+
+  const message: AgentMessage = {
+    id: generateMessageId(),
+    from: fromAgentId,
+    to: toAgentId,
+    type: 'event',
+    payload,
+    timestamp: Date.now(),
+  };
+
+  const handler = messageHandlers.get(toAgentId);
+  if (handler) {
+    try {
+      handler(message);
+      recordMessageSent(fromAgentId);
+      touchAgent(toAgentId);
+      return { delivered: true };
+    } catch (error) {
+      return { delivered: false, error: error instanceof Error ? error.message : 'Handler error' };
+    }
+  }
+
+  return { delivered: false, error: 'No handler registered for recipient' };
+}
+
+/**
+ * Invoke another agent with a task.
+ */
+export async function invokeAgent(
+  request: AgentInvocationRequest,
+  fromAgentId: AgentId,
+  fromOrigin: string,
+): Promise<AgentInvocationResponse> {
+  const startTime = Date.now();
+  const fromAgent = getAgent(fromAgentId);
+  const toAgent = getAgent(request.agentId);
+
+  if (!fromAgent) {
+    return {
+      success: false,
+      error: { code: 'ERR_AGENT_NOT_FOUND', message: 'Invoker agent not found' },
+      executionTime: Date.now() - startTime,
+    };
+  }
+
+  if (!toAgent) {
+    return {
+      success: false,
+      error: { code: 'ERR_AGENT_NOT_FOUND', message: 'Target agent not found' },
+      executionTime: Date.now() - startTime,
+    };
+  }
+
+  // Check if target accepts invocations
+  if (!toAgent.acceptsInvocations) {
+    return {
+      success: false,
+      error: { code: 'ERR_NOT_ACCEPTED', message: 'Target agent does not accept invocations' },
+      executionTime: Date.now() - startTime,
+    };
+  }
+
+  // Check cross-origin permission
+  if (fromAgent.origin !== toAgent.origin) {
+    const check = await checkPermissions(fromOrigin, ['agents:crossOrigin']);
+    if (!check.granted) {
+      return {
+        success: false,
+        error: { code: 'ERR_PERMISSION_DENIED', message: 'Cross-origin invocation requires agents:crossOrigin permission' },
+        executionTime: Date.now() - startTime,
+      };
+    }
+  }
+
+  const handler = invocationHandlers.get(request.agentId);
+  if (!handler) {
+    return {
+      success: false,
+      error: { code: 'ERR_NO_HANDLER', message: 'Target agent has no invocation handler' },
+      executionTime: Date.now() - startTime,
+    };
+  }
+
+  recordInvocationMade(fromAgentId);
+  recordInvocationReceived(request.agentId);
+
+  // Execute with timeout
+  const timeout = request.timeout || 30000;
+  
+  try {
+    const result = await Promise.race([
+      handler(request),
+      new Promise<AgentInvocationResponse>((_, reject) => {
+        setTimeout(() => reject(new Error('Invocation timeout')), timeout);
+      }),
+    ]);
+
+    return {
+      ...result,
+      executionTime: Date.now() - startTime,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        code: 'ERR_INVOCATION_FAILED',
+        message: error instanceof Error ? error.message : 'Invocation failed',
+      },
+      executionTime: Date.now() - startTime,
+    };
+  }
+}
+
+/**
+ * Broadcast an event to all subscribed agents.
+ */
+export function broadcastEvent(
+  sourceAgentId: AgentId,
+  eventType: string,
+  data: unknown,
+): { delivered: number; failed: number } {
+  const subscribers = eventSubscriptions.get(eventType);
+  if (!subscribers || subscribers.size === 0) {
+    return { delivered: 0, failed: 0 };
+  }
+
+  const event: AgentEvent = {
+    type: eventType,
+    data,
+    source: sourceAgentId,
+    timestamp: Date.now(),
+  };
+
+  let delivered = 0;
+  let failed = 0;
+
+  for (const subscriberId of subscribers) {
+    // Don't send to self
+    if (subscriberId === sourceAgentId) continue;
+
+    const handler = messageHandlers.get(subscriberId);
+    if (handler) {
+      try {
+        const message: AgentMessage = {
+          id: generateMessageId(),
+          from: sourceAgentId,
+          to: subscriberId,
+          type: 'event',
+          payload: event,
+          timestamp: Date.now(),
+        };
+        handler(message);
+        delivered++;
+      } catch {
+        failed++;
+      }
+    }
+  }
+
+  return { delivered, failed };
+}
+
+// =============================================================================
+// Cleanup
+// =============================================================================
+
+/**
+ * Clean up all handlers for an agent.
+ */
+export function cleanupAgentHandlers(agentId: AgentId): void {
+  unregisterMessageHandler(agentId);
+  unregisterInvocationHandler(agentId);
+  unsubscribeFromAllEvents(agentId);
+}

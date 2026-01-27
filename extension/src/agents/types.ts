@@ -53,21 +53,36 @@ export class WebAgentError extends Error {
 // =============================================================================
 
 export type PermissionScope =
+  // Extension 1: Core AI & MCP
   | 'model:prompt'
   | 'model:tools'
   | 'model:list'
   | 'mcp:tools.list'
   | 'mcp:tools.call'
   | 'mcp:servers.register'
+  // Extension 1: Browser (same-tab only)
   | 'browser:activeTab.read'
   | 'browser:activeTab.interact'  // click, fill, scroll (same-tab only)
   | 'browser:activeTab.screenshot' // capture screenshots
+  // Extension 2: Navigation and Tabs
+  | 'browser:navigate'             // navigate current tab to new URL
+  | 'browser:tabs.read'            // read tab metadata (URL, title) for all tabs
+  | 'browser:tabs.create'          // create new tabs and control them
+  // Extension 2: Web Fetch
+  | 'web:fetch'                    // proxy HTTP requests (with allowlist)
+  // Other
   | 'chat:open'
-  | 'web:fetch'
   | 'addressBar:suggest'
   | 'addressBar:context'
   | 'addressBar:history'
-  | 'addressBar:execute';
+  | 'addressBar:execute'
+  // Extension 3: Multi-Agent (reserved)
+  | 'agents:register'              // register as an agent
+  | 'agents:discover'              // discover other agents
+  | 'agents:invoke'                // invoke other agents
+  | 'agents:message'               // send/receive messages
+  | 'agents:crossOrigin'           // cross-origin agent communication
+  | 'agents:remote';               // connect to remote A2A agents
 
 export type PermissionGrant =
   | 'granted-once'
@@ -298,6 +313,142 @@ export interface ActiveTabReadability {
 }
 
 // =============================================================================
+// Capabilities API Types (agent.capabilities())
+// =============================================================================
+
+/**
+ * LLM capabilities available to the agent
+ */
+export interface LLMCapabilities {
+  /** Whether LLM access is available */
+  available: boolean;
+  /** Whether streaming responses are supported */
+  streaming: boolean;
+  /** Whether tool calling is supported */
+  toolCalling: boolean;
+  /** Available provider types */
+  providers: string[];
+  /** Best runtime to use */
+  bestRuntime: 'firefox' | 'chrome' | 'harbor' | null;
+}
+
+/**
+ * Tool/MCP capabilities available to the agent
+ */
+export interface ToolCapabilities {
+  /** Whether MCP tool access is available */
+  available: boolean;
+  /** Number of tools available */
+  count: number;
+  /** List of connected MCP server IDs */
+  servers: string[];
+}
+
+/**
+ * Browser interaction capabilities
+ */
+export interface BrowserCapabilities {
+  /** Can read content from current tab */
+  readActiveTab: boolean;
+  /** Can interact with current tab (click, fill, scroll) */
+  interact: boolean;
+  /** Can take screenshots */
+  screenshot: boolean;
+  /** Can navigate current tab (Extension 2) */
+  navigate: boolean;
+  /** Can read other tabs metadata (Extension 2) */
+  readTabs: boolean;
+  /** Can create new tabs (Extension 2) */
+  createTabs: boolean;
+}
+
+/**
+ * Multi-agent capabilities (Extension 3)
+ */
+export interface AgentCapabilities {
+  /** Can register as an agent */
+  register: boolean;
+  /** Can discover other agents */
+  discover: boolean;
+  /** Can invoke other agents */
+  invoke: boolean;
+  /** Can send/receive messages */
+  message: boolean;
+  /** Can communicate cross-origin */
+  crossOrigin: boolean;
+  /** Can connect to remote agents */
+  remote: boolean;
+}
+
+/**
+ * Permission status for each capability area
+ */
+export interface CapabilityPermissions {
+  /** Permissions for LLM access */
+  llm: {
+    prompt: PermissionGrant;
+    tools: PermissionGrant;
+    list: PermissionGrant;
+  };
+  /** Permissions for MCP tools */
+  mcp: {
+    list: PermissionGrant;
+    call: PermissionGrant;
+    register: PermissionGrant;
+  };
+  /** Permissions for browser access */
+  browser: {
+    read: PermissionGrant;
+    interact: PermissionGrant;
+    screenshot: PermissionGrant;
+    navigate: PermissionGrant;
+    tabsRead: PermissionGrant;
+    tabsCreate: PermissionGrant;
+  };
+  /** Permissions for multi-agent features */
+  agents: {
+    register: PermissionGrant;
+    discover: PermissionGrant;
+    invoke: PermissionGrant;
+    message: PermissionGrant;
+    crossOrigin: PermissionGrant;
+    remote: PermissionGrant;
+  };
+  /** Permissions for web fetch */
+  web: {
+    fetch: PermissionGrant;
+  };
+}
+
+/**
+ * Complete capabilities report from agent.capabilities()
+ */
+export interface AgentCapabilitiesReport {
+  /** API version */
+  version: string;
+  /** LLM capabilities */
+  llm: LLMCapabilities;
+  /** MCP/tool capabilities */
+  tools: ToolCapabilities;
+  /** Browser interaction capabilities */
+  browser: BrowserCapabilities;
+  /** Multi-agent capabilities (Extension 3) */
+  agents: AgentCapabilities;
+  /** Current permission status for all scopes */
+  permissions: CapabilityPermissions;
+  /** List of allowed tool names (if mcp:tools.call is granted) */
+  allowedTools: string[];
+  /** Feature flags that are enabled */
+  features: {
+    browserInteraction: boolean;
+    screenshots: boolean;
+    multiAgent: boolean;
+    remoteTabs: boolean;
+    webFetch: boolean;
+  };
+}
+
+// =============================================================================
 // BYOC (Bring Your Own Chatbot) Types
 // =============================================================================
 
@@ -375,6 +526,7 @@ export type MessageType =
   // Agent methods
   | 'agent.requestPermissions'
   | 'agent.permissions.list'
+  | 'agent.capabilities'
   | 'agent.tools.list'
   | 'agent.tools.call'
   | 'agent.browser.activeTab.readability'
@@ -385,7 +537,47 @@ export type MessageType =
   | 'agent.browser.activeTab.getElement'
   | 'agent.browser.activeTab.waitForSelector'
   | 'agent.browser.activeTab.screenshot'
+  // Extension 2: Navigation and Tabs
+  | 'agent.browser.navigate'
+  | 'agent.browser.waitForNavigation'
+  | 'agent.browser.tabs.list'
+  | 'agent.browser.tabs.create'
+  | 'agent.browser.tabs.get'
+  | 'agent.browser.tabs.close'
+  // Extension 2: Spawned tab operations (operate on tabs we created)
+  | 'agent.browser.tab.readability'
+  | 'agent.browser.tab.click'
+  | 'agent.browser.tab.fill'
+  | 'agent.browser.tab.scroll'
+  | 'agent.browser.tab.screenshot'
+  | 'agent.browser.tab.navigate'
+  // Extension 2: Web Fetch
+  | 'agent.fetch'
   | 'agent.run'
+  // Extension 3: Multi-Agent
+  | 'agents.register'
+  | 'agents.unregister'
+  | 'agents.getInfo'
+  | 'agents.discover'
+  | 'agents.list'
+  | 'agents.invoke'
+  | 'agents.send'
+  | 'agents.subscribe'
+  | 'agents.unsubscribe'
+  | 'agents.registerMessageHandler'
+  | 'agents.unregisterMessageHandler'
+  | 'agents.registerInvocationHandler'
+  | 'agents.unregisterInvocationHandler'
+  | 'agents.orchestrate.pipeline'
+  | 'agents.orchestrate.parallel'
+  | 'agents.orchestrate.route'
+  | 'agents.orchestrate.supervisor'
+  // Extension 3: Remote A2A
+  | 'agents.remote.connect'
+  | 'agents.remote.disconnect'
+  | 'agents.remote.list'
+  | 'agents.remote.ping'
+  | 'agents.remote.discover'
   // BYOC methods
   | 'agent.mcp.discover'
   | 'agent.mcp.register'
@@ -430,6 +622,7 @@ export interface TransportStreamEvent {
 // =============================================================================
 
 export const REQUIRED_SCOPES: Partial<Record<MessageType, PermissionScope[]>> = {
+  // Extension 1: Core AI
   'ai.createTextSession': ['model:prompt'],
   'ai.languageModel.create': ['model:prompt'],
   'ai.providers.list': ['model:list'],
@@ -440,8 +633,10 @@ export const REQUIRED_SCOPES: Partial<Record<MessageType, PermissionScope[]>> = 
   'ai.providers.setTypeDefault': ['model:list'],
   'session.prompt': ['model:prompt'],
   'session.promptStreaming': ['model:prompt'],
+  // Extension 1: Tools
   'agent.tools.list': ['mcp:tools.list'],
   'agent.tools.call': ['mcp:tools.call'],
+  // Extension 1: Browser (same-tab)
   'agent.browser.activeTab.readability': ['browser:activeTab.read'],
   'agent.browser.activeTab.click': ['browser:activeTab.interact'],
   'agent.browser.activeTab.fill': ['browser:activeTab.interact'],
@@ -456,6 +651,23 @@ export const REQUIRED_SCOPES: Partial<Record<MessageType, PermissionScope[]>> = 
   'agent.addressBar.registerProvider': ['addressBar:suggest'],
   'agent.addressBar.registerToolShortcuts': ['addressBar:suggest', 'addressBar:execute'],
   'agent.addressBar.registerSiteProvider': ['addressBar:suggest'],
+  // Extension 2: Navigation
+  'agent.browser.navigate': ['browser:navigate'],
+  'agent.browser.waitForNavigation': ['browser:navigate'],
+  // Extension 2: Tabs
+  'agent.browser.tabs.list': ['browser:tabs.read'],
+  'agent.browser.tabs.create': ['browser:tabs.create'],
+  'agent.browser.tabs.get': ['browser:tabs.read'],
+  'agent.browser.tabs.close': ['browser:tabs.create'], // Can only close tabs we created
+  // Extension 2: Spawned tab operations (requires tabs.create since you must have created the tab)
+  'agent.browser.tab.readability': ['browser:tabs.create'],
+  'agent.browser.tab.click': ['browser:tabs.create'],
+  'agent.browser.tab.fill': ['browser:tabs.create'],
+  'agent.browser.tab.scroll': ['browser:tabs.create'],
+  'agent.browser.tab.screenshot': ['browser:tabs.create'],
+  'agent.browser.tab.navigate': ['browser:tabs.create'],
+  // Extension 2: Web Fetch
+  'agent.fetch': ['web:fetch'],
 };
 
 // =============================================================================

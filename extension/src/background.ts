@@ -10,8 +10,10 @@ import { initializeBridgeClient, getBridgeConnectionState, checkBridgeHealth, br
 import { getConnectionState as getNativeConnectionState } from './llm/native-bridge';
 import { initializeMcpHost, addServer, startServer, stopServer, validateAndStartServer, removeServer, listServersWithStatus, callTool } from './mcp/host';
 import { cleanupExpiredGrants, listAllPermissions, revokePermissions } from './policy/permissions';
+import { getFeatureFlags, setFeatureFlags, type FeatureFlags } from './policy/feature-flags';
 import { initializeExtensionApi } from './extension-api';
 import { SessionRegistry } from './sessions';
+import { initializeRouter } from './agents/background-router';
 
 console.log('[Harbor] Extension starting...');
 
@@ -24,6 +26,9 @@ initializeMcpHost();
 
 // Initialize extension API for other extensions to call Harbor
 initializeExtensionApi();
+
+// Initialize agent router for web page API (content script transport)
+initializeRouter();
 
 // Cleanup expired permission grants on startup
 cleanupExpiredGrants();
@@ -895,6 +900,53 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       provider: string;
     }>('oauth.remove_credentials', { provider });
     sendResponse({ ok: true, ...result });
+  })().catch((error) => {
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  return true;
+});
+
+// =============================================================================
+// Feature Flags Handlers
+// =============================================================================
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'getFeatureFlags') {
+    return false;
+  }
+  (async () => {
+    const flags = await getFeatureFlags();
+    sendResponse(flags);
+  })().catch((error) => {
+    console.error('[Harbor] getFeatureFlags error:', error);
+    // Return safe defaults on error
+    sendResponse({
+      browserInteraction: false,
+      screenshots: false,
+      experimental: false,
+      browserControl: false,
+      multiAgent: false,
+    });
+  });
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'setFeatureFlags') {
+    return false;
+  }
+  const flags = message.flags as Partial<FeatureFlags> | undefined;
+  if (!flags) {
+    sendResponse({ ok: false, error: 'Missing flags' });
+    return true;
+  }
+  (async () => {
+    await setFeatureFlags(flags);
+    const updated = await getFeatureFlags();
+    sendResponse({ ok: true, flags: updated });
   })().catch((error) => {
     sendResponse({
       ok: false,

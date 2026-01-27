@@ -92,21 +92,36 @@ export async function getPermissionStatus(origin: string, tabId?: number): Promi
   const stored = await loadOriginPermissions(origin);
 
   const scopes: Record<PermissionScope, PermissionGrant> = {
+    // Extension 1: Core AI & MCP
     'model:prompt': 'not-granted',
     'model:tools': 'not-granted',
     'model:list': 'not-granted',
     'mcp:tools.list': 'not-granted',
     'mcp:tools.call': 'not-granted',
     'mcp:servers.register': 'not-granted',
+    // Extension 1: Browser (same-tab)
     'browser:activeTab.read': 'not-granted',
     'browser:activeTab.interact': 'not-granted',
     'browser:activeTab.screenshot': 'not-granted',
-    'chat:open': 'not-granted',
+    // Extension 2: Navigation and Tabs
+    'browser:navigate': 'not-granted',
+    'browser:tabs.read': 'not-granted',
+    'browser:tabs.create': 'not-granted',
+    // Extension 2: Web Fetch
     'web:fetch': 'not-granted',
+    // Other
+    'chat:open': 'not-granted',
     'addressBar:suggest': 'not-granted',
     'addressBar:context': 'not-granted',
     'addressBar:history': 'not-granted',
     'addressBar:execute': 'not-granted',
+    // Extension 3: Multi-Agent (reserved)
+    'agents:register': 'not-granted',
+    'agents:discover': 'not-granted',
+    'agents:invoke': 'not-granted',
+    'agents:message': 'not-granted',
+    'agents:crossOrigin': 'not-granted',
+    'agents:remote': 'not-granted',
   };
 
   if (stored) {
@@ -314,21 +329,36 @@ export async function listAllPermissions(): Promise<PermissionStatus[]> {
 
   for (const [origin, stored] of Object.entries(allPermissions)) {
     const scopes: Record<PermissionScope, PermissionGrant> = {
+      // Extension 1: Core AI & MCP
       'model:prompt': 'not-granted',
       'model:tools': 'not-granted',
       'model:list': 'not-granted',
       'mcp:tools.list': 'not-granted',
       'mcp:tools.call': 'not-granted',
       'mcp:servers.register': 'not-granted',
+      // Extension 1: Browser (same-tab)
       'browser:activeTab.read': 'not-granted',
       'browser:activeTab.interact': 'not-granted',
       'browser:activeTab.screenshot': 'not-granted',
-      'chat:open': 'not-granted',
+      // Extension 2: Navigation and Tabs
+      'browser:navigate': 'not-granted',
+      'browser:tabs.read': 'not-granted',
+      'browser:tabs.create': 'not-granted',
+      // Extension 2: Web Fetch
       'web:fetch': 'not-granted',
+      // Other
+      'chat:open': 'not-granted',
       'addressBar:suggest': 'not-granted',
       'addressBar:context': 'not-granted',
       'addressBar:history': 'not-granted',
       'addressBar:execute': 'not-granted',
+      // Extension 3: Multi-Agent (reserved)
+      'agents:register': 'not-granted',
+      'agents:discover': 'not-granted',
+      'agents:invoke': 'not-granted',
+      'agents:message': 'not-granted',
+      'agents:crossOrigin': 'not-granted',
+      'agents:remote': 'not-granted',
     };
 
     for (const scope of Object.keys(scopes) as PermissionScope[]) {
@@ -580,6 +610,7 @@ export async function requestPermissions(
 // =============================================================================
 
 export const SCOPE_DESCRIPTIONS: Record<PermissionScope, { title: string; description: string; risk: 'low' | 'medium' | 'high' }> = {
+  // Extension 1: Core AI & MCP
   'model:prompt': {
     title: 'Generate text using AI',
     description: 'Create text generation sessions and receive AI-generated responses.',
@@ -610,6 +641,7 @@ export const SCOPE_DESCRIPTIONS: Record<PermissionScope, { title: string; descri
     description: 'Allow the website to register its own MCP server.',
     risk: 'medium',
   },
+  // Extension 1: Browser (same-tab)
   'browser:activeTab.read': {
     title: 'Read current page',
     description: 'Extract readable text content from this page.',
@@ -625,15 +657,33 @@ export const SCOPE_DESCRIPTIONS: Record<PermissionScope, { title: string; descri
     description: 'Capture screenshots of this page.',
     risk: 'medium',
   },
+  // Extension 2: Navigation and Tabs
+  'browser:navigate': {
+    title: 'Navigate this tab',
+    description: 'Navigate the current tab to a different URL.',
+    risk: 'high',
+  },
+  'browser:tabs.read': {
+    title: 'See your open tabs',
+    description: 'See the URLs and titles of all your open tabs (metadata only, not content).',
+    risk: 'medium',
+  },
+  'browser:tabs.create': {
+    title: 'Open and control new tabs',
+    description: 'Create new browser tabs and have full control over tabs it creates (read, interact, navigate, close).',
+    risk: 'medium',
+  },
+  // Extension 2: Web Fetch
+  'web:fetch': {
+    title: 'Make web requests',
+    description: 'Proxy HTTP requests through the extension (bypasses CORS for allowed domains).',
+    risk: 'high',
+  },
+  // Other
   'chat:open': {
     title: 'Open chat UI',
     description: 'Open the browser\'s chat interface.',
     risk: 'low',
-  },
-  'web:fetch': {
-    title: 'Make web requests',
-    description: 'Proxy HTTP requests through the extension.',
-    risk: 'high',
   },
   'addressBar:suggest': {
     title: 'Provide address bar suggestions',
@@ -654,6 +704,37 @@ export const SCOPE_DESCRIPTIONS: Record<PermissionScope, { title: string; descri
     title: 'Execute from address bar',
     description: 'Run tools and actions directly from address bar commands.',
     risk: 'medium',
+  },
+  // Extension 3: Multi-Agent
+  'agents:register': {
+    title: 'Register as an agent',
+    description: 'Register this page as an agent that can be discovered and invoked by other agents.',
+    risk: 'low',
+  },
+  'agents:discover': {
+    title: 'Discover other agents',
+    description: 'List and find other registered agents.',
+    risk: 'medium',
+  },
+  'agents:invoke': {
+    title: 'Invoke other agents',
+    description: 'Delegate tasks to other registered agents.',
+    risk: 'medium',
+  },
+  'agents:message': {
+    title: 'Message other agents',
+    description: 'Send and receive messages to/from other agents.',
+    risk: 'medium',
+  },
+  'agents:crossOrigin': {
+    title: 'Cross-origin agent access',
+    description: 'Communicate with agents from different websites.',
+    risk: 'high',
+  },
+  'agents:remote': {
+    title: 'Connect to remote agents',
+    description: 'Connect to agents running on remote servers via A2A protocol.',
+    risk: 'high',
   },
 };
 

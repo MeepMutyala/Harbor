@@ -21,11 +21,14 @@ const entryPoints = [
   'src/sidebar.ts',
   'src/demo-bootstrap.ts',
   'src/js-runtime/worker-loader.ts',
+  'src/agents/content-script.ts',
+  'src/agents/injected.ts',
 ];
 
 async function copyStatic() {
   await mkdir('dist', { recursive: true });
   await mkdir('dist/js-runtime', { recursive: true });
+  await mkdir('dist/agents', { recursive: true });
   await copyFile('src/directory.html', 'dist/directory.html');
   await copyFile('src/sidebar.html', 'dist/sidebar.html');
   await copyFile('src/permission-prompt.html', 'dist/permission-prompt.html');

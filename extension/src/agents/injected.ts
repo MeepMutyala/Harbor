@@ -11,6 +11,65 @@
 export {};
 
 // =============================================================================
+// Feature Flags
+// =============================================================================
+
+interface FeatureFlags {
+  browserInteraction: boolean;
+  screenshots: boolean;
+  experimental: boolean;
+  browserControl: boolean;
+  multiAgent: boolean;
+}
+
+// Read feature flags from injected JSON element
+function getFeatureFlags(): FeatureFlags {
+  const defaults: FeatureFlags = {
+    browserInteraction: false,
+    screenshots: false,
+    experimental: false,
+    browserControl: false,
+    multiAgent: false,
+  };
+
+  try {
+    const flagsElement = document.getElementById('harbor-feature-flags');
+    if (flagsElement?.textContent) {
+      const parsed = JSON.parse(flagsElement.textContent) as Partial<FeatureFlags>;
+      return { ...defaults, ...parsed };
+    }
+  } catch {
+    // Ignore parse errors, use defaults
+  }
+
+  return defaults;
+}
+
+const FEATURE_FLAGS = getFeatureFlags();
+
+/**
+ * Create a function that throws ERR_FEATURE_DISABLED for disabled features.
+ */
+function featureDisabled(featureName: string): () => never {
+  return () => {
+    const err = new Error(`Feature "${featureName}" is not enabled. Enable it in Harbor settings.`);
+    (err as Error & { code?: string }).code = 'ERR_FEATURE_DISABLED';
+    throw err;
+  };
+}
+
+/**
+ * Create an async function that rejects with ERR_FEATURE_DISABLED for disabled features.
+ */
+function featureDisabledAsync(featureName: string): () => Promise<never> {
+  return async () => {
+    const err = new Error(`Feature "${featureName}" is not enabled. Enable it in Harbor settings.`);
+    (err as Error & { code?: string }).code = 'ERR_FEATURE_DISABLED';
+    throw err;
+  };
+}
+
+// =============================================================================
 // Types (subset needed for injected context)
 // =============================================================================
 
@@ -141,6 +200,91 @@ type RunEvent =
   | { type: 'token'; token: string }
   | { type: 'final'; output: string; citations?: Array<{ source: string; ref: string; excerpt: string }> }
   | { type: 'error'; error: { code: string; message: string } };
+
+// =============================================================================
+// Capabilities API Types
+// =============================================================================
+
+interface LLMCapabilities {
+  available: boolean;
+  streaming: boolean;
+  toolCalling: boolean;
+  providers: string[];
+  bestRuntime: 'firefox' | 'chrome' | 'harbor' | null;
+}
+
+interface ToolCapabilities {
+  available: boolean;
+  count: number;
+  servers: string[];
+}
+
+interface BrowserCapabilities {
+  readActiveTab: boolean;
+  interact: boolean;
+  screenshot: boolean;
+  navigate: boolean;
+  readTabs: boolean;
+  createTabs: boolean;
+}
+
+interface AgentCapabilities {
+  register: boolean;
+  discover: boolean;
+  invoke: boolean;
+  message: boolean;
+  crossOrigin: boolean;
+  remote: boolean;
+}
+
+interface CapabilityPermissions {
+  llm: {
+    prompt: PermissionGrant;
+    tools: PermissionGrant;
+    list: PermissionGrant;
+  };
+  mcp: {
+    list: PermissionGrant;
+    call: PermissionGrant;
+    register: PermissionGrant;
+  };
+  browser: {
+    read: PermissionGrant;
+    interact: PermissionGrant;
+    screenshot: PermissionGrant;
+    navigate: PermissionGrant;
+    tabsRead: PermissionGrant;
+    tabsCreate: PermissionGrant;
+  };
+  agents: {
+    register: PermissionGrant;
+    discover: PermissionGrant;
+    invoke: PermissionGrant;
+    message: PermissionGrant;
+    crossOrigin: PermissionGrant;
+    remote: PermissionGrant;
+  };
+  web: {
+    fetch: PermissionGrant;
+  };
+}
+
+interface AgentCapabilitiesReport {
+  version: string;
+  llm: LLMCapabilities;
+  tools: ToolCapabilities;
+  browser: BrowserCapabilities;
+  agents: AgentCapabilities;
+  permissions: CapabilityPermissions;
+  allowedTools: string[];
+  features: {
+    browserInteraction: boolean;
+    screenshots: boolean;
+    multiAgent: boolean;
+    remoteTabs: boolean;
+    webFetch: boolean;
+  };
+}
 
 interface DeclaredMCPServer {
   url: string;
@@ -489,6 +633,23 @@ const aiApi = Object.freeze(aiApiBase);
 // =============================================================================
 
 const agentApi = Object.freeze({
+  /**
+   * Get a comprehensive report of all available capabilities.
+   * This is the recommended way to discover what the agent can do.
+   * 
+   * @example
+   * const caps = await window.agent.capabilities();
+   * if (caps.llm.available && caps.llm.toolCalling) {
+   *   // Can use LLM with tools
+   * }
+   * if (caps.permissions.browser.read === 'granted-always') {
+   *   // Already has permission to read pages
+   * }
+   */
+  async capabilities(): Promise<AgentCapabilitiesReport> {
+    return sendRequest<AgentCapabilitiesReport>('agent.capabilities');
+  },
+
   async requestPermissions(options: {
     scopes: PermissionScope[];
     reason?: string;
@@ -514,6 +675,9 @@ const agentApi = Object.freeze({
   }),
 
   browser: Object.freeze({
+    // =========================================================================
+    // Extension 1: Active Tab APIs (same-tab only)
+    // =========================================================================
     activeTab: Object.freeze({
       /**
        * Extract readable text content from this page.
@@ -581,7 +745,716 @@ const agentApi = Object.freeze({
         return sendRequest<string>('agent.browser.activeTab.screenshot', options);
       },
     }),
+
+    // =========================================================================
+    // Extension 2: Navigation API (requires browserControl flag)
+    // =========================================================================
+
+    /**
+     * Navigate the current tab to a new URL.
+     * Requires: browser:navigate permission AND browserControl feature flag
+     * 
+     * @example
+     * await window.agent.browser.navigate('https://example.com');
+     */
+    navigate: FEATURE_FLAGS.browserControl
+      ? async (url: string): Promise<void> => {
+          return sendRequest('agent.browser.navigate', { url });
+        }
+      : featureDisabledAsync('browserControl'),
+
+    /**
+     * Wait for the current navigation to complete.
+     * Requires: browser:navigate permission AND browserControl feature flag
+     */
+    waitForNavigation: FEATURE_FLAGS.browserControl
+      ? async (options?: { timeout?: number }): Promise<void> => {
+          return sendRequest('agent.browser.waitForNavigation', options);
+        }
+      : featureDisabledAsync('browserControl'),
+
+    // =========================================================================
+    // Extension 2: Tabs API (multi-tab) - requires browserControl flag
+    // =========================================================================
+    tabs: FEATURE_FLAGS.browserControl
+      ? Object.freeze({
+          /**
+           * List all open tabs with their metadata.
+           * Requires: browser:tabs.read permission
+           */
+          async list(): Promise<Array<{
+            id: number;
+            url: string;
+            title: string;
+            active: boolean;
+            index: number;
+            windowId: number;
+            favIconUrl?: string;
+            status?: 'loading' | 'complete';
+            canControl: boolean;
+          }>> {
+            return sendRequest('agent.browser.tabs.list');
+          },
+
+          /**
+           * Get metadata for a specific tab.
+           * Requires: browser:tabs.read permission
+           */
+          async get(tabId: number): Promise<{
+            id: number;
+            url: string;
+            title: string;
+            active: boolean;
+            index: number;
+            windowId: number;
+            favIconUrl?: string;
+            status?: 'loading' | 'complete';
+            canControl: boolean;
+          } | null> {
+            return sendRequest('agent.browser.tabs.get', { tabId });
+          },
+
+          /**
+           * Create a new tab.
+           * Requires: browser:tabs.create permission
+           */
+          async create(options: {
+            url: string;
+            active?: boolean;
+            index?: number;
+            windowId?: number;
+          }): Promise<{
+            id: number;
+            url: string;
+            title: string;
+            active: boolean;
+            index: number;
+            windowId: number;
+            canControl: boolean;
+          }> {
+            return sendRequest('agent.browser.tabs.create', options);
+          },
+
+          /**
+           * Close a tab that this origin created.
+           * Requires: browser:tabs.create permission
+           */
+          async close(tabId: number): Promise<boolean> {
+            return sendRequest('agent.browser.tabs.close', { tabId });
+          },
+        })
+      : undefined,
+
+    // =========================================================================
+    // Extension 2: Spawned Tab Operations - requires browserControl flag
+    // Operations on tabs that this origin created (full control)
+    // =========================================================================
+    tab: FEATURE_FLAGS.browserControl
+      ? Object.freeze({
+          /**
+           * Extract readable text content from a tab this origin created.
+           */
+          async readability(tabId: number): Promise<ActiveTabReadability> {
+            return sendRequest<ActiveTabReadability>('agent.browser.tab.readability', { tabId });
+          },
+
+          /**
+           * Click an element in a tab this origin created.
+           */
+          async click(tabId: number, selector: string, options?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }): Promise<void> {
+            return sendRequest('agent.browser.tab.click', { tabId, selector, options });
+          },
+
+          /**
+           * Fill an input element in a tab this origin created.
+           */
+          async fill(tabId: number, selector: string, value: string): Promise<void> {
+            return sendRequest('agent.browser.tab.fill', { tabId, selector, value });
+          },
+
+          /**
+           * Scroll in a tab this origin created.
+           */
+          async scroll(tabId: number, options: { x?: number; y?: number; selector?: string; behavior?: 'auto' | 'smooth' }): Promise<void> {
+            return sendRequest('agent.browser.tab.scroll', { tabId, ...options });
+          },
+
+          /**
+           * Take a screenshot of a tab this origin created.
+           */
+          async screenshot(tabId: number, options?: { format?: 'png' | 'jpeg'; quality?: number }): Promise<string> {
+            return sendRequest<string>('agent.browser.tab.screenshot', { tabId, ...options });
+          },
+
+          /**
+           * Navigate a tab this origin created to a new URL.
+           */
+          async navigate(tabId: number, url: string): Promise<void> {
+            return sendRequest('agent.browser.tab.navigate', { tabId, url });
+          },
+
+          /**
+           * Wait for navigation to complete in a tab this origin created.
+           */
+          async waitForNavigation(tabId: number, options?: { timeout?: number }): Promise<void> {
+            return sendRequest('agent.browser.tab.waitForNavigation', { tabId, ...options });
+          },
+        })
+      : undefined,
   }),
+
+  // =========================================================================
+  // Extension 2: Web Fetch API (CORS bypass) - requires browserControl flag
+  // =========================================================================
+
+  /**
+   * Make an HTTP request through the extension (bypasses CORS).
+   * Requires: web:fetch permission AND browserControl feature flag
+   * 
+   * Only allowed for domains in the user's allowlist.
+   */
+  fetch: FEATURE_FLAGS.browserControl
+    ? async (url: string, options?: {
+        method?: string;
+        headers?: Record<string, string>;
+        body?: string;
+      }): Promise<{
+        ok: boolean;
+        status: number;
+        statusText: string;
+        headers: Record<string, string>;
+        text: string;
+      }> => {
+        return sendRequest('agent.fetch', { url, ...options });
+      }
+    : featureDisabledAsync('browserControl'),
+
+  // =========================================================================
+  // Extension 3: Multi-Agent API - requires multiAgent flag
+  // =========================================================================
+  agents: FEATURE_FLAGS.multiAgent
+    ? Object.freeze({
+        /**
+         * Register this page as an agent.
+         * Requires: agents:register permission
+         */
+        async register(options: {
+      name: string;
+      description?: string;
+      capabilities?: string[];
+      tags?: string[];
+      acceptsInvocations?: boolean;
+      acceptsMessages?: boolean;
+    }): Promise<{
+      id: string;
+      name: string;
+      capabilities: string[];
+      tags: string[];
+    }> {
+      return sendRequest('agents.register', options);
+    },
+
+    /**
+     * Unregister this agent.
+     * Requires: agents:register permission (must be the same agent that registered)
+     */
+    async unregister(agentId: string): Promise<boolean> {
+      return sendRequest('agents.unregister', { agentId });
+    },
+
+    /**
+     * Get information about the current agent.
+     */
+    async getInfo(agentId?: string): Promise<{
+      id: string;
+      name: string;
+      description?: string;
+      origin: string;
+      capabilities: string[];
+      tags: string[];
+      status: 'active' | 'suspended' | 'terminated';
+      usage: {
+        promptCount: number;
+        tokensUsed: number;
+        toolCallCount: number;
+        messagesSent: number;
+        invocationsMade: number;
+        invocationsReceived: number;
+      };
+    } | null> {
+      return sendRequest('agents.getInfo', { agentId });
+    },
+
+    /**
+     * Discover other agents.
+     * Requires: agents:discover permission
+     * Cross-origin discovery requires: agents:crossOrigin permission
+     * 
+     * @example
+     * const agents = await window.agent.agents.discover({
+     *   capabilities: ['summarize'],
+     *   includeCrossOrigin: true
+     * });
+     */
+    async discover(options?: {
+      name?: string;
+      capabilities?: string[];
+      tags?: string[];
+      includeSameOrigin?: boolean;
+      includeCrossOrigin?: boolean;
+      includeRemote?: boolean;
+    }): Promise<Array<{
+      id: string;
+      name: string;
+      description?: string;
+      origin: string;
+      capabilities: string[];
+      tags: string[];
+      acceptsInvocations: boolean;
+      acceptsMessages: boolean;
+      sameOrigin: boolean;
+      isRemote: boolean;
+    }>> {
+      return sendRequest('agents.discover', options);
+    },
+
+    /**
+     * List agents registered by this origin.
+     */
+    async list(): Promise<Array<{
+      id: string;
+      name: string;
+      status: 'active' | 'suspended' | 'terminated';
+    }>> {
+      return sendRequest('agents.list');
+    },
+
+    /**
+     * Invoke another agent to perform a task.
+     * Requires: agents:invoke permission
+     * Cross-origin invocation requires: agents:crossOrigin permission
+     * 
+     * Permission inheritance: The invoked agent's effective permissions are
+     * bounded by your permissions (cannot exceed what you have).
+     * 
+     * @example
+     * const result = await window.agent.agents.invoke({
+     *   agentId: 'agent-123',
+     *   task: 'Summarize this article',
+     *   input: { text: articleText },
+     *   timeout: 30000
+     * });
+     */
+    async invoke(options: {
+      agentId: string;
+      task: string;
+      input?: unknown;
+      timeout?: number;
+    }): Promise<{
+      success: boolean;
+      result?: unknown;
+      error?: { code: string; message: string };
+      executionTime: number;
+    }> {
+      return sendRequest('agents.invoke', options);
+    },
+
+    /**
+     * Send a message to another agent.
+     * Requires: agents:message permission
+     * Cross-origin messaging requires: agents:crossOrigin permission
+     * 
+     * @example
+     * await window.agent.agents.send({
+     *   to: 'agent-123',
+     *   payload: { type: 'update', data: someData }
+     * });
+     */
+    async send(options: {
+      to: string;
+      payload: unknown;
+    }): Promise<{ delivered: boolean; error?: string }> {
+      return sendRequest('agents.send', options);
+    },
+
+    /**
+     * Subscribe to events from other agents.
+     * Requires: agents:message permission
+     */
+    async subscribe(eventType: string): Promise<void> {
+      return sendRequest('agents.subscribe', { eventType });
+    },
+
+    /**
+     * Unsubscribe from events.
+     */
+    async unsubscribe(eventType: string): Promise<void> {
+      return sendRequest('agents.unsubscribe', { eventType });
+    },
+
+    /**
+     * Set up a handler for incoming messages.
+     * Returns an unsubscribe function.
+     */
+    onMessage(handler: (message: {
+      id: string;
+      from: string;
+      type: string;
+      payload: unknown;
+      timestamp: number;
+    }) => void): () => void {
+      // Register handler via postMessage
+      const handlerId = crypto.randomUUID();
+      
+      const listener = (event: MessageEvent) => {
+        if (event.source !== window) return;
+        const data = event.data as { channel?: string; agentMessage?: unknown };
+        if (data?.channel !== 'harbor_web_agent' || !data.agentMessage) return;
+        handler(data.agentMessage as Parameters<typeof handler>[0]);
+      };
+      
+      window.addEventListener('message', listener);
+      sendRequest('agents.registerMessageHandler', { handlerId }).catch(() => {});
+      
+      return () => {
+        window.removeEventListener('message', listener);
+        sendRequest('agents.unregisterMessageHandler', { handlerId }).catch(() => {});
+      };
+    },
+
+    /**
+     * Set up a handler for incoming invocations.
+     * Returns an unsubscribe function.
+     * 
+     * @example
+     * const unsubscribe = window.agent.agents.onInvoke(async (request) => {
+     *   // Process the task
+     *   const result = await processTask(request.task, request.input);
+     *   return { success: true, result };
+     * });
+     */
+    onInvoke(handler: (request: {
+      from: string;
+      task: string;
+      input?: unknown;
+    }) => Promise<{
+      success: boolean;
+      result?: unknown;
+      error?: { code: string; message: string };
+    }>): () => void {
+      const handlerId = crypto.randomUUID();
+      
+      const listener = async (event: MessageEvent) => {
+        if (event.source !== window) return;
+        const data = event.data as { 
+          channel?: string; 
+          agentInvocation?: { 
+            requestId: string; 
+            from: string; 
+            task: string; 
+            input?: unknown;
+          };
+        };
+        if (data?.channel !== 'harbor_web_agent' || !data.agentInvocation) return;
+        
+        const request = data.agentInvocation;
+        try {
+          const response = await handler({
+            from: request.from,
+            task: request.task,
+            input: request.input,
+          });
+          
+          window.postMessage({
+            channel: 'harbor_web_agent',
+            agentInvocationResponse: {
+              requestId: request.requestId,
+              ...response,
+            },
+          }, '*');
+        } catch (error) {
+          window.postMessage({
+            channel: 'harbor_web_agent',
+            agentInvocationResponse: {
+              requestId: request.requestId,
+              success: false,
+              error: {
+                code: 'ERR_HANDLER_FAILED',
+                message: error instanceof Error ? error.message : 'Handler failed',
+              },
+            },
+          }, '*');
+        }
+      };
+      
+      window.addEventListener('message', listener);
+      sendRequest('agents.registerInvocationHandler', { handlerId }).catch(() => {});
+      
+      return () => {
+        window.removeEventListener('message', listener);
+        sendRequest('agents.unregisterInvocationHandler', { handlerId }).catch(() => {});
+      };
+    },
+
+    // =========================================================================
+    // Remote Agents (A2A Protocol)
+    // =========================================================================
+    remote: Object.freeze({
+      /**
+       * Connect to a remote agent endpoint.
+       * Requires: agents:remote permission
+       * 
+       * @example
+       * const agent = await window.agent.agents.remote.connect({
+       *   url: 'https://agent.example.com',
+       *   version: '1.0'
+       * });
+       */
+      async connect(endpoint: {
+        url: string;
+        version?: string;
+        auth?: 'none' | 'bearer' | 'api-key';
+      }): Promise<{
+        id: string;
+        name: string;
+        description?: string;
+        capabilities: string[];
+        reachable: boolean;
+      } | null> {
+        return sendRequest('agents.remote.connect', endpoint);
+      },
+
+      /**
+       * Disconnect from a remote agent.
+       */
+      async disconnect(agentId: string): Promise<boolean> {
+        return sendRequest('agents.remote.disconnect', { agentId });
+      },
+
+      /**
+       * List connected remote agents.
+       */
+      async list(): Promise<Array<{
+        id: string;
+        name: string;
+        description?: string;
+        capabilities: string[];
+        url: string;
+        reachable: boolean;
+        lastPing?: number;
+      }>> {
+        return sendRequest('agents.remote.list');
+      },
+
+      /**
+       * Check if a remote agent is reachable.
+       */
+      async ping(agentId: string): Promise<boolean> {
+        return sendRequest('agents.remote.ping', { agentId });
+      },
+
+      /**
+       * Discover remote agents from a server.
+       * Looks for /.well-known/agents endpoint.
+       */
+      async discover(baseUrl: string): Promise<Array<{
+        name: string;
+        url: string;
+        description?: string;
+      }>> {
+        return sendRequest('agents.remote.discover', { baseUrl });
+      },
+    }),
+
+    // =========================================================================
+    // Orchestration
+    // =========================================================================
+    orchestrate: Object.freeze({
+      /**
+       * Execute a pipeline of agent invocations.
+       * Each step's output becomes the next step's input.
+       * 
+       * @example
+       * const result = await window.agent.agents.orchestrate.pipeline({
+       *   id: 'my-pipeline',
+       *   name: 'Research Pipeline',
+       *   steps: [
+       *     { id: 'search', agentId: 'search-agent', taskTemplate: 'Search for: {{input}}' },
+       *     { id: 'summarize', agentId: 'summarize-agent', taskTemplate: 'Summarize: {{input}}' }
+       *   ]
+       * }, 'quantum computing');
+       */
+      async pipeline(pipeline: {
+        id: string;
+        name: string;
+        steps: Array<{
+          id: string;
+          agentId: string;
+          taskTemplate: string;
+          outputTransform?: string;
+        }>;
+      }, initialInput: unknown): Promise<{
+        pipelineId: string;
+        success: boolean;
+        stepResults: Array<{
+          stepId: string;
+          agentId: string;
+          success: boolean;
+          result?: unknown;
+          error?: string;
+          executionTime: number;
+        }>;
+        finalOutput?: unknown;
+        totalExecutionTime: number;
+        error?: string;
+      }> {
+        return sendRequest('agents.orchestrate.pipeline', { pipeline, initialInput });
+      },
+
+      /**
+       * Execute multiple agent invocations in parallel.
+       * 
+       * @example
+       * const result = await window.agent.agents.orchestrate.parallel({
+       *   id: 'my-parallel',
+       *   tasks: [
+       *     { agentId: 'agent-1', task: 'Analyze A', input: dataA },
+       *     { agentId: 'agent-2', task: 'Analyze B', input: dataB }
+       *   ],
+       *   combineStrategy: 'array'
+       * });
+       */
+      async parallel(execution: {
+        id: string;
+        tasks: Array<{
+          agentId: string;
+          task: string;
+          input?: unknown;
+        }>;
+        combineStrategy: 'array' | 'merge' | 'first' | 'custom';
+      }): Promise<{
+        executionId: string;
+        success: boolean;
+        taskResults: Array<{
+          agentId: string;
+          success: boolean;
+          result?: unknown;
+          error?: string;
+          executionTime: number;
+        }>;
+        combinedOutput?: unknown;
+        totalExecutionTime: number;
+      }> {
+        return sendRequest('agents.orchestrate.parallel', execution);
+      },
+
+      /**
+       * Route to an agent based on input conditions.
+       * 
+       * @example
+       * const result = await window.agent.agents.orchestrate.route({
+       *   id: 'my-router',
+       *   name: 'Task Router',
+       *   routes: [
+       *     { condition: 'type:research', agentId: 'research-agent' },
+       *     { condition: 'type:summary', agentId: 'summarize-agent' }
+       *   ],
+       *   defaultAgentId: 'general-agent'
+       * }, { type: 'research', query: 'quantum computing' }, 'Process this request');
+       */
+      async route(router: {
+        id: string;
+        name: string;
+        routes: Array<{
+          condition: string;
+          agentId: string;
+        }>;
+        defaultAgentId?: string;
+      }, input: unknown, task: string): Promise<{
+        routerId: string;
+        selectedAgentId: string;
+        matchedCondition: string | null;
+        invocationResult: {
+          success: boolean;
+          result?: unknown;
+          error?: { code: string; message: string };
+          executionTime: number;
+        };
+      }> {
+        return sendRequest('agents.orchestrate.route', { router, input, task });
+      },
+
+      /**
+       * Execute tasks using a supervisor pattern with worker pool.
+       * 
+       * The supervisor distributes tasks to workers based on the assignment strategy,
+       * handles retries on failure, and aggregates results.
+       * 
+       * @example
+       * const result = await window.agent.agents.orchestrate.supervisor({
+       *   id: 'my-supervisor',
+       *   name: 'Research Supervisor',
+       *   workers: ['worker-1', 'worker-2', 'worker-3'],
+       *   assignmentStrategy: 'round-robin',
+       *   retry: { maxAttempts: 2, delayMs: 1000, reassignOnFailure: true },
+       *   aggregation: 'array'
+       * }, [
+       *   { id: 'task-1', task: 'Research topic A', priority: 1 },
+       *   { id: 'task-2', task: 'Research topic B', priority: 2 }
+       * ]);
+       */
+      async supervisor(supervisor: {
+        /** Unique identifier */
+        id: string;
+        /** Human-readable name */
+        name: string;
+        /** Worker agent IDs */
+        workers: string[];
+        /** Assignment strategy: 'round-robin' | 'random' | 'least-busy' | 'capability-match' */
+        assignmentStrategy: 'round-robin' | 'random' | 'least-busy' | 'capability-match';
+        /** Max concurrent tasks per worker */
+        maxConcurrentPerWorker?: number;
+        /** Retry configuration */
+        retry?: {
+          maxAttempts: number;
+          delayMs: number;
+          reassignOnFailure: boolean;
+        };
+        /** Result aggregation: 'array' | 'merge' | 'custom' */
+        aggregation: 'array' | 'merge' | 'custom';
+      }, tasks: Array<{
+        /** Task ID */
+        id: string;
+        /** Task description */
+        task: string;
+        /** Input data */
+        input?: unknown;
+        /** Required capabilities for capability-match strategy */
+        requiredCapabilities?: string[];
+        /** Priority (higher = more urgent) */
+        priority?: number;
+      }>): Promise<{
+        success: boolean;
+        results: Array<{
+          taskId: string;
+          workerId: string;
+          result?: unknown;
+          error?: string;
+          attempts: number;
+          executionTime: number;
+        }>;
+        stats: {
+          totalTasks: number;
+          succeeded: number;
+          failed: number;
+          totalTime: number;
+        };
+      }> {
+        return sendRequest('agents.orchestrate.supervisor', { supervisor, tasks });
+      },
+    }),
+  })
+    : undefined,
 
   run(options: {
     task: string;
@@ -947,11 +1820,15 @@ function createAddressBarAPI() {
 // window.harbor Implementation (Guaranteed namespace)
 // =============================================================================
 
+// Detect Chrome AI before creating harborApi so we can freeze with correct value
+const _existingAi = (window as { ai?: unknown }).ai;
+const _chromeAiDetected = _existingAi !== undefined && _existingAi !== null;
+
 const harborApi = Object.freeze({
   ai: aiApi,
   agent: agentApi,
   version: '1.0.0',
-  chromeAiDetected: false, // Will be set after detection
+  chromeAiDetected: _chromeAiDetected,
 });
 
 // =============================================================================
@@ -990,22 +1867,12 @@ function safeDefineProperty(
 }
 
 try {
-  // Check if Chrome AI is already present
-  const existingAi = (window as { ai?: unknown }).ai;
-  const chromeAiDetected = existingAi !== undefined && existingAi !== null;
-
-  // Update harbor with detection result
-  Object.defineProperty(harborApi, 'chromeAiDetected', {
-    value: chromeAiDetected,
-    writable: false,
-  });
-
   // Register window.harbor first (guaranteed namespace that's unlikely to conflict)
   safeDefineProperty('harbor', harborApi);
 
   // Register window.ai (may coexist with or override Chrome AI)
   // Skip if Chrome AI is present to avoid breaking Chrome's built-in functionality
-  if (!chromeAiDetected) {
+  if (!_chromeAiDetected) {
     safeDefineProperty('ai', aiApi);
   } else {
     console.debug('[Harbor] Chrome AI detected, window.ai not overridden. Use window.harbor.ai instead.');
@@ -1025,7 +1892,7 @@ try {
       detail: {
         providers: {
           harbor: true,
-          chrome: chromeAiDetected,
+          chrome: _chromeAiDetected,
         },
       },
     }),
@@ -1037,7 +1904,7 @@ try {
       detail: {
         providers: {
           harbor: true,
-          chrome: chromeAiDetected,
+          chrome: _chromeAiDetected,
         },
       },
     }),

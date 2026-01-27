@@ -21,7 +21,10 @@ import type {
   ToolShortcut,
   SiteProviderOptions,
   DeclaredAddressBarProvider,
+  RunEvent,
 } from './types';
+
+import { runAgent } from './orchestrator';
 
 // =============================================================================
 // Storage
@@ -581,8 +584,7 @@ async function executeAction(
       break;
 
     case 'agent':
-      // TODO: Trigger agent.run with the task
-      console.log('[Harbor] Run agent task:', action.task);
+      await executeAgentTask(action.task, action.tools);
       break;
   }
 }
@@ -770,4 +772,90 @@ function updateOmniboxDefaultSuggestion(): void {
   chrome.omnibox.setDefaultSuggestion({
     description: `<dim>${escapeXml(description)}</dim>`,
   });
+}
+
+// =============================================================================
+// Agent Task Execution
+// =============================================================================
+
+/**
+ * Execute an agent task from the address bar.
+ * Runs agent.run() and handles the result.
+ */
+async function executeAgentTask(
+  task: string,
+  tools?: string[],
+): Promise<void> {
+  console.log('[Harbor] Running agent task:', task);
+
+  try {
+    // Get active tab for context - use its origin for permissions
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const origin = activeTab?.url
+      ? new URL(activeTab.url).origin
+      : 'chrome-extension://' + chrome.runtime.id;
+
+    // Run the agent with the task
+    const events = runAgent(origin, {
+      task,
+      tools,
+      maxToolCalls: 10,
+    }, activeTab?.id);
+
+    // Collect the final output
+    let finalOutput = '';
+    let hasError = false;
+    let errorMessage = '';
+
+    for await (const event of events) {
+      switch (event.type) {
+        case 'status':
+          console.log('[Harbor] Agent status:', event.message);
+          break;
+        case 'tool_call':
+          console.log('[Harbor] Agent calling tool:', event.tool);
+          break;
+        case 'tool_result':
+          if (event.error) {
+            console.log('[Harbor] Tool error:', event.error.message);
+          } else {
+            console.log('[Harbor] Tool result received');
+          }
+          break;
+        case 'token':
+          // Tokens are streamed; we collect them in final
+          break;
+        case 'final':
+          finalOutput = event.output;
+          break;
+        case 'error':
+          hasError = true;
+          errorMessage = event.error.message;
+          break;
+      }
+    }
+
+    // Handle the result
+    if (hasError) {
+      console.error('[Harbor] Agent error:', errorMessage);
+      // Could show a notification here
+    } else if (finalOutput) {
+      await handleAgentResult(finalOutput);
+    }
+  } catch (error) {
+    console.error('[Harbor] Agent task error:', error);
+  }
+}
+
+/**
+ * Handle the result from an agent task.
+ * For now, copies to clipboard. Future: show in popup/panel.
+ */
+async function handleAgentResult(output: string): Promise<void> {
+  // Copy to clipboard
+  await copyToClipboard(output);
+  console.log('[Harbor] Agent result copied to clipboard:', output.slice(0, 100) + '...');
+
+  // TODO: Show in a popup or panel for better UX
+  // Could use chrome.notifications or open a results page
 }
