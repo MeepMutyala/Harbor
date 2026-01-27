@@ -3,7 +3,7 @@
 **Status**: Draft Proposal  
 **Author**: Raffi Krikorian &lt;raffi@mozilla.org&gt;  
 **Last Updated**: January 2026  
-**Version**: 1.0
+**Version**: 1.4
 
 ---
 
@@ -317,7 +317,57 @@ agent.browser.activeTab.readability()
 
 ---
 
-### 7. `web:fetch` (Reserved — Not Implemented in v1)
+### 7. `browser:activeTab.interact`
+
+**Purpose**: Allow the origin to interact with elements on the current page.
+
+**Capabilities Granted**:
+- Click buttons and links via `activeTab.click()`
+- Fill form inputs via `activeTab.fill()`
+- Select dropdown options via `activeTab.select()`
+- Scroll the page via `activeTab.scroll()`
+- Query elements via `activeTab.getElement()` and `activeTab.waitForSelector()`
+
+**User-Facing Description**: "Interact with this page (click, fill, scroll)"
+
+**Risk Level**: High — Can perform actions on the page like clicking buttons, submitting forms, etc. Only works on the page that called the API (same-tab only).
+
+**Feature Flag Required**: `browserInteraction` must be enabled in Harbor settings.
+
+**APIs Gated**:
+```
+agent.browser.activeTab.click()
+agent.browser.activeTab.fill()
+agent.browser.activeTab.select()
+agent.browser.activeTab.scroll()
+agent.browser.activeTab.getElement()
+agent.browser.activeTab.waitForSelector()
+```
+
+---
+
+### 8. `browser:activeTab.screenshot`
+
+**Purpose**: Allow the origin to capture screenshots of the current page.
+
+**Capabilities Granted**:
+- Take screenshots of the visible viewport
+- Configure format (PNG/JPEG) and quality
+
+**User-Facing Description**: "Take screenshots of this page"
+
+**Risk Level**: Medium — Can capture sensitive information visible on screen.
+
+**Feature Flag Required**: `screenshots` must be enabled in Harbor settings.
+
+**APIs Gated**:
+```
+agent.browser.activeTab.screenshot()
+```
+
+---
+
+### 9. `web:fetch` (Reserved — Not Implemented in v1)
 
 **Purpose**: Allow the origin to proxy HTTP requests through the extension.
 
@@ -341,17 +391,21 @@ agent.web.fetch()  // Not yet implemented
 
 ### Permission Summary Table
 
-| Scope | Risk Level | Read/Write | Requires User Gesture |
-|-------|------------|------------|----------------------|
-| `model:prompt` | Low | Read (model output) | No |
-| `model:tools` | Medium | Read/Write (via tools) | No |
-| `model:list` | Low | Read | No |
-| `mcp:tools.list` | Low | Read | No |
-| `mcp:tools.call` | High | Read/Write | No |
-| `browser:activeTab.read` | Medium-High | Read | Recommended* |
-| `web:fetch` | High | Read/Write | No |
+| Scope | Risk Level | Read/Write | Feature Flag |
+|-------|------------|------------|--------------|
+| `model:prompt` | Low | Read (model output) | — |
+| `model:tools` | Medium | Read/Write (via tools) | — |
+| `model:list` | Low | Read | — |
+| `mcp:tools.list` | Low | Read | — |
+| `mcp:tools.call` | High | Read/Write | — |
+| `mcp:servers.register` | Medium | Write | — |
+| `browser:activeTab.read` | Medium-High | Read | — |
+| `browser:activeTab.interact` | High | Write | `browserInteraction` |
+| `browser:activeTab.screenshot` | Medium | Read | `screenshots` |
+| `chat:open` | Low | Write | — |
+| `web:fetch` | High | Read/Write | Not implemented |
 
-*User gesture requirement for `browser:activeTab.read` is recommended but not enforced in v1.
+**Feature Flags**: Some permissions require feature flags to be enabled in Harbor settings. This provides an additional layer of control for experimental or high-risk features.
 
 ---
 
@@ -816,6 +870,101 @@ interface RuntimeCapabilities {
 
 The `window.agent` object provides access to MCP tools, browser APIs, and autonomous agent capabilities.
 
+#### `agent.capabilities()`
+
+Get a comprehensive report of all available capabilities, permissions, and features. This is the recommended way to discover what the agent can do before making API calls.
+
+**Signature:**
+```typescript
+agent.capabilities(): Promise<AgentCapabilitiesReport>
+```
+
+**Returns:**
+```typescript
+interface AgentCapabilitiesReport {
+  version: string;  // API version (e.g., '1.0.0')
+  
+  llm: {
+    available: boolean;      // Any LLM provider available
+    streaming: boolean;      // Streaming responses supported
+    toolCalling: boolean;    // Tool calling supported
+    providers: string[];     // Available provider IDs
+    bestRuntime: 'firefox' | 'chrome' | 'harbor' | null;
+  };
+  
+  tools: {
+    available: boolean;      // MCP tools available
+    count: number;           // Number of available tools
+    servers: string[];       // Connected MCP server IDs
+  };
+  
+  browser: {
+    readActiveTab: boolean;  // Can read page content
+    interact: boolean;       // Can click/fill (requires feature flag)
+    screenshot: boolean;     // Can take screenshots (requires feature flag)
+    navigate: boolean;       // Can navigate tabs (Extension 2)
+    readTabs: boolean;       // Can read tab metadata (Extension 2)
+    createTabs: boolean;     // Can create new tabs (Extension 2)
+  };
+  
+  agents: {
+    register: boolean;       // Can register as agent (Extension 3)
+    discover: boolean;       // Can discover agents (Extension 3)
+    invoke: boolean;         // Can invoke agents (Extension 3)
+    message: boolean;        // Can message agents (Extension 3)
+    crossOrigin: boolean;    // Can cross-origin communicate (Extension 3)
+    remote: boolean;         // Can connect to remote agents (Extension 3)
+  };
+  
+  permissions: {
+    llm: { prompt, tools, list: PermissionGrant };
+    mcp: { list, call, register: PermissionGrant };
+    browser: { read, interact, screenshot, navigate, tabsRead, tabsCreate: PermissionGrant };
+    agents: { register, discover, invoke, message, crossOrigin, remote: PermissionGrant };
+    web: { fetch: PermissionGrant };
+  };
+  
+  allowedTools: string[];    // Tools this origin can call
+  
+  features: {
+    browserInteraction: boolean;  // Feature flag status
+    screenshots: boolean;
+    multiAgent: boolean;
+    remoteTabs: boolean;
+    webFetch: boolean;
+  };
+}
+```
+
+**Example:**
+```javascript
+const caps = await window.agent.capabilities();
+
+// Check LLM availability
+if (caps.llm.available) {
+  console.log('LLM available via:', caps.llm.bestRuntime);
+  console.log('Providers:', caps.llm.providers);
+}
+
+// Check current permissions
+if (caps.permissions.llm.prompt === 'granted-always') {
+  // Already have permission, can create session directly
+  const session = await window.ai.createTextSession();
+}
+
+// Check if tools are available
+if (caps.tools.available && caps.tools.count > 0) {
+  console.log(`${caps.tools.count} tools from ${caps.tools.servers.length} servers`);
+}
+
+// Check browser interaction features
+if (caps.browser.interact && caps.features.browserInteraction) {
+  // Can use click/fill/scroll APIs
+}
+```
+
+---
+
 #### `agent.requestPermissions(options)`
 
 Request permission scopes from the user. Shows a permission prompt if needed.
@@ -1057,6 +1206,157 @@ const session = await window.ai.createTextSession();
 const summary = await session.prompt(
   `Summarize this article:\n\n${tab.text}`
 );
+```
+
+---
+
+#### `agent.browser.activeTab.click(selector, options?)`
+
+Click an element on the current page.
+
+**Signature:**
+```typescript
+agent.browser.activeTab.click(
+  selector: string,
+  options?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
+): Promise<void>
+```
+
+**Permission Required:** `browser:activeTab.interact`  
+**Feature Flag Required:** `browserInteraction`
+
+**Example:**
+```javascript
+await window.agent.browser.activeTab.click('#submit-button');
+await window.agent.browser.activeTab.click('a.nav-link', { button: 'middle' }); // Open in new tab
+```
+
+---
+
+#### `agent.browser.activeTab.fill(selector, value)`
+
+Fill a text input or textarea on the current page.
+
+**Signature:**
+```typescript
+agent.browser.activeTab.fill(selector: string, value: string): Promise<void>
+```
+
+**Permission Required:** `browser:activeTab.interact`  
+**Feature Flag Required:** `browserInteraction`
+
+**Example:**
+```javascript
+await window.agent.browser.activeTab.fill('#email', 'user@example.com');
+await window.agent.browser.activeTab.fill('textarea[name="message"]', 'Hello!');
+```
+
+---
+
+#### `agent.browser.activeTab.select(selector, value)`
+
+Select an option in a `<select>` element.
+
+**Signature:**
+```typescript
+agent.browser.activeTab.select(selector: string, value: string): Promise<void>
+```
+
+**Permission Required:** `browser:activeTab.interact`  
+**Feature Flag Required:** `browserInteraction`
+
+---
+
+#### `agent.browser.activeTab.scroll(options)`
+
+Scroll the page or scroll an element into view.
+
+**Signature:**
+```typescript
+agent.browser.activeTab.scroll(options: {
+  x?: number;
+  y?: number;
+  selector?: string;
+  behavior?: 'auto' | 'smooth';
+}): Promise<void>
+```
+
+**Permission Required:** `browser:activeTab.interact`  
+**Feature Flag Required:** `browserInteraction`
+
+**Example:**
+```javascript
+// Scroll to specific position
+await window.agent.browser.activeTab.scroll({ y: 500 });
+
+// Scroll element into view
+await window.agent.browser.activeTab.scroll({ selector: '#footer', behavior: 'smooth' });
+```
+
+---
+
+#### `agent.browser.activeTab.getElement(selector)`
+
+Get information about an element on the current page.
+
+**Signature:**
+```typescript
+agent.browser.activeTab.getElement(selector: string): Promise<ElementInfo | null>
+```
+
+**Returns:**
+```typescript
+interface ElementInfo {
+  tagName: string;
+  id?: string;
+  className?: string;
+  textContent?: string;
+  isVisible: boolean;
+  isEnabled: boolean;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+}
+```
+
+**Permission Required:** `browser:activeTab.read`
+
+---
+
+#### `agent.browser.activeTab.waitForSelector(selector, options?)`
+
+Wait for an element to appear on the page.
+
+**Signature:**
+```typescript
+agent.browser.activeTab.waitForSelector(
+  selector: string,
+  options?: { timeout?: number; visible?: boolean }
+): Promise<ElementInfo>
+```
+
+**Permission Required:** `browser:activeTab.read`
+
+---
+
+#### `agent.browser.activeTab.screenshot(options?)`
+
+Take a screenshot of the current page.
+
+**Signature:**
+```typescript
+agent.browser.activeTab.screenshot(options?: {
+  format?: 'png' | 'jpeg';
+  quality?: number;  // 0-100, for JPEG only
+}): Promise<string>  // Base64-encoded image
+```
+
+**Permission Required:** `browser:activeTab.screenshot`  
+**Feature Flag Required:** `screenshots`
+
+**Example:**
+```javascript
+const screenshot = await window.agent.browser.activeTab.screenshot({ format: 'jpeg', quality: 80 });
+const img = document.createElement('img');
+img.src = `data:image/jpeg;base64,${screenshot}`;
 ```
 
 ---
@@ -2285,7 +2585,7 @@ const session = await window.ai.createTextSession({
 const providers = await window.ai.providers.list();
 ```
 
-### 5. Capability Negotiation (Partial)
+### 5. Capability Negotiation ✅ IMPLEMENTED
 
 Provider capabilities are now queryable via `ai.providers.list()`:
 
@@ -2296,11 +2596,14 @@ for (const p of providers) {
 }
 ```
 
-Open question: Should there be a unified capability query for agent features?
+Additionally, `agent.capabilities()` provides a unified capability query:
 
 ```javascript
 const caps = await window.agent.capabilities();
-// { tools: true, browser: true, activeProviders: 3, ... }
+console.log(caps.llm.available);      // true
+console.log(caps.tools.count);        // 12
+console.log(caps.browser.interact);   // true (if feature flag enabled)
+console.log(caps.permissions.llm.prompt); // 'granted-always'
 ```
 
 ---
@@ -2327,6 +2630,7 @@ const caps = await window.agent.capabilities();
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.4 | January 2026 | Unified capabilities API (`agent.capabilities()`), browser interaction APIs documentation |
 | 1.3 | January 2026 | Native browser AI providers (Firefox ML, Chrome AI), split routing, `ai.runtime.*` |
 | 1.2 | January 2026 | Address Bar API (`agent.addressBar.*`, `agent.commandBar.*`) |
 | 1.1 | January 2026 | Added BYOC extension (`agent.mcp.*`, `agent.chat.*`) |

@@ -26,6 +26,8 @@
 13. [Comparison with Chrome Prompt API](#comparison-with-chrome-prompt-api)
 14. [Open Questions](#open-questions)
 
+**See Also:** [Sessions Guide](./SESSIONS_GUIDE.md) — When to use `window.ai.createTextSession()` vs `agent.sessions.create()`
+
 ---
 
 ## Introduction
