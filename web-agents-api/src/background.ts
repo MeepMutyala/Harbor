@@ -56,6 +56,12 @@ interface StoredPermissions {
   allowedTools?: string[];
 }
 
+interface PermissionStatusEntry {
+  origin: string;
+  scopes: Record<string, PermissionGrantType>;
+  allowedTools?: string[];
+}
+
 async function getPermissions(origin: string): Promise<StoredPermissions> {
   const key = PERMISSION_KEY_PREFIX + origin;
   const result = await chrome.storage.local.get(key);
@@ -65,6 +71,39 @@ async function getPermissions(origin: string): Promise<StoredPermissions> {
 async function savePermissions(origin: string, permissions: StoredPermissions): Promise<void> {
   const key = PERMISSION_KEY_PREFIX + origin;
   await chrome.storage.local.set({ [key]: permissions });
+}
+
+async function listAllPermissions(): Promise<PermissionStatusEntry[]> {
+  const result = await chrome.storage.local.get(null);
+  const entries: PermissionStatusEntry[] = [];
+
+  for (const [key, value] of Object.entries(result)) {
+    if (!key.startsWith(PERMISSION_KEY_PREFIX)) continue;
+    const origin = key.slice(PERMISSION_KEY_PREFIX.length);
+    const permissions = (value || { scopes: {} }) as StoredPermissions;
+    const scopes: Record<string, PermissionGrantType> = {};
+
+    for (const [scope, grant] of Object.entries(permissions.scopes || {})) {
+      if (grant.type === 'granted-once' && grant.expiresAt && Date.now() > grant.expiresAt) {
+        scopes[scope] = 'not-granted';
+      } else {
+        scopes[scope] = grant.type;
+      }
+    }
+
+    entries.push({
+      origin,
+      scopes,
+      allowedTools: permissions.allowedTools,
+    });
+  }
+
+  return entries;
+}
+
+async function revokeOriginPermissions(origin: string): Promise<void> {
+  const key = PERMISSION_KEY_PREFIX + origin;
+  await chrome.storage.local.remove(key);
 }
 
 async function checkPermission(origin: string, scope: PermissionScope): Promise<PermissionGrantType> {
@@ -94,17 +133,172 @@ async function hasPermission(origin: string, scope: PermissionScope): Promise<bo
 // Permission Prompt
 // =============================================================================
 
+interface PermissionPromptResponse {
+  promptId: string;
+  granted: boolean;
+  grantType?: 'granted-once' | 'granted-always';
+  allowedTools?: string[];
+  explicitDeny?: boolean;
+}
+
+interface PendingPrompt {
+  resolve: (response: PermissionPromptResponse) => void;
+  windowId?: number;
+}
+
+const pendingPermissionPrompts = new Map<string, PendingPrompt>();
+let promptIdCounter = 0;
+
+function generatePromptId(): string {
+  return `prompt-${Date.now()}-${++promptIdCounter}`;
+}
+
+function resolvePromptClosed(windowId: number): void {
+  for (const [promptId, pending] of pendingPermissionPrompts.entries()) {
+    if (pending.windowId === windowId) {
+      pendingPermissionPrompts.delete(promptId);
+      pending.resolve({ promptId, granted: false });
+      return;
+    }
+  }
+}
+
+async function openPermissionPrompt(options: {
+  origin: string;
+  scopes: PermissionScope[];
+  reason?: string;
+  tools?: string[];
+}): Promise<PermissionPromptResponse> {
+  const promptId = generatePromptId();
+
+  const url = new URL(chrome.runtime.getURL('dist/permission-prompt.html'));
+  url.searchParams.set('promptId', promptId);
+  url.searchParams.set('origin', options.origin);
+  if (options.scopes.length > 0) {
+    url.searchParams.set('scopes', options.scopes.join(','));
+  }
+  if (options.reason) {
+    url.searchParams.set('reason', options.reason);
+  }
+  if (options.tools && options.tools.length > 0) {
+    url.searchParams.set('tools', options.tools.join(','));
+  }
+
+  return new Promise((resolve) => {
+    pendingPermissionPrompts.set(promptId, { resolve });
+
+    chrome.windows.create(
+      {
+        url: url.toString(),
+        type: 'popup',
+        width: 480,
+        height: 640,
+      },
+      (createdWindow) => {
+        if (chrome.runtime.lastError || !createdWindow?.id) {
+          pendingPermissionPrompts.delete(promptId);
+          resolve({ promptId, granted: false });
+          return;
+        }
+
+        const pending = pendingPermissionPrompts.get(promptId);
+        if (pending) {
+          pending.windowId = createdWindow.id;
+        }
+      },
+    );
+  });
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'permission_prompt_response') {
+    return false;
+  }
+
+  const response = message.response as PermissionPromptResponse | undefined;
+  if (!response) {
+    sendResponse({ ok: false });
+    return true;
+  }
+
+  let promptId = response.promptId;
+  if (!promptId && pendingPermissionPrompts.size === 1) {
+    promptId = Array.from(pendingPermissionPrompts.keys())[0];
+  }
+
+  const pending = promptId ? pendingPermissionPrompts.get(promptId) : undefined;
+  if (!pending) {
+    sendResponse({ ok: false });
+    return true;
+  }
+
+  pendingPermissionPrompts.delete(promptId);
+  if (pending.windowId) {
+    chrome.windows.remove(pending.windowId);
+  }
+
+  pending.resolve({ ...response, promptId });
+  sendResponse({ ok: true });
+  return true;
+});
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  resolvePromptClosed(windowId);
+});
+
+function handleWebAgentsPermissionsMessage(
+  message: { type?: string; origin?: string },
+  sendResponse: (response?: unknown) => void,
+): boolean {
+  if (message?.type === 'web_agents_permissions.list_all') {
+    (async () => {
+      const permissions = await listAllPermissions();
+      sendResponse({ ok: true, permissions });
+    })().catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    });
+    return true;
+  }
+
+  if (message?.type === 'web_agents_permissions.revoke_origin') {
+    const { origin } = message as { origin?: string };
+    if (!origin) {
+      sendResponse({ ok: false, error: 'Missing origin' });
+      return true;
+    }
+
+    (async () => {
+      await revokeOriginPermissions(origin);
+      sendResponse({ ok: true });
+    })().catch((error) => {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    });
+    return true;
+  }
+
+  return false;
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  return handleWebAgentsPermissionsMessage(message, sendResponse);
+});
+
+chrome.runtime.onMessageExternal?.addListener((message, _sender, sendResponse) => {
+  return handleWebAgentsPermissionsMessage(message, sendResponse);
+});
+
 async function showPermissionPrompt(
   origin: string,
   scopes: PermissionScope[],
   reason?: string,
   tools?: string[],
 ): Promise<{ granted: boolean; scopes: Record<PermissionScope, PermissionGrantType>; allowedTools?: string[] }> {
-  // For now, auto-grant in development. In production, this would show a popup.
-  // TODO: Implement proper permission prompt UI
-  
   const permissions = await getPermissions(origin);
   const result: Record<PermissionScope, PermissionGrantType> = {};
+  const scopesToRequest: PermissionScope[] = [];
+  const requestedTools = tools && tools.length > 0 ? tools : [];
+  const existingAllowedTools = permissions.allowedTools || [];
+  const missingTools = requestedTools.filter((tool) => !existingAllowedTools.includes(tool));
   
   for (const scope of scopes) {
     // Check if already granted
@@ -118,23 +312,66 @@ async function showPermissionPrompt(
       result[scope] = 'denied';
       continue;
     }
-    
-    // Auto-grant for development (10 minute grant-once)
-    const grant = {
-      type: 'granted-once' as PermissionGrantType,
-      grantedAt: Date.now(),
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
-    };
-    permissions.scopes[scope] = grant;
-    result[scope] = 'granted-once';
+
+    scopesToRequest.push(scope);
   }
-  
-  // Store tool allowlist if provided
-  if (tools && tools.length > 0) {
-    permissions.allowedTools = [...new Set([...(permissions.allowedTools || []), ...tools])];
+
+  let didUpdatePermissions = false;
+
+  if (scopesToRequest.length > 0) {
+    const promptResponse = await openPermissionPrompt({ origin, scopes: scopesToRequest, reason, tools });
+
+    if (promptResponse.granted) {
+      const grantType = promptResponse.grantType || 'granted-once';
+      for (const scope of scopesToRequest) {
+        const grant = {
+          type: grantType as PermissionGrantType,
+          grantedAt: Date.now(),
+          expiresAt: grantType === 'granted-once' ? Date.now() + 10 * 60 * 1000 : undefined,
+        };
+        permissions.scopes[scope] = grant;
+        result[scope] = grant.type;
+      }
+
+      if (promptResponse.allowedTools && promptResponse.allowedTools.length > 0) {
+        permissions.allowedTools = [
+          ...new Set([...(permissions.allowedTools || []), ...promptResponse.allowedTools]),
+        ];
+      }
+
+      didUpdatePermissions = true;
+    } else {
+      for (const scope of scopesToRequest) {
+        if (promptResponse.explicitDeny) {
+          permissions.scopes[scope] = { type: 'denied', grantedAt: Date.now() };
+          result[scope] = 'denied';
+          didUpdatePermissions = true;
+        } else {
+          result[scope] = 'not-granted';
+        }
+      }
+    }
   }
-  
-  await savePermissions(origin, permissions);
+
+  if (scopesToRequest.length === 0 && missingTools.length > 0) {
+    const promptResponse = await openPermissionPrompt({
+      origin,
+      scopes: ['mcp:tools.call'],
+      reason,
+      tools: missingTools,
+    });
+
+    if (promptResponse.granted && promptResponse.allowedTools && promptResponse.allowedTools.length > 0) {
+      permissions.allowedTools = [
+        ...new Set([...(permissions.allowedTools || []), ...promptResponse.allowedTools]),
+      ];
+      didUpdatePermissions = true;
+    }
+  }
+
+  if (didUpdatePermissions) {
+    await savePermissions(origin, permissions);
+  }
   
   const allGranted = scopes.every(s => result[s] === 'granted-once' || result[s] === 'granted-always');
   

@@ -75,6 +75,7 @@ initTheme();
 
 // Parse URL params
 const params = new URLSearchParams(window.location.search);
+const promptId = params.get('promptId') || '';
 const origin = params.get('origin') || 'Unknown';
 const scopesParam = params.get('scopes') || '';
 const reason = params.get('reason') || '';
@@ -196,6 +197,6 @@ function sendResponse(response: {
   console.log('[Permission Prompt] Sending response:', response);
   chrome.runtime.sendMessage({
     type: 'permission_prompt_response',
-    response,
+    response: { promptId, ...response },
   });
 }
