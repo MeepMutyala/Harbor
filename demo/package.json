@@ -6,8 +6,8 @@
   "scripts": {
     "start": "serve -l 8000",
     "serve": "serve -l 8000",
-    "dev": "concurrently --names \"demo,mcp\" --prefix-colors \"cyan,yellow\" \"serve -l 8000\" \"node bring-your-chatbot/mcp-server/http-server.js\"",
-    "mcp-server": "node bring-your-chatbot/mcp-server/http-server.js"
+    "dev": "concurrently --names \"demo,mcp\" --prefix-colors \"cyan,yellow\" \"serve -l 8000\" \"node web-agents/bring-your-chatbot/mcp-server/http-server.js\"",
+    "mcp-server": "node web-agents/bring-your-chatbot/mcp-server/http-server.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

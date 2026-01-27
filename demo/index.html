@@ -95,6 +95,25 @@
     .extension-note strong {
       color: var(--demo-text-primary);
     }
+
+    .demo-section-title {
+      font-size: var(--demo-text-xl);
+      font-weight: var(--demo-weight-semibold);
+      color: var(--demo-text-primary);
+      margin-top: var(--demo-space-10);
+      margin-bottom: var(--demo-space-2);
+    }
+
+    .demo-section-desc {
+      font-size: var(--demo-text-sm);
+      color: var(--demo-text-secondary);
+      margin-bottom: var(--demo-space-4);
+    }
+
+    .demo-card-disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body class="demo-bg-glow">
@@ -108,8 +127,12 @@
       </p>
     </header>
 
+    <!-- Web Agents (Extension 1) -->
+    <h2 class="demo-section-title">Web Agents</h2>
+    <p class="demo-section-desc">Basic LLM and MCP server access demos</p>
+
     <div class="demos-grid">
-      <a href="getting-started/" class="demo-card">
+      <a href="web-agents/getting-started/" class="demo-card">
         <div class="demo-card demo-card-interactive">
           <div class="demo-card-content">
             <div class="demo-card-icon">🚀</div>
@@ -127,7 +150,7 @@
         </div>
       </a>
 
-      <a href="chat-poc/" class="demo-card">
+      <a href="web-agents/chat-poc/" class="demo-card">
         <div class="demo-card demo-card-interactive">
           <div class="demo-card-content">
             <div class="demo-card-icon">💬</div>
@@ -145,7 +168,7 @@
         </div>
       </a>
 
-      <a href="summarizer/" class="demo-card">
+      <a href="web-agents/summarizer/" class="demo-card">
         <div class="demo-card demo-card-interactive">
           <div class="demo-card-content">
             <div class="demo-card-icon">📄</div>
@@ -160,7 +183,7 @@
         </div>
       </a>
 
-      <a href="summarizer/chrome-compat.html" class="demo-card">
+      <a href="web-agents/summarizer/chrome-compat.html" class="demo-card">
         <div class="demo-card demo-card-interactive">
           <div class="demo-card-content">
             <div class="demo-card-icon">🔄</div>
@@ -175,7 +198,7 @@
         </div>
       </a>
 
-      <a href="email-chat/" class="demo-card">
+      <a href="web-agents/email-chat/" class="demo-card">
         <div class="demo-card demo-card-interactive">
           <div class="demo-card-content">
             <div class="demo-card-icon">📧</div>
@@ -193,7 +216,7 @@
         </div>
       </a>
 
-      <a href="bookmarklet/" class="demo-card">
+      <a href="web-agents/bookmarklet/" class="demo-card">
         <div class="demo-card demo-card-interactive">
           <div class="demo-card-content">
             <div class="demo-card-icon">🔖</div>
@@ -208,7 +231,7 @@
         </div>
       </a>
 
-      <a href="bring-your-chatbot/" class="demo-card">
+      <a href="web-agents/bring-your-chatbot/" class="demo-card">
         <div class="demo-card demo-card-interactive">
           <div class="demo-card-content">
             <div class="demo-card-icon">🛍️</div>
@@ -224,6 +247,76 @@
           </div>
         </div>
       </a>
+    </div>
+
+    <!-- Web Agent Control (Extension 2) -->
+    <h2 class="demo-section-title">Web Agent Control</h2>
+    <p class="demo-section-desc">Active-tab interaction demos (click, fill, scroll, wait)</p>
+
+    <div class="demos-grid">
+      <a href="web-agent-control/step-1-basic-actions/" class="demo-card">
+        <div class="demo-card demo-card-interactive">
+          <div class="demo-card-content">
+            <div class="demo-card-icon">🧪</div>
+            <div class="demo-card-text">
+              <div class="demo-card-title">
+                Basic Actions
+                <span class="demo-badge">Start Here</span>
+              </div>
+              <p class="demo-card-description">
+                Practice <code>click</code>, <code>fill</code>, and <code>select</code> on a simple form.
+              </p>
+            </div>
+          </div>
+        </div>
+      </a>
+
+      <a href="web-agent-control/step-2-multi-step-form/" class="demo-card">
+        <div class="demo-card demo-card-interactive">
+          <div class="demo-card-content">
+            <div class="demo-card-icon">🧭</div>
+            <div class="demo-card-text">
+              <div class="demo-card-title">Multi-step Form</div>
+              <p class="demo-card-description">
+                Validate fields, advance between steps, and use <code>waitForSelector</code>.
+              </p>
+            </div>
+          </div>
+        </div>
+      </a>
+
+      <a href="web-agent-control/step-3-scroll-and-wait/" class="demo-card">
+        <div class="demo-card demo-card-interactive">
+          <div class="demo-card-content">
+            <div class="demo-card-icon">🛰️</div>
+            <div class="demo-card-text">
+              <div class="demo-card-title">Scroll &amp; Wait</div>
+              <p class="demo-card-description">
+                Scroll a long list, load more items, and wait for delayed elements.
+              </p>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <!-- Multi Web Agent (Extension 3) -->
+    <h2 class="demo-section-title">Multi Web Agent</h2>
+    <p class="demo-section-desc">Multi-agent coordination demos (A2A communication)</p>
+
+    <div class="demos-grid">
+      <div class="demo-card demo-card-disabled">
+        <div class="demo-card-content">
+          <div class="demo-card-icon" style="opacity: 0.5;">🔜</div>
+          <div class="demo-card-text">
+            <div class="demo-card-title">Coming Soon</div>
+            <p class="demo-card-description">
+              Demos for multi-agent coordination: agent registration, discovery, 
+              messaging, and orchestration patterns.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="extension-note">

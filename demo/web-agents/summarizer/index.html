@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Page Summarizer (Chrome API) — Web Agent API Demo</title>
+  <title>Page Summarizer — Web Agent API Demo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../shared/styles.css">
+  <link rel="stylesheet" href="../../shared/styles.css">
   <style>
     body {
       min-height: 100vh;
@@ -36,20 +36,20 @@
       align-items: center;
       gap: var(--demo-space-3);
       padding: var(--demo-space-4) var(--demo-space-8);
-      background: linear-gradient(135deg, var(--demo-info), #60a5fa);
+      background: linear-gradient(135deg, var(--demo-accent-primary), var(--demo-accent-tertiary));
       color: white;
       text-decoration: none;
       border-radius: var(--demo-radius-lg);
       font-size: var(--demo-text-base);
       font-weight: var(--demo-weight-semibold);
-      box-shadow: 0 0 30px rgba(59, 130, 246, 0.25);
+      box-shadow: var(--demo-shadow-glow);
       cursor: grab;
       transition: transform 0.2s, box-shadow 0.2s;
     }
 
     .bookmarklet-link:hover {
       transform: translateY(-2px);
-      box-shadow: var(--demo-shadow-lg), 0 0 30px rgba(59, 130, 246, 0.3);
+      box-shadow: var(--demo-shadow-lg), var(--demo-shadow-glow);
       color: white;
     }
 
@@ -64,6 +64,47 @@
     }
 
     .bookmarklet-hint strong {
+      color: var(--demo-text-secondary);
+    }
+
+    /* Instructions */
+    .instructions {
+      counter-reset: step;
+    }
+
+    .step {
+      display: flex;
+      gap: var(--demo-space-4);
+      margin-bottom: var(--demo-space-5);
+    }
+
+    .step:last-child {
+      margin-bottom: 0;
+    }
+
+    .step-number {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, var(--demo-accent-primary), var(--demo-accent-tertiary));
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--demo-text-sm);
+      font-weight: var(--demo-weight-semibold);
+      flex-shrink: 0;
+    }
+
+    .step-content h3 {
+      font-size: var(--demo-text-sm);
+      font-weight: var(--demo-weight-semibold);
+      color: var(--demo-text-primary);
+      margin-bottom: var(--demo-space-1);
+    }
+
+    .step-content p {
+      font-size: var(--demo-text-sm);
       color: var(--demo-text-secondary);
     }
 
@@ -143,46 +184,6 @@
       color: rgba(255,255,255,0.85);
     }
 
-    /* Comparison table */
-    .comparison {
-      margin-top: var(--demo-space-5);
-      border: 1px solid var(--demo-border-default);
-      border-radius: var(--demo-radius-md);
-      overflow: hidden;
-    }
-
-    .comparison-row {
-      display: flex;
-      border-bottom: 1px solid var(--demo-border-default);
-    }
-
-    .comparison-row:last-child {
-      border-bottom: none;
-    }
-
-    .comparison-label {
-      flex: 0 0 140px;
-      padding: var(--demo-space-3) var(--demo-space-4);
-      background: var(--demo-bg-elevated);
-      font-size: var(--demo-text-sm);
-      font-weight: var(--demo-weight-semibold);
-      color: var(--demo-text-secondary);
-    }
-
-    .comparison-value {
-      flex: 1;
-      padding: var(--demo-space-3) var(--demo-space-4);
-      font-size: var(--demo-text-sm);
-      color: var(--demo-text-primary);
-    }
-
-    .comparison-value code {
-      background: var(--demo-bg-elevated);
-      padding: 2px 6px;
-      border-radius: var(--demo-radius-sm);
-      font-size: var(--demo-text-xs);
-    }
-
     /* Other link */
     .link-other {
       display: inline-flex;
@@ -205,52 +206,72 @@
       color: var(--demo-accent-primary);
     }
 
-    /* Why section list */
-    .why-list {
-      margin: 0 0 0 var(--demo-space-5);
+    /* Build your own section */
+    .ideas-list {
+      margin: var(--demo-space-4) 0 0 var(--demo-space-5);
       color: var(--demo-text-secondary);
       font-size: var(--demo-text-sm);
     }
 
-    .why-list li {
+    .ideas-list li {
       margin-bottom: var(--demo-space-3);
     }
 
-    .why-list li:last-child {
+    .ideas-list li:last-child {
       margin-bottom: 0;
     }
 
-    .why-list strong {
+    .ideas-list strong {
       color: var(--demo-text-primary);
     }
   </style>
 </head>
-<body class="demo-bg-grid">
+<body class="demo-bg-glow">
   <div class="page-container">
     <header class="demo-header">
-      <div class="demo-logo" style="background: linear-gradient(135deg, var(--demo-info), #60a5fa);">⚡</div>
-      <h1 class="demo-title" style="background: linear-gradient(135deg, var(--demo-info), #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Page Summarizer</h1>
-      <p class="demo-subtitle">Chrome API Compatible Version</p>
-      <div class="demo-badge demo-badge-info" style="margin-top: var(--demo-space-3);">
-        <span>🔵</span>
-        <span>Uses window.ai.languageModel</span>
-      </div>
+      <div class="demo-logo">📄</div>
+      <h1 class="demo-title demo-text-gradient">Page Summarizer</h1>
+      <p class="demo-subtitle">A bookmarklet that summarizes any webpage using the Web Agent API</p>
     </header>
 
     <div class="demo-card demo-mb-6">
       <div class="demo-card-header">
-        <div class="demo-card-icon" style="background: linear-gradient(135deg, var(--demo-info), #60a5fa);">🔖</div>
+        <div class="demo-card-icon">🔖</div>
         <h2 class="demo-card-title">Get the Bookmarklet</h2>
       </div>
       
       <div class="bookmarklet-section">
         <a class="bookmarklet-link" id="bookmarklet" href="#">
-          <span>⚡</span>
-          <span>Summarize (Chrome API)</span>
+          <span>📝</span>
+          <span>Summarize Page</span>
         </a>
         <p class="bookmarklet-hint">
           <strong>Drag this button</strong> to your bookmarks bar
         </p>
+      </div>
+
+      <div class="instructions">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>Drag to Bookmarks Bar</h3>
+            <p>Drag the "Summarize Page" button above to your browser's bookmarks toolbar</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Visit Any Page</h3>
+            <p>Navigate to an article, documentation, or any page you want summarized</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Click the Bookmarklet</h3>
+            <p>Click "Summarize Page" in your bookmarks — a summary overlay will appear</p>
+          </div>
+        </div>
       </div>
 
       <div class="requirements">
@@ -259,8 +280,8 @@
           <span>Requires Web Agent API (e.g., Harbor)</span>
         </div>
         <div class="requirement">
-          <span class="requirement-icon">🔵</span>
-          <span>Chrome API compatible</span>
+          <span class="requirement-icon">🤖</span>
+          <span>Requires LLM configured</span>
         </div>
       </div>
 
@@ -268,7 +289,7 @@
         <div class="preview-label">Preview: What you'll see</div>
         <div class="overlay-preview">
           <div class="overlay-preview-header">
-            <span class="overlay-preview-title">⚡ Page Summary</span>
+            <span class="overlay-preview-title">📄 Page Summary</span>
             <button class="overlay-preview-close">×</button>
           </div>
           <div class="overlay-preview-content">
@@ -280,91 +301,71 @@
 
     <div class="demo-card demo-mb-6">
       <div class="demo-card-header">
-        <div class="demo-card-icon" style="background: linear-gradient(135deg, var(--demo-info), #60a5fa);">💻</div>
-        <h2 class="demo-card-title">The Code</h2>
+        <div class="demo-card-icon">💻</div>
+        <h2 class="demo-card-title">How It Works</h2>
       </div>
       
       <p style="color: var(--demo-text-secondary); font-size: var(--demo-text-sm); margin-bottom: var(--demo-space-2);">
-        This version uses the <strong style="color: var(--demo-text-primary);">Chrome Prompt API</strong> style. The entire logic is just 4 lines:
+        The Web Agent API supports two coding styles. The <strong style="color: var(--demo-text-primary);">Chrome-compatible</strong> way auto-handles permissions:
       </p>
       
-      <pre class="demo-code"><span class="comment">// Create session using Chrome's languageModel API</span>
-<span class="keyword">const</span> session = <span class="keyword">await</span> window.<span class="property">ai</span>.<span class="property">languageModel</span>.<span class="method">create</span>({
-  <span class="property">systemPrompt</span>: <span class="string">'Summarize clearly in 2-3 paragraphs.'</span>
-});
-
-<span class="comment">// Prompt with page content</span>
+      <pre class="demo-code"><span class="comment">// Chrome-compatible style (auto-permissions)</span>
+<span class="keyword">const</span> session = <span class="keyword">await</span> window.<span class="property">ai</span>.<span class="method">createTextSession</span>();
 <span class="keyword">const</span> summary = <span class="keyword">await</span> session.<span class="method">prompt</span>(document.<span class="property">body</span>.<span class="property">innerText</span>);
 
-<span class="comment">// That's it! Permissions are auto-requested.</span></pre>
+<span class="comment">// Or using the Chrome Prompt API style:</span>
+<span class="keyword">const</span> session = <span class="keyword">await</span> window.<span class="property">ai</span>.<span class="property">languageModel</span>.<span class="method">create</span>({
+  <span class="property">systemPrompt</span>: <span class="string">'Summarize clearly and concisely.'</span>
+});
+<span class="keyword">const</span> summary = <span class="keyword">await</span> session.<span class="method">prompt</span>(text);</pre>
+      
+      <p style="color: var(--demo-text-secondary); font-size: var(--demo-text-sm); margin: var(--demo-space-4) 0 var(--demo-space-2);">
+        Or the <strong style="color: var(--demo-text-primary);">explicit Web Agent API style</strong> with fine-grained control:
+      </p>
+      
+      <pre class="demo-code"><span class="comment">// Explicit Web Agent API style (full control)</span>
+<span class="keyword">await</span> window.<span class="property">agent</span>.<span class="method">requestPermissions</span>({
+  <span class="property">scopes</span>: [<span class="string">'model:prompt'</span>, <span class="string">'browser:activeTab.read'</span>],
+  <span class="property">reason</span>: <span class="string">'Summarize the current page'</span>
+});
+
+<span class="comment">// Read page content via extension API</span>
+<span class="keyword">const</span> tab = <span class="keyword">await</span> window.<span class="property">agent</span>.<span class="property">browser</span>.<span class="property">activeTab</span>.<span class="method">readability</span>();
+
+<span class="comment">// Create AI session with custom options</span>
+<span class="keyword">const</span> session = <span class="keyword">await</span> window.<span class="property">ai</span>.<span class="method">createTextSession</span>({
+  <span class="property">systemPrompt</span>: <span class="string">'Summarize clearly and concisely.'</span>,
+  <span class="property">temperature</span>: <span class="number">0.7</span>
+});
+
+<span class="keyword">const</span> summary = <span class="keyword">await</span> session.<span class="method">prompt</span>(tab.<span class="property">text</span>);</pre>
 
       <p style="color: var(--demo-text-muted); font-size: var(--demo-text-sm); margin-top: var(--demo-space-4);">
-        <strong style="color: var(--demo-text-secondary);">No explicit permission request needed!</strong> Web Agent API implementations automatically show the permission dialog when <code>languageModel.create()</code> is called.
+        <strong style="color: var(--demo-text-secondary);">Tip:</strong> The Chrome-compatible style is simpler — permissions are auto-requested when needed. Use the explicit style when you need more control over permissions, want to specify a custom reason, or need access to browser APIs like <code>activeTab.read</code>.
       </p>
-    </div>
 
-    <div class="demo-card demo-mb-6">
-      <div class="demo-card-header">
-        <div class="demo-card-icon" style="background: linear-gradient(135deg, var(--demo-info), #60a5fa);">🔄</div>
-        <h2 class="demo-card-title">API Comparison</h2>
-      </div>
-      
-      <p style="color: var(--demo-text-secondary); font-size: var(--demo-text-sm); margin-bottom: var(--demo-space-4);">
-        The Web Agent API supports both Chrome's API and its own extended API:
-      </p>
-      
-      <div class="comparison">
-        <div class="comparison-row">
-          <div class="comparison-label">Check availability</div>
-          <div class="comparison-value"><code>await ai.languageModel.capabilities()</code></div>
-        </div>
-        <div class="comparison-row">
-          <div class="comparison-label">Create session</div>
-          <div class="comparison-value"><code>await ai.languageModel.create(options)</code></div>
-        </div>
-        <div class="comparison-row">
-          <div class="comparison-label">Prompt</div>
-          <div class="comparison-value"><code>await session.prompt(text)</code></div>
-        </div>
-        <div class="comparison-row">
-          <div class="comparison-label">Stream</div>
-          <div class="comparison-value"><code>session.promptStreaming(text)</code></div>
-        </div>
-        <div class="comparison-row">
-          <div class="comparison-label">Clone session</div>
-          <div class="comparison-value"><code>await session.clone()</code></div>
-        </div>
-        <div class="comparison-row">
-          <div class="comparison-label">Destroy</div>
-          <div class="comparison-value"><code>await session.destroy()</code></div>
-        </div>
-      </div>
-
-      <a href="index.html" class="link-other">
-        <span>🔮</span>
-        <span>See the Web Agent API style version →</span>
+      <a href="chrome-compat.html" class="link-other">
+        <span>🔵</span>
+        <span>See the Chrome API version →</span>
       </a>
     </div>
 
     <div class="demo-card">
       <div class="demo-card-header">
-        <div class="demo-card-icon" style="background: linear-gradient(135deg, var(--demo-info), #60a5fa);">✨</div>
-        <h2 class="demo-card-title">Why Chrome Compatibility?</h2>
+        <div class="demo-card-icon">🛠️</div>
+        <h2 class="demo-card-title">Build Your Own</h2>
       </div>
       
-      <ul class="why-list">
-        <li>
-          <strong>Familiar API</strong> — If you've used Chrome's Prompt API, you already know this
-        </li>
-        <li>
-          <strong>Simpler code</strong> — No explicit permission requests needed
-        </li>
-        <li>
-          <strong>Future-proof</strong> — When Chrome ships native AI, minimal code changes needed
-        </li>
-        <li>
-          <strong>Still shows permissions</strong> — Users still see and approve the permission dialog
-        </li>
+      <p style="color: var(--demo-text-secondary); font-size: var(--demo-text-sm);">
+        This pattern works for any AI-powered browser tool. Fork this example to build:
+      </p>
+      
+      <ul class="ideas-list">
+        <li><strong>Translation bookmarklet</strong> — translate any page to your language</li>
+        <li><strong>Explain Like I'm 5</strong> — simplify complex content</li>
+        <li><strong>Key Points Extractor</strong> — bullet point summaries</li>
+        <li><strong>Sentiment Analyzer</strong> — analyze tone of articles</li>
+        <li><strong>Accessibility Helper</strong> — describe images, simplify text</li>
       </ul>
     </div>
 
@@ -375,11 +376,11 @@
   </div>
 
   <script>
-    // The actual bookmarklet code - Chrome API compatible version
+    // The actual bookmarklet code
     const bookmarkletCode = `
 (async function() {
   // Check Web Agent API availability
-  if (!window.ai || !window.ai.languageModel) {
+  if (!window.agent || !window.ai) {
     alert('Web Agent API not detected on this page.\\n\\nMake sure:\\n1. Harbor (or another implementation) is installed\\n2. Refresh this page');
     return;
   }
@@ -412,7 +413,7 @@
         border: 1px solid rgba(255,255,255,0.1);
         box-shadow: 
           0 25px 50px -12px rgba(0,0,0,0.5),
-          0 0 30px rgba(59, 130, 246, 0.15);
+          0 0 30px rgba(139, 92, 246, 0.15);
         display: flex;
         flex-direction: column;
         animation: demoSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -454,25 +455,13 @@
       .demo-title-icon {
         width: 26px;
         height: 26px;
-        background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+        background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
         border-radius: 7px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 13px;
-        box-shadow: 0 0 16px rgba(59, 130, 246, 0.25);
-      }
-      .demo-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 2px 6px;
-        background: rgba(59, 130, 246, 0.15);
-        border: 1px solid rgba(59, 130, 246, 0.3);
-        border-radius: 4px;
-        font-size: 9px;
-        font-weight: 600;
-        color: #3b82f6;
-        letter-spacing: 0.03em;
+        box-shadow: 0 0 16px rgba(139, 92, 246, 0.25);
       }
       .demo-close {
         width: 26px;
@@ -539,7 +528,7 @@
         width: 36px;
         height: 36px;
         border: 3px solid rgba(255,255,255,0.1);
-        border-top-color: #3b82f6;
+        border-top-color: #8b5cf6;
         border-radius: 50%;
         animation: demoSpin 0.8s linear infinite;
       }
@@ -569,7 +558,7 @@
         background: #0a0a0f;
       }
       .demo-footer a {
-        color: #3b82f6;
+        color: #8b5cf6;
         text-decoration: none;
         font-weight: 600;
       }
@@ -579,9 +568,8 @@
     </style>
     <div class="demo-header">
       <span class="demo-title">
-        <span class="demo-title-icon">⚡</span>
+        <span class="demo-title-icon">📄</span>
         Summary
-        <span class="demo-badge">Chrome API</span>
       </span>
       <button class="demo-close" onclick="this.closest('#demo-summary-overlay').remove()">×</button>
     </div>
@@ -604,10 +592,14 @@
   const contentEl = document.getElementById('demo-summary-content');
   
   try {
-    // Check if model is available
-    const caps = await window.ai.languageModel.capabilities();
-    if (caps.available === 'no') {
-      throw new Error('AI model not available');
+    // Request permission
+    const perms = await window.agent.requestPermissions({
+      scopes: ['model:prompt'],
+      reason: 'Summarize this page'
+    });
+    
+    if (!perms.granted && perms.scopes['model:prompt'] !== 'granted-always' && perms.scopes['model:prompt'] !== 'granted-once') {
+      throw new Error('Permission denied');
     }
     
     // Get page text
@@ -617,12 +609,11 @@
       throw new Error('Not enough text content on this page');
     }
     
-    // Create session using Chrome API style - permissions auto-requested!
-    const session = await window.ai.languageModel.create({
+    // Create session and summarize
+    const session = await window.ai.createTextSession({
       systemPrompt: 'You are a helpful assistant that summarizes web pages. Provide a clear, concise summary in 2-3 paragraphs. Focus on the main points and key information.'
     });
     
-    // Prompt the model
     const summary = await session.prompt('Please summarize this page content:\\n\\n' + text);
     
     // Display summary
