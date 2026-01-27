@@ -1661,3 +1661,4 @@ loadSessions();
 
 // Auto-refresh sessions every 30 seconds
 setInterval(loadSessions, 30000);
+
