@@ -27,10 +27,11 @@ import {
   isToolAllowed,
   SCOPE_DESCRIPTIONS,
 } from '../policy/permissions';
-import { isFeatureEnabled } from '../policy/feature-flags';
+// NOTE: Feature flags are enforced by Web Agents API extension, not Harbor
 import { listServersWithStatus, callTool } from '../mcp/host';
 import {
   getTabReadability,
+  getTabHtml,
   clickElement,
   fillInput,
   selectOption,
@@ -102,31 +103,6 @@ function log(...args: unknown[]): void {
   }
 }
 
-/**
- * Check if a feature flag is enabled. If not, send an error response.
- * Returns true if the feature is enabled, false if it was rejected.
- * Used for browserControl and multiAgent flags.
- */
-async function requireExtensionFeature(
-  feature: 'browserControl' | 'multiAgent',
-  ctx: RequestContext,
-  sender: ResponseSender,
-): Promise<boolean> {
-  const enabled = await isFeatureEnabled(feature);
-  if (!enabled) {
-    sender.sendResponse({
-      id: ctx.id,
-      ok: false,
-      error: {
-        code: 'ERR_FEATURE_DISABLED',
-        message: `Feature "${feature}" is not enabled. Enable it in Harbor settings.`,
-      },
-    });
-    return false;
-  }
-  return true;
-}
-
 // =============================================================================
 // State Management
 // =============================================================================
@@ -191,7 +167,10 @@ async function requirePermission(
   sender: ResponseSender,
   scope: PermissionScope,
 ): Promise<boolean> {
+  log('requirePermission check - origin:', ctx.origin, 'scope:', scope, 'tabId:', ctx.tabId);
   const result = await checkPermissions(ctx.origin, [scope], ctx.tabId);
+  log('requirePermission result:', JSON.stringify(result));
+  
   if (result.granted) {
     return true;
   }
@@ -203,31 +182,6 @@ async function requirePermission(
       code: 'ERR_SCOPE_REQUIRED',
       message: `Permission "${scope}" is required. Call agent.requestPermissions() first.`,
       details: { requiredScope: scope, missingScopes: result.missingScopes },
-    },
-  });
-  return false;
-}
-
-type FeatureFlagName = 'browserInteraction' | 'screenshots' | 'experimental';
-
-async function requireFeature(
-  ctx: RequestContext,
-  sender: ResponseSender,
-  feature: FeatureFlagName,
-  featureDescription: string,
-): Promise<boolean> {
-  const enabled = await isFeatureEnabled(feature);
-  if (enabled) {
-    return true;
-  }
-
-  sender.sendResponse({
-    id: ctx.id,
-    ok: false,
-    error: {
-      code: 'ERR_FEATURE_DISABLED',
-      message: `${featureDescription} is disabled. Enable "${feature}" in Harbor settings.`,
-      details: { feature },
     },
   });
   return false;
@@ -296,11 +250,11 @@ async function handleAgentCapabilities(
       // MCP not available
     }
     
-    // Get feature flags
-    const browserInteractionEnabled = await isFeatureEnabled('browserInteraction');
-    const screenshotsEnabled = await isFeatureEnabled('screenshots');
-    const browserControlEnabled = await isFeatureEnabled('browserControl');
-    const multiAgentEnabled = await isFeatureEnabled('multiAgent');
+    // Harbor exposes all features - Web Agents API extension enforces feature flags
+    const browserInteractionEnabled = true;
+    const screenshotsEnabled = true;
+    const browserControlEnabled = true;
+    const multiAgentEnabled = true;
     
     // Determine best runtime
     let bestRuntime: 'firefox' | 'chrome' | 'harbor' | null = null;
@@ -1086,11 +1040,6 @@ async function handleActiveTabReadability(ctx: RequestContext, sender: ResponseS
 }
 
 async function handleActiveTabClick(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  // Feature flag check first
-  if (!(await requireFeature(ctx, sender, 'browserInteraction', 'Browser interaction'))) {
-    return;
-  }
-
   if (!(await requirePermission(ctx, sender, 'browser:activeTab.interact'))) {
     return;
   }
@@ -1122,10 +1071,6 @@ async function handleActiveTabClick(ctx: RequestContext, sender: ResponseSender)
 }
 
 async function handleActiveTabFill(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireFeature(ctx, sender, 'browserInteraction', 'Browser interaction'))) {
-    return;
-  }
-
   if (!(await requirePermission(ctx, sender, 'browser:activeTab.interact'))) {
     return;
   }
@@ -1157,10 +1102,6 @@ async function handleActiveTabFill(ctx: RequestContext, sender: ResponseSender):
 }
 
 async function handleActiveTabSelect(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireFeature(ctx, sender, 'browserInteraction', 'Browser interaction'))) {
-    return;
-  }
-
   if (!(await requirePermission(ctx, sender, 'browser:activeTab.interact'))) {
     return;
   }
@@ -1192,10 +1133,6 @@ async function handleActiveTabSelect(ctx: RequestContext, sender: ResponseSender
 }
 
 async function handleActiveTabScroll(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireFeature(ctx, sender, 'browserInteraction', 'Browser interaction'))) {
-    return;
-  }
-
   if (!(await requirePermission(ctx, sender, 'browser:activeTab.interact'))) {
     return;
   }
@@ -1289,10 +1226,6 @@ async function handleActiveTabWaitForSelector(ctx: RequestContext, sender: Respo
 }
 
 async function handleActiveTabScreenshot(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireFeature(ctx, sender, 'screenshots', 'Screenshots'))) {
-    return;
-  }
-
   if (!(await requirePermission(ctx, sender, 'browser:activeTab.screenshot'))) {
     return;
   }
@@ -1328,9 +1261,6 @@ async function handleActiveTabScreenshot(ctx: RequestContext, sender: ResponseSe
 // =============================================================================
 
 async function handleBrowserNavigate(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:navigate'))) {
     return;
   }
@@ -1362,9 +1292,6 @@ async function handleBrowserNavigate(ctx: RequestContext, sender: ResponseSender
 }
 
 async function handleBrowserWaitForNavigation(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:navigate'))) {
     return;
   }
@@ -1396,9 +1323,6 @@ async function handleBrowserWaitForNavigation(ctx: RequestContext, sender: Respo
 }
 
 async function handleTabsList(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.read'))) {
     return;
   }
@@ -1419,9 +1343,6 @@ async function handleTabsList(ctx: RequestContext, sender: ResponseSender): Prom
 }
 
 async function handleTabsGet(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.read'))) {
     return;
   }
@@ -1444,9 +1365,6 @@ async function handleTabsGet(ctx: RequestContext, sender: ResponseSender): Promi
 }
 
 async function handleTabsCreate(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1469,9 +1387,6 @@ async function handleTabsCreate(ctx: RequestContext, sender: ResponseSender): Pr
 }
 
 async function handleTabsClose(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1508,9 +1423,6 @@ async function handleTabsClose(ctx: RequestContext, sender: ResponseSender): Pro
 
 // Spawned tab operations (operations on tabs the origin created)
 async function handleSpawnedTabReadability(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1544,10 +1456,41 @@ async function handleSpawnedTabReadability(ctx: RequestContext, sender: Response
   }
 }
 
-async function handleSpawnedTabClick(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
+async function handleSpawnedTabGetHtml(ctx: RequestContext, sender: ResponseSender): Promise<void> {
+  if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
+
+  const payload = ctx.payload as { tabId: number; selector?: string };
+
+  if (!canOriginControlTab(ctx.origin, payload.tabId)) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: {
+        code: 'ERR_PERMISSION_DENIED',
+        message: 'Cannot read tab: origin did not create this tab',
+      },
+    });
+    return;
+  }
+
+  try {
+    const result = await getTabHtml(payload.tabId, payload.selector);
+    sender.sendResponse({ id: ctx.id, ok: true, result });
+  } catch (error) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: {
+        code: 'ERR_INTERNAL',
+        message: error instanceof Error ? error.message : 'Failed to get HTML from tab',
+      },
+    });
+  }
+}
+
+async function handleSpawnedTabClick(ctx: RequestContext, sender: ResponseSender): Promise<void> {
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1582,9 +1525,6 @@ async function handleSpawnedTabClick(ctx: RequestContext, sender: ResponseSender
 }
 
 async function handleSpawnedTabFill(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1619,9 +1559,6 @@ async function handleSpawnedTabFill(ctx: RequestContext, sender: ResponseSender)
 }
 
 async function handleSpawnedTabScroll(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1656,9 +1593,6 @@ async function handleSpawnedTabScroll(ctx: RequestContext, sender: ResponseSende
 }
 
 async function handleSpawnedTabScreenshot(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1693,9 +1627,6 @@ async function handleSpawnedTabScreenshot(ctx: RequestContext, sender: ResponseS
 }
 
 async function handleSpawnedTabNavigate(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1730,9 +1661,6 @@ async function handleSpawnedTabNavigate(ctx: RequestContext, sender: ResponseSen
 }
 
 async function handleSpawnedTabWaitForNavigation(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1774,9 +1702,6 @@ async function handleSpawnedTabWaitForNavigation(ctx: RequestContext, sender: Re
 const FETCH_ALLOWED_DOMAINS: string[] = [];
 
 async function handleAgentFetch(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('browserControl', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'web:fetch'))) {
     return;
   }
@@ -1848,9 +1773,6 @@ async function handleAgentFetch(ctx: RequestContext, sender: ResponseSender): Pr
 const originAgents = new Map<string, string>();
 
 async function handleAgentsRegister(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:register'))) {
     return;
   }
@@ -1869,6 +1791,8 @@ async function handleAgentsRegister(ctx: RequestContext, sender: ResponseSender)
         name: agent.name,
         capabilities: agent.capabilities,
         tags: agent.tags,
+        acceptsInvocations: agent.acceptsInvocations,
+        acceptsMessages: agent.acceptsMessages,
       },
     });
   } catch (error) {
@@ -1884,9 +1808,6 @@ async function handleAgentsRegister(ctx: RequestContext, sender: ResponseSender)
 }
 
 async function handleAgentsUnregister(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:register'))) {
     return;
   }
@@ -1902,9 +1823,6 @@ async function handleAgentsUnregister(ctx: RequestContext, sender: ResponseSende
 }
 
 async function handleAgentsGetInfo(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   const payload = ctx.payload as { agentId?: string } | undefined;
   const agentId = payload?.agentId || originAgents.get(ctx.origin);
 
@@ -1954,9 +1872,6 @@ async function handleAgentsGetInfo(ctx: RequestContext, sender: ResponseSender):
 }
 
 async function handleAgentsDiscover(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:discover'))) {
     return;
   }
@@ -1983,9 +1898,6 @@ async function handleAgentsDiscover(ctx: RequestContext, sender: ResponseSender)
 }
 
 async function handleAgentsList(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   const agents = getAgentsByOrigin(ctx.origin);
 
   sender.sendResponse({
@@ -2000,9 +1912,6 @@ async function handleAgentsList(ctx: RequestContext, sender: ResponseSender): Pr
 }
 
 async function handleAgentsInvoke(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:invoke'))) {
     return;
   }
@@ -2012,10 +1921,15 @@ async function handleAgentsInvoke(ctx: RequestContext, sender: ResponseSender): 
     task: string;
     input?: unknown;
     timeout?: number;
+    traceId?: string;
   };
+
+  const traceId = payload.traceId || `harbor-trace-${Date.now()}`;
+  log(`[TRACE ${traceId}] handleAgentsInvoke START - target: ${payload.agentId}, task: ${payload.task}`);
 
   const fromAgentId = originAgents.get(ctx.origin);
   if (!fromAgentId) {
+    log(`[TRACE ${traceId}] ERROR - invoker not registered`);
     sender.sendResponse({
       id: ctx.id,
       ok: false,
@@ -2027,6 +1941,8 @@ async function handleAgentsInvoke(ctx: RequestContext, sender: ResponseSender): 
     return;
   }
 
+  log(`[TRACE ${traceId}] Invoking from ${fromAgentId} to ${payload.agentId}`);
+  
   const result = await invokeAgentHandler(
     {
       agentId: payload.agentId,
@@ -2036,15 +1952,15 @@ async function handleAgentsInvoke(ctx: RequestContext, sender: ResponseSender): 
     },
     fromAgentId,
     ctx.origin,
+    traceId,
   );
+  
+  log(`[TRACE ${traceId}] invokeAgentHandler complete, success: ${result.success}`);
 
   sender.sendResponse({ id: ctx.id, ok: true, result });
 }
 
 async function handleAgentsSend(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:message'))) {
     return;
   }
@@ -2070,9 +1986,6 @@ async function handleAgentsSend(ctx: RequestContext, sender: ResponseSender): Pr
 }
 
 async function handleAgentsSubscribe(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:message'))) {
     return;
   }
@@ -2088,9 +2001,6 @@ async function handleAgentsSubscribe(ctx: RequestContext, sender: ResponseSender
 }
 
 async function handleAgentsUnsubscribe(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   const payload = ctx.payload as { eventType: string };
   const agentId = originAgents.get(ctx.origin);
 
@@ -2130,24 +2040,131 @@ function handleAgentsUnregisterMessageHandler(ctx: RequestContext, sender: Respo
   sender.sendResponse({ id: ctx.id, ok: true, result: undefined });
 }
 
+// Track which agents have external handlers (via Web Agents API)
+const externalInvocationHandlers = new Map<string, { origin: string; tabId?: number }>();
+
 function handleAgentsRegisterInvocationHandler(ctx: RequestContext, sender: ResponseSender): void {
-  const agentId = originAgents.get(ctx.origin);
+  log('handleAgentsRegisterInvocationHandler called, payload:', JSON.stringify(ctx.payload));
+  
+  const payload = ctx.payload as { agentId?: string; origin?: string; tabId?: number } | undefined;
+  
+  // If agentId is provided directly (from Web Agents API), use it
+  // Otherwise, look up by origin (for content script registrations)
+  const agentId = payload?.agentId || originAgents.get(ctx.origin);
+  
+  log('Resolved agentId:', agentId, 'from payload.agentId:', payload?.agentId, 'or originAgents lookup');
+  
   if (!agentId) {
+    log('No agent found for invocation handler registration:', ctx.origin);
     sender.sendResponse({ id: ctx.id, ok: true, result: undefined });
     return;
   }
-
-  registerInvocationHandler(agentId, async (request) => {
-    // Send invocation to the page and wait for response
-    // This is simplified - in production we'd need proper message passing
-    return {
-      success: false,
-      error: { code: 'ERR_NOT_IMPLEMENTED', message: 'Page invocation handlers not fully implemented' },
-      executionTime: 0,
-    };
+  
+  const handlerOrigin = payload?.origin || ctx.origin;
+  const handlerTabId = payload?.tabId || ctx.tabId;
+  
+  log('Registering invocation handler for', agentId, 'origin:', handlerOrigin, 'tabId:', handlerTabId);
+  
+  // Track that this agent has an external handler
+  externalInvocationHandlers.set(agentId, { origin: handlerOrigin, tabId: handlerTabId });
+  
+  // Register a handler that will forward invocations to the external handler
+  registerInvocationHandler(agentId, async (request, fromAgentId, traceId) => {
+    const trace = traceId || 'no-trace';
+    log(`[TRACE ${trace}] Proxy handler called for ${agentId}, task: ${request.task}`);
+    
+    const externalInfo = externalInvocationHandlers.get(agentId);
+    if (!externalInfo) {
+      log(`[TRACE ${trace}] ERROR - no external handler info`);
+      return {
+        success: false,
+        error: { code: 'ERR_NO_EXTERNAL_HANDLER', message: 'External handler not found' },
+        executionTime: 0,
+      };
+    }
+    
+    log(`[TRACE ${trace}] Forwarding to Web Agents API...`);
+    
+    // Forward to Web Agents API for delivery to the page
+    // Web Agents API will handle forwarding to the correct tab
+    try {
+      const forwardRequest = {
+        from: fromAgentId,
+        task: request.task,
+        input: request.input,
+        timeout: request.timeout,
+      };
+      const response = await forwardInvocationToExtension(agentId, forwardRequest, externalInfo, trace);
+      log(`[TRACE ${trace}] forwardInvocationToExtension returned, success: ${response.success}`);
+      return response;
+    } catch (e) {
+      log(`[TRACE ${trace}] forwardInvocationToExtension ERROR: ${e instanceof Error ? e.message : 'Unknown'}`);
+      return {
+        success: false,
+        error: { code: 'ERR_FORWARD_FAILED', message: e instanceof Error ? e.message : 'Forward failed' },
+        executionTime: 0,
+      };
+    }
   });
 
   sender.sendResponse({ id: ctx.id, ok: true, result: undefined });
+}
+
+// Forward an invocation to Web Agents API extension for delivery to a page
+async function forwardInvocationToExtension(
+  agentId: string,
+  request: { from: string; task: string; input?: unknown; timeout?: number },
+  handlerInfo: { origin: string; tabId?: number },
+  traceId?: string
+): Promise<{ success: boolean; result?: unknown; error?: { code: string; message: string }; executionTime: number }> {
+  const trace = traceId || 'no-trace';
+  const startTime = Date.now();
+  
+  log(`[TRACE ${trace}] forwardInvocationToExtension - agentId: ${agentId}, task: ${request.task}`);
+  
+  // Web Agents API extension ID - in production this should be configurable
+  const WEB_AGENTS_API_ID = 'web-agents-api@mozilla.org';
+  
+  return new Promise((resolve) => {
+    const timeout = request.timeout || 30000;
+    const timeoutId = setTimeout(() => {
+      log(`[TRACE ${trace}] forwardInvocationToExtension TIMEOUT`);
+      resolve({
+        success: false,
+        error: { code: 'ERR_TIMEOUT', message: 'Invocation timed out' },
+        executionTime: Date.now() - startTime,
+      });
+    }, timeout);
+    
+    log(`[TRACE ${trace}] Sending to Web Agents API extension...`);
+    
+    // Send to Web Agents API extension
+    browserAPI.runtime.sendMessage(
+      WEB_AGENTS_API_ID,
+      {
+        type: 'harbor.forwardInvocation',
+        agentId,
+        request,
+        handlerInfo,
+        traceId: trace,
+      },
+      (response) => {
+        clearTimeout(timeoutId);
+        if (browserAPI.runtime.lastError) {
+          resolve({
+            success: false,
+            error: { code: 'ERR_SEND_FAILED', message: browserAPI.runtime.lastError.message || 'Send failed' },
+            executionTime: Date.now() - startTime,
+          });
+          return;
+        }
+        resolve({
+          ...response,
+          executionTime: Date.now() - startTime,
+        });
+      }
+    );
+  });
 }
 
 function handleAgentsUnregisterInvocationHandler(ctx: RequestContext, sender: ResponseSender): void {
@@ -2160,9 +2177,6 @@ function handleAgentsUnregisterInvocationHandler(ctx: RequestContext, sender: Re
 
 // Orchestration handlers
 async function handleOrchestratePipeline(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:invoke'))) {
     return;
   }
@@ -2184,9 +2198,6 @@ async function handleOrchestratePipeline(ctx: RequestContext, sender: ResponseSe
 }
 
 async function handleOrchestrateParallel(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:invoke'))) {
     return;
   }
@@ -2208,9 +2219,6 @@ async function handleOrchestrateParallel(ctx: RequestContext, sender: ResponseSe
 }
 
 async function handleOrchestrateRoute(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:invoke'))) {
     return;
   }
@@ -2232,9 +2240,6 @@ async function handleOrchestrateRoute(ctx: RequestContext, sender: ResponseSende
 }
 
 async function handleOrchestrateSupervisor(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:invoke'))) {
     return;
   }
@@ -2257,9 +2262,6 @@ async function handleOrchestrateSupervisor(ctx: RequestContext, sender: Response
 
 // Remote A2A handlers
 async function handleRemoteConnect(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:remote'))) {
     return;
   }
@@ -2300,18 +2302,12 @@ async function handleRemoteConnect(ctx: RequestContext, sender: ResponseSender):
 }
 
 async function handleRemoteDisconnect(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   const payload = ctx.payload as { agentId: string };
   const result = disconnectRemoteAgent(payload.agentId);
   sender.sendResponse({ id: ctx.id, ok: true, result });
 }
 
 async function handleRemoteList(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   const agents = listRemoteAgents();
   sender.sendResponse({
     id: ctx.id,
@@ -2329,18 +2325,12 @@ async function handleRemoteList(ctx: RequestContext, sender: ResponseSender): Pr
 }
 
 async function handleRemotePing(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   const payload = ctx.payload as { agentId: string };
   const result = await pingRemoteAgent(payload.agentId);
   sender.sendResponse({ id: ctx.id, ok: true, result });
 }
 
 async function handleRemoteDiscover(ctx: RequestContext, sender: ResponseSender): Promise<void> {
-  if (!(await requireExtensionFeature('multiAgent', ctx, sender))) {
-    return;
-  }
   if (!(await requirePermission(ctx, sender, 'agents:remote'))) {
     return;
   }
@@ -2644,6 +2634,8 @@ async function routeMessage(ctx: RequestContext, sender: ResponseSender): Promis
     // Extension 2: Spawned tab operations
     case 'agent.browser.tab.readability':
       return handleSpawnedTabReadability(ctx, sender);
+    case 'agent.browser.tab.getHtml':
+      return handleSpawnedTabGetHtml(ctx, sender);
     case 'agent.browser.tab.click':
       return handleSpawnedTabClick(ctx, sender);
     case 'agent.browser.tab.fill':
@@ -2866,5 +2858,85 @@ export function initializeRouter(): void {
   // Listen for permission prompt responses
   browserAPI.runtime.onMessage.addListener(handlePermissionPromptMessage);
 
+  // External messages from other extensions are handled by extension-api.ts
+  // which routes agent.* and agents.* messages to routeExternalMessage()
+  log('External message routing delegated to extension-api.ts');
+
   log('Router initialized');
+}
+
+/**
+ * Handle messages from external extensions (cross-extension communication).
+ * This allows other extensions (like Web Agents API) to call Harbor's APIs.
+ * Exported for use by background.ts for Firefox compatibility.
+ */
+export function routeExternalMessage(
+  message: { type: string; payload?: unknown; requestId?: string },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { ok: boolean; result?: unknown; error?: string }) => void,
+): void {
+  log('External message from', sender.id, ':', message.type);
+  log('Full message:', JSON.stringify(message));
+  log('Sender:', JSON.stringify({ id: sender.id, url: sender.url, tabId: sender.tab?.id }));
+
+  // Extract origin and tabId from payload if provided by the calling extension
+  // This allows Web Agents API to pass through the original page's origin
+  const payload = message.payload as { origin?: string; tabId?: number } | undefined;
+  const pageOrigin = payload?.origin;
+  const pageTabId = payload?.tabId;
+  
+  log('Extracted from payload - origin:', pageOrigin, 'tabId:', pageTabId);
+
+  // Create a context for the request
+  // Use the page origin from payload if available, otherwise fall back to sender info
+  const ctx: RequestContext = {
+    id: message.requestId || `ext-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    type: message.type as MessageType,
+    payload: message.payload,
+    origin: pageOrigin || sender.url || sender.id || 'external',
+    tabId: pageTabId ?? sender.tab?.id,
+  };
+  
+  log('Final context - origin:', ctx.origin, 'tabId:', ctx.tabId);
+
+  // Create a sender wrapper that uses sendResponse
+  const responseSender: ResponseSender = {
+    sendResponse: (response) => {
+      sendResponse({
+        ok: response.ok,
+        result: response.result,
+        error: response.error?.message || (response.ok ? undefined : 'Unknown error'),
+      });
+    },
+    sendStreamEvent: () => {
+      // Streaming not supported for external messages
+      log('Streaming not supported for external messages');
+    },
+  };
+
+  // Route the message
+  routeMessage(ctx, responseSender).catch((error) => {
+    log('Error routing external message:', error);
+    sendResponse({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  });
+}
+
+/**
+ * Chrome-specific external message handler (onMessageExternal).
+ */
+function handleExternalMessage(
+  message: { type: string; payload?: unknown; requestId?: string },
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { ok: boolean; result?: unknown; error?: string }) => void,
+): boolean {
+  if (!message || !message.type) {
+    sendResponse({ ok: false, error: 'Invalid message: missing type' });
+    return true;
+  }
+
+  routeExternalMessage(message, sender, sendResponse);
+  return true;
 }

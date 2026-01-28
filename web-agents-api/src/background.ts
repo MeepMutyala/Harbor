@@ -448,6 +448,27 @@ async function showPermissionPrompt(
 
   if (didUpdatePermissions) {
     await savePermissions(origin, permissions);
+    
+    // Sync granted permissions to Harbor so it can enforce them
+    const grantedScopes = Object.entries(result)
+      .filter(([, grant]) => grant === 'granted-once' || grant === 'granted-always')
+      .map(([scope]) => scope as PermissionScope);
+    
+    if (grantedScopes.length > 0) {
+      const grantType = result[grantedScopes[0]]; // Use the same grant type
+      try {
+        await harborRequest('system.syncPermissions', {
+          origin,
+          scopes: grantedScopes,
+          grantType,
+          allowedTools: permissions.allowedTools,
+        });
+        console.log('[Web Agents API] Synced permissions to Harbor:', grantedScopes);
+      } catch (e) {
+        console.warn('[Web Agents API] Failed to sync permissions to Harbor:', e);
+        // Continue even if sync fails - local permissions still work
+      }
+    }
   }
   
   const allGranted = scopes.every(s => result[s] === 'granted-once' || result[s] === 'granted-always');
@@ -892,12 +913,129 @@ const registeredAgents = new Map<string, {
   capabilities: string[];
 }>();
 
-// Track pending invocations waiting for responses
+// Track pending invocations waiting for responses from pages
 const pendingInvocations = new Map<string, {
   resolve: (response: unknown) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
 }>();
+
+// Track tabs that have invocation handlers set up (agentId -> tabId)
+const agentInvocationTabs = new Map<string, number>();
+
+/**
+ * Register a proxy invocation handler with Harbor for an agent.
+ * This allows invocations to be routed through Web Agents API to the page.
+ */
+async function registerProxyInvocationHandler(agentId: string, origin: string, tabId: number): Promise<void> {
+  console.log('[Web Agents API] registerProxyInvocationHandler called:', { agentId, origin, tabId });
+  
+  // Track which tab this agent's handler should go to
+  if (tabId > 0) {
+    agentInvocationTabs.set(agentId, tabId);
+    console.log('[Web Agents API] Stored tab mapping:', agentId, '->', tabId);
+  }
+  
+  // Check Harbor connection first
+  const harborState = getHarborState();
+  console.log('[Web Agents API] Harbor state:', harborState);
+  
+  if (!harborState.connected) {
+    console.warn('[Web Agents API] Harbor not connected, trying to discover...');
+    const id = await discoverHarbor();
+    if (!id) {
+      console.error('[Web Agents API] Cannot register invocation handler - Harbor not found');
+      return;
+    }
+  }
+  
+  // Tell Harbor this agent has an invocation handler
+  try {
+    console.log('[Web Agents API] Sending agents.registerInvocationHandler to Harbor...');
+    const result = await harborRequest('agents.registerInvocationHandler', { 
+      agentId, 
+      origin,
+      tabId,
+    });
+    console.log('[Web Agents API] Harbor response for registerInvocationHandler:', result);
+  } catch (e) {
+    console.error('[Web Agents API] Failed to register proxy handler with Harbor:', e);
+  }
+}
+
+/**
+ * Handle an invocation request from Harbor for one of our registered agents.
+ * Forward it to the correct tab and wait for response.
+ */
+async function handleIncomingInvocation(
+  agentId: string,
+  request: { from: string; task: string; input?: unknown; timeout?: number },
+  traceId?: string
+): Promise<{ success: boolean; result?: unknown; error?: { code: string; message: string } }> {
+  const trace = traceId || 'no-trace';
+  
+  // Try to find tabId from multiple sources
+  let tabId = agentInvocationTabs.get(agentId);
+  
+  if (!tabId) {
+    // Try to get from registered agents
+    const agent = registeredAgents.get(agentId);
+    if (agent?.tabId) {
+      tabId = agent.tabId;
+    }
+  }
+  
+  console.log(`[TRACE ${trace}] handleIncomingInvocation - agentId: ${agentId}, tabId: ${tabId}, task: ${request.task}`);
+  
+  if (!tabId) {
+    console.log(`[TRACE ${trace}] handleIncomingInvocation ERROR - no tab`);
+    return { success: false, error: { code: 'ERR_NO_TAB', message: 'Agent tab not found' } };
+  }
+  
+  const invocationId = `inv-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const timeout = request.timeout || 30000;
+  
+  console.log(`[TRACE ${trace}] Sending to tab ${tabId} with invocationId: ${invocationId}`);
+  
+  return new Promise((resolve) => {
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      pendingInvocations.delete(invocationId);
+      resolve({ success: false, error: { code: 'ERR_TIMEOUT', message: 'Invocation timed out' } });
+    }, timeout);
+    
+    // Store pending invocation
+    pendingInvocations.set(invocationId, {
+      resolve: (response) => {
+        clearTimeout(timeoutId);
+        pendingInvocations.delete(invocationId);
+        resolve(response as { success: boolean; result?: unknown; error?: { code: string; message: string } });
+      },
+      reject: (error) => {
+        clearTimeout(timeoutId);
+        pendingInvocations.delete(invocationId);
+        resolve({ success: false, error: { code: 'ERR_FAILED', message: error.message } });
+      },
+      timeout: timeoutId,
+    });
+    
+    // Send invocation to the tab
+    chrome.tabs.sendMessage(tabId, {
+      type: 'agentInvocation',
+      invocationId,
+      agentId,
+      from: request.from,
+      task: request.task,
+      input: request.input,
+      traceId: trace,
+    }).catch((error) => {
+      console.log(`[TRACE ${trace}] tabs.sendMessage ERROR: ${error.message}`);
+      clearTimeout(timeoutId);
+      pendingInvocations.delete(invocationId);
+      resolve({ success: false, error: { code: 'ERR_SEND_FAILED', message: error.message } });
+    });
+  });
+}
 
 /**
  * Register an agent.
@@ -939,15 +1077,23 @@ async function handleAgentsRegister(ctx: RequestContext): HandlerResponse {
       tabId: ctx.tabId,
     });
 
-    // Track locally
-    if (ctx.tabId) {
-      registeredAgents.set(result.id, {
-        agentId: result.id,
-        origin: ctx.origin,
-        tabId: ctx.tabId,
-        name: result.name,
-        capabilities: result.capabilities,
-      });
+    // Track locally - use tabId from context or try to find it
+    const tabId = ctx.tabId;
+    console.log('[Web Agents API] Agent registered:', result.id, 'tabId:', tabId, 'acceptsInvocations:', result.acceptsInvocations);
+    
+    // Always track the agent
+    registeredAgents.set(result.id, {
+      agentId: result.id,
+      origin: ctx.origin,
+      tabId: tabId || 0, // Will be updated if we get tabId later
+      name: result.name,
+      capabilities: result.capabilities,
+    });
+    
+    // If agent accepts invocations, register a proxy handler with Harbor
+    // We'll pass the origin so Harbor can route back to us
+    if (result.acceptsInvocations) {
+      await registerProxyInvocationHandler(result.id, ctx.origin, tabId || 0);
     }
 
     return { id: ctx.id, ok: true, result };
@@ -1065,7 +1211,12 @@ async function handleAgentsInvoke(ctx: RequestContext): HandlerResponse {
     request: { task: string; input?: unknown; timeout?: number };
   };
 
+  // Generate trace ID for this invocation
+  const traceId = `trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  console.log(`[TRACE ${traceId}] handleAgentsInvoke START - agentId: ${agentId}, task: ${request?.task}`);
+
   if (!agentId || !request) {
+    console.log(`[TRACE ${traceId}] handleAgentsInvoke ERROR - missing params`);
     return {
       id: ctx.id,
       ok: false,
@@ -1074,6 +1225,8 @@ async function handleAgentsInvoke(ctx: RequestContext): HandlerResponse {
   }
 
   try {
+    // Flatten the request for Harbor - it expects { agentId, task, input, timeout }
+    console.log(`[TRACE ${traceId}] Sending to Harbor...`);
     const result = await harborRequest<{
       success: boolean;
       result?: unknown;
@@ -1081,10 +1234,14 @@ async function handleAgentsInvoke(ctx: RequestContext): HandlerResponse {
       executionTime?: number;
     }>('agents.invoke', {
       agentId,
-      request,
+      task: request.task,
+      input: request.input,
+      timeout: request.timeout,
       origin: ctx.origin,
       tabId: ctx.tabId,
+      traceId, // Pass trace ID to Harbor
     });
+    console.log(`[TRACE ${traceId}] Harbor response received, success: ${result?.success}`);
 
     return { id: ctx.id, ok: true, result };
   } catch (e) {
@@ -1702,7 +1859,15 @@ async function handleBrowserClick(ctx: RequestContext): HandlerResponse {
           return { success: false, error: `Element not found: ${selector}` };
         }
         if (el instanceof HTMLElement) {
+          // Check if element is disabled
+          if ((el as HTMLButtonElement).disabled) {
+            return { success: false, error: `Element is disabled: ${selector}` };
+          }
           el.click();
+          // For checkboxes/radios, ensure change event fires for form validation
+          if (el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')) {
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
           return { success: true };
         }
         return { success: false, error: 'Element is not clickable' };
@@ -2606,14 +2771,19 @@ async function routeMessage(ctx: RequestContext): HandlerResponse {
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'web-agent-transport') return;
+  
+  console.log('[Web Agents API] Port connected, sender:', JSON.stringify(port.sender));
 
   port.onMessage.addListener(async (message: RequestContext & { type: string }) => {
+    const tabId = port.sender?.tab?.id;
+    console.log('[Web Agents API] Port message received:', message.type, 'tabId:', tabId);
+    
     const ctx: RequestContext = {
       id: message.id,
       type: message.type,
       payload: message.payload,
       origin: message.origin || '',
-      tabId: port.sender?.tab?.id,
+      tabId,
     };
 
     // Handle streaming requests
@@ -2662,6 +2832,110 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true });
   }
   return false;
+});
+
+// =============================================================================
+// Agent Invocation Response Handler
+// =============================================================================
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'agentInvocationResponse') {
+    return false;
+  }
+  
+  const { invocationId, success, result, error } = message.response as {
+    invocationId: string;
+    success: boolean;
+    result?: unknown;
+    error?: { code: string; message: string };
+  };
+  
+  console.log('[Web Agents API] Received invocation response:', invocationId, success);
+  
+  const pending = pendingInvocations.get(invocationId);
+  if (pending) {
+    pending.resolve({ success, result, error });
+  }
+  
+  sendResponse({ ok: true });
+  return true;
+});
+
+// =============================================================================
+// Harbor Forwarded Invocation Handler
+// =============================================================================
+
+// Track which forwarded invocations we've already processed (to prevent duplicates from multiple listeners)
+const processedForwardedInvocations = new Set<string>();
+
+// Common handler for forwarded invocations
+function handleForwardedInvocation(
+  message: { agentId: string; request: { from: string; task: string; input?: unknown; timeout?: number }; handlerInfo: { origin: string; tabId?: number }; traceId?: string },
+  sendResponse: (response: unknown) => void,
+  source: string
+): boolean {
+  const { agentId, request, handlerInfo, traceId } = message;
+  const trace = traceId || 'no-trace';
+  
+  console.log(`[TRACE ${trace}] handleForwardedInvocation START - source: ${source}, agentId: ${agentId}, task: ${request.task}`);
+  
+  // Create a unique key for this invocation to deduplicate
+  const invocationKey = `${agentId}-${request.from}-${request.task}-${JSON.stringify(request.input || {}).slice(0, 100)}`;
+  
+  if (processedForwardedInvocations.has(invocationKey)) {
+    console.log(`[TRACE ${trace}] DUPLICATE forwarded invocation, skipping - source: ${source}`);
+    // Don't send response - let the other handler do it
+    return false;
+  }
+  processedForwardedInvocations.add(invocationKey);
+  
+  // Clean up after 30 seconds
+  setTimeout(() => processedForwardedInvocations.delete(invocationKey), 30000);
+  
+  // Find the tab to forward to
+  const tabId = handlerInfo.tabId || agentInvocationTabs.get(agentId);
+  console.log(`[TRACE ${trace}] Tab lookup - handlerInfo.tabId: ${handlerInfo.tabId}, agentInvocationTabs: ${agentInvocationTabs.get(agentId)}, final: ${tabId}`);
+  
+  if (!tabId) {
+    console.log(`[TRACE ${trace}] ERROR - no tab found`);
+    sendResponse({ success: false, error: { code: 'ERR_NO_TAB', message: 'Agent tab not found' } });
+    return true;
+  }
+  
+  console.log(`[TRACE ${trace}] Calling handleIncomingInvocation...`);
+  
+  // Forward to tab and wait for response
+  handleIncomingInvocation(agentId, request, trace).then((response) => {
+    console.log(`[TRACE ${trace}] handleIncomingInvocation complete, success: ${response.success}`);
+    sendResponse(response);
+  }).catch((error) => {
+    console.log(`[TRACE ${trace}] handleIncomingInvocation ERROR: ${error.message}`);
+    sendResponse({ success: false, error: { code: 'ERR_FAILED', message: error.message } });
+  });
+  
+  return true; // Async response
+}
+
+// Handle invocation requests forwarded from Harbor via onMessageExternal
+chrome.runtime.onMessageExternal?.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'harbor.forwardInvocation') {
+    return false;
+  }
+  return handleForwardedInvocation(message, sendResponse, 'onMessageExternal');
+});
+
+// Also handle via regular onMessage for Firefox compatibility
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type !== 'harbor.forwardInvocation') {
+    return false;
+  }
+  
+  // Check if from another extension (not from ourselves)
+  if (sender.id === chrome.runtime.id) {
+    return false;
+  }
+  
+  return handleForwardedInvocation(message, sendResponse, 'onMessage');
 });
 
 // =============================================================================

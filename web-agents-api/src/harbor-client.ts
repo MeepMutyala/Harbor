@@ -62,22 +62,28 @@ export interface StreamEvent {
  * Returns the extension ID if found, null otherwise.
  */
 export async function discoverHarbor(): Promise<string | null> {
+  console.log('[Web Agents API] Starting Harbor discovery...');
+  
   // If already discovered, return cached ID
   if (harborExtensionId && connectionState === 'connected') {
+    console.log('[Web Agents API] Using cached Harbor ID:', harborExtensionId);
     return harborExtensionId;
   }
 
   // Try each known ID
   for (const id of KNOWN_HARBOR_IDS) {
+    console.log('[Web Agents API] Trying known ID:', id);
     try {
       const response = await sendMessageToExtension(id, { type: 'system.getVersion' });
+      console.log('[Web Agents API] Response from', id, ':', response);
       if (response?.ok) {
         harborExtensionId = id;
         connectionState = 'connected';
         console.log('[Web Agents API] Harbor discovered:', id);
         return id;
       }
-    } catch {
+    } catch (e) {
+      console.log('[Web Agents API] Failed to contact', id, ':', e);
       // Extension not found or not responding, try next
     }
   }
@@ -87,20 +93,27 @@ export async function discoverHarbor(): Promise<string | null> {
   try {
     // In Firefox, we can use the extension ID from the discovery script
     const storageResult = await chrome.storage.local.get('harbor_extension_id');
+    console.log('[Web Agents API] Stored Harbor ID:', storageResult.harbor_extension_id);
     if (storageResult.harbor_extension_id) {
       const id = storageResult.harbor_extension_id;
-      const response = await sendMessageToExtension(id, { type: 'system.getVersion' });
-      if (response?.ok) {
-        harborExtensionId = id;
-        connectionState = 'connected';
-        console.log('[Web Agents API] Harbor discovered via storage:', id);
-        return id;
+      try {
+        const response = await sendMessageToExtension(id, { type: 'system.getVersion' });
+        console.log('[Web Agents API] Response from stored ID:', response);
+        if (response?.ok) {
+          harborExtensionId = id;
+          connectionState = 'connected';
+          console.log('[Web Agents API] Harbor discovered via storage:', id);
+          return id;
+        }
+      } catch (e) {
+        console.log('[Web Agents API] Failed to contact stored ID:', e);
       }
     }
-  } catch {
-    // Storage access failed
+  } catch (e) {
+    console.log('[Web Agents API] Storage access failed:', e);
   }
 
+  console.log('[Web Agents API] Harbor not found');
   connectionState = 'not-found';
   return null;
 }
@@ -131,27 +144,57 @@ export function setHarborExtensionId(id: string): void {
 
 /**
  * Send a message to a specific extension.
+ * Uses Promise-based API for Firefox compatibility.
  */
 async function sendMessageToExtension(
   extensionId: string,
   message: HarborRequest,
 ): Promise<HarborResponse> {
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
+  console.log('[Web Agents API] sendMessageToExtension:', extensionId, message.type);
+  
+  // Create a timeout promise
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
       reject(new Error(`Request timed out after ${REQUEST_TIMEOUT}ms`));
     }, REQUEST_TIMEOUT);
-
-    chrome.runtime.sendMessage(extensionId, message, (response) => {
-      clearTimeout(timeoutId);
-      
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      
-      resolve(response as HarborResponse);
-    });
   });
+
+  // Create the message promise
+  const messagePromise = new Promise<HarborResponse>((resolve, reject) => {
+    try {
+      // In Firefox, chrome.runtime.sendMessage returns a Promise
+      // In Chrome, it uses a callback
+      const result = chrome.runtime.sendMessage(extensionId, message, (response) => {
+        // This callback is used in Chrome
+        if (chrome.runtime.lastError) {
+          console.log('[Web Agents API] sendMessage error:', chrome.runtime.lastError.message);
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        console.log('[Web Agents API] sendMessage response (callback):', response);
+        resolve(response as HarborResponse);
+      });
+      
+      // In Firefox, sendMessage returns a Promise
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        (result as Promise<unknown>)
+          .then((response) => {
+            console.log('[Web Agents API] sendMessage response (promise):', response);
+            resolve(response as HarborResponse);
+          })
+          .catch((e) => {
+            console.log('[Web Agents API] sendMessage promise error:', e);
+            reject(e);
+          });
+      }
+    } catch (e) {
+      console.log('[Web Agents API] sendMessage exception:', e);
+      reject(e);
+    }
+  });
+
+  // Race between message and timeout
+  return Promise.race([messagePromise, timeoutPromise]);
 }
 
 /**

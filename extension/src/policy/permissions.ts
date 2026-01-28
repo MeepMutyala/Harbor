@@ -146,13 +146,16 @@ export async function checkPermissions(
   requiredScopes: PermissionScope[],
   tabId?: number,
 ): Promise<{ granted: boolean; missingScopes: PermissionScope[]; deniedScopes: PermissionScope[] }> {
+  console.log('[Permissions] checkPermissions called - origin:', origin, 'scopes:', requiredScopes, 'tabId:', tabId);
   const status = await getPermissionStatus(origin, tabId);
+  console.log('[Permissions] Status for', origin, ':', JSON.stringify(status.scopes));
 
   const missingScopes: PermissionScope[] = [];
   const deniedScopes: PermissionScope[] = [];
 
   for (const scope of requiredScopes) {
     const grant = status.scopes[scope];
+    console.log('[Permissions] Scope', scope, '=', grant);
     if (grant === 'denied') {
       deniedScopes.push(scope);
     } else if (grant === 'not-granted') {
@@ -160,11 +163,13 @@ export async function checkPermissions(
     }
   }
 
-  return {
+  const result = {
     granted: missingScopes.length === 0 && deniedScopes.length === 0,
     missingScopes,
     deniedScopes,
   };
+  console.log('[Permissions] checkPermissions result:', result);
+  return result;
 }
 
 /**

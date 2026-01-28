@@ -11,7 +11,7 @@ import { initializeBridgeClient, getBridgeConnectionState, checkBridgeHealth, br
 import { getConnectionState as getNativeConnectionState } from './llm/native-bridge';
 import { initializeMcpHost, addServer, startServer, stopServer, validateAndStartServer, removeServer, listServersWithStatus, callTool } from './mcp/host';
 import { cleanupExpiredGrants, listAllPermissions, revokePermissions } from './policy/permissions';
-import { getFeatureFlags, setFeatureFlags, type FeatureFlags } from './policy/feature-flags';
+// NOTE: Feature flags are enforced by Web Agents API extension, not Harbor
 import { initializeExtensionApi } from './extension-api';
 import { SessionRegistry } from './sessions';
 import { initializeRouter } from './agents/background-router';
@@ -73,6 +73,9 @@ browserAPI.runtime.onMessage.addListener((message) => {
   console.log('[Harbor] Incoming message:', message?.type, message);
   return false; // Don't handle, let other listeners process
 });
+
+// Note: Cross-extension messages are handled by extension-api.ts via onMessageExternal
+// Firefox 54+ supports onMessageExternal, so no fallback handler is needed here
 
 // Debug: expose callTool for console testing
 (globalThis as Record<string, unknown>).debugCallTool = callTool;
@@ -931,53 +934,6 @@ browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       provider: string;
     }>('oauth.remove_credentials', { provider });
     sendResponse({ ok: true, ...result });
-  })().catch((error) => {
-    sendResponse({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  });
-  return true;
-});
-
-// =============================================================================
-// Feature Flags Handlers
-// =============================================================================
-
-browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== 'getFeatureFlags') {
-    return false;
-  }
-  (async () => {
-    const flags = await getFeatureFlags();
-    sendResponse(flags);
-  })().catch((error) => {
-    console.error('[Harbor] getFeatureFlags error:', error);
-    // Return safe defaults on error
-    sendResponse({
-      browserInteraction: false,
-      screenshots: false,
-      experimental: false,
-      browserControl: false,
-      multiAgent: false,
-    });
-  });
-  return true;
-});
-
-browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== 'setFeatureFlags') {
-    return false;
-  }
-  const flags = message.flags as Partial<FeatureFlags> | undefined;
-  if (!flags) {
-    sendResponse({ ok: false, error: 'Missing flags' });
-    return true;
-  }
-  (async () => {
-    await setFeatureFlags(flags);
-    const updated = await getFeatureFlags();
-    sendResponse({ ok: true, flags: updated });
   })().catch((error) => {
     sendResponse({
       ok: false,

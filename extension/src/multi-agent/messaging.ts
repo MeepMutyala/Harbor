@@ -28,7 +28,7 @@ import { checkPermissions } from '../policy/permissions';
 
 // Message handlers registered by agents
 type MessageHandler = (message: AgentMessage) => void;
-type InvocationHandler = (request: AgentInvocationRequest) => Promise<AgentInvocationResponse>;
+type InvocationHandler = (request: AgentInvocationRequest, fromAgentId: AgentId, traceId?: string) => Promise<AgentInvocationResponse>;
 type EventHandler = (event: AgentEvent) => void;
 
 const messageHandlers = new Map<AgentId, MessageHandler>();
@@ -176,10 +176,14 @@ export async function invokeAgent(
   request: AgentInvocationRequest,
   fromAgentId: AgentId,
   fromOrigin: string,
+  traceId?: string,
 ): Promise<AgentInvocationResponse> {
+  const trace = traceId || 'no-trace';
   const startTime = Date.now();
   const fromAgent = getAgent(fromAgentId);
   const toAgent = getAgent(request.agentId);
+  
+  console.log(`[TRACE ${trace}] invokeAgent START - from: ${fromAgentId}, to: ${request.agentId}, task: ${request.task}`);
 
   if (!fromAgent) {
     return {
@@ -220,6 +224,7 @@ export async function invokeAgent(
 
   const handler = invocationHandlers.get(request.agentId);
   if (!handler) {
+    console.log(`[TRACE ${trace}] ERROR - no handler for ${request.agentId}`);
     return {
       success: false,
       error: { code: 'ERR_NO_HANDLER', message: 'Target agent has no invocation handler' },
@@ -227,6 +232,7 @@ export async function invokeAgent(
     };
   }
 
+  console.log(`[TRACE ${trace}] Found handler, calling it...`);
   recordInvocationMade(fromAgentId);
   recordInvocationReceived(request.agentId);
 
@@ -235,11 +241,12 @@ export async function invokeAgent(
   
   try {
     const result = await Promise.race([
-      handler(request),
+      handler(request, fromAgentId, trace),
       new Promise<AgentInvocationResponse>((_, reject) => {
         setTimeout(() => reject(new Error('Invocation timeout')), timeout);
       }),
     ]);
+    console.log(`[TRACE ${trace}] Handler returned, success: ${result.success}`);
 
     return {
       ...result,

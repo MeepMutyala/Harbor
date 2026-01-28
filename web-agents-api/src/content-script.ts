@@ -284,6 +284,49 @@ window.addEventListener('message', (event: MessageEvent) => {
   });
 });
 
+// Track processed invocations to prevent duplicates
+const processedInvocations = new Set<string>();
+
+// Listen for invocation requests from background and forward to page
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'agentInvocation') {
+    return false;
+  }
+  
+  const trace = message.traceId || 'no-trace';
+  
+  // Deduplicate - only process each invocation once
+  const invocationId = message.invocationId;
+  if (processedInvocations.has(invocationId)) {
+    console.log(`[TRACE ${trace}] Content: DUPLICATE invocation, skipping: ${invocationId}`);
+    sendResponse({ ok: true, duplicate: true });
+    return true;
+  }
+  processedInvocations.add(invocationId);
+  
+  // Clean up old invocations after 60 seconds
+  setTimeout(() => processedInvocations.delete(invocationId), 60000);
+  
+  console.log(`[TRACE ${trace}] Content: Forwarding invocation to page - task: ${message.task}, invocationId: ${invocationId}`);
+  
+  // Forward to page in the format injected.ts expects
+  window.postMessage({
+    channel: CHANNEL,
+    agentEvent: {
+      type: 'invocation',
+      invocation: {
+        invocationId: message.invocationId,
+        from: message.from,
+        task: message.task,
+        input: message.input,
+      },
+    },
+  }, '*');
+  
+  sendResponse({ ok: true });
+  return true;
+});
+
 // Initialize
 injectAgentsAPI().catch(console.error);
 setupAgentEventForwarding();

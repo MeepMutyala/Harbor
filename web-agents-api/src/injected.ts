@@ -865,12 +865,15 @@ function createMultiAgentApi() {
     /**
      * Unregister this agent.
      */
-    async unregister(): Promise<void> {
-      if (!currentAgentId) {
+    async unregister(agentId?: string): Promise<void> {
+      const idToUnregister = agentId || currentAgentId;
+      if (!idToUnregister) {
         throw new Error('Agent not registered');
       }
-      await sendRequest('agent.agents.unregister', { agentId: currentAgentId });
-      currentAgentId = null;
+      await sendRequest('agent.agents.unregister', { agentId: idToUnregister });
+      if (idToUnregister === currentAgentId) {
+        currentAgentId = null;
+      }
     },
 
     /**
@@ -1061,10 +1064,24 @@ function createMultiAgentApi() {
   });
 }
 
+// Track processed invocations at the page level to prevent duplicates
+const processedPageInvocations = new Set<string>();
+
+// Track if event listener is already set up
+let eventListenerSetUp = false;
+
 /**
  * Set up listener for agent events (messages, invocations, broadcasts).
+ * Only sets up once, no matter how many times called.
  */
 function setupAgentEventListener() {
+  if (eventListenerSetUp) {
+    console.log('[Web Agents API Page] Event listener already set up, skipping');
+    return;
+  }
+  eventListenerSetUp = true;
+  console.log('[Web Agents API Page] Setting up event listener');
+  
   // Listen for agent events from the content script
   window.addEventListener('message', async (event: MessageEvent) => {
     if (event.source !== window) return;
@@ -1093,6 +1110,18 @@ function setupAgentEventListener() {
         }
       }
     } else if (type === 'invocation' && invocation) {
+      // Deduplicate invocations
+      const invocationId = invocation.invocationId;
+      if (processedPageInvocations.has(invocationId)) {
+        console.log('[Web Agents API Page] DUPLICATE invocation, skipping:', invocationId);
+        return;
+      }
+      processedPageInvocations.add(invocationId);
+      // Clean up after 60 seconds
+      setTimeout(() => processedPageInvocations.delete(invocationId), 60000);
+      
+      console.log('[Web Agents API Page] Processing invocation:', invocation.task, invocationId);
+      
       // Dispatch to invocation handlers and send response
       let result: unknown;
       let error: { code: string; message: string } | undefined;

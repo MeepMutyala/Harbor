@@ -15,6 +15,7 @@ import { isNativeBridgeReady } from './llm/native-bridge';
 import { listAllProviders, getRuntimeCapabilities } from './llm/provider-registry';
 import { SessionRegistry } from './sessions';
 import type { CreateSessionOptions, SessionSummary } from './sessions';
+import { routeExternalMessage } from './agents/background-router';
 
 // =============================================================================
 // Types
@@ -352,6 +353,46 @@ function handleSystemGetVersion(): ExtensionApiResponse {
   });
 }
 
+/**
+ * Sync permissions from Web Agents API to Harbor's storage.
+ * This allows Harbor to enforce permissions that were granted through Web Agents API.
+ */
+async function handleSystemSyncPermissions(
+  payload: {
+    origin: string;
+    scopes: string[];
+    grantType: 'granted-once' | 'granted-always';
+    allowedTools?: string[];
+  }
+): Promise<ExtensionApiResponse> {
+  const { origin, scopes, grantType, allowedTools } = payload;
+  
+  if (!origin || !scopes || !Array.isArray(scopes)) {
+    return failure('Invalid payload: missing origin or scopes');
+  }
+  
+  log('Syncing permissions from Web Agents API:', { origin, scopes, grantType });
+  
+  try {
+    // Import grantPermissions dynamically to avoid circular dependencies
+    const { grantPermissions } = await import('./policy/permissions');
+    
+    await grantPermissions(
+      origin,
+      scopes as Parameters<typeof grantPermissions>[1],
+      grantType,
+      undefined, // tabId
+      allowedTools
+    );
+    
+    log('Permissions synced successfully for', origin);
+    return success({ synced: true });
+  } catch (e) {
+    error('Failed to sync permissions:', e);
+    return failure(e instanceof Error ? e.message : 'Failed to sync permissions');
+  }
+}
+
 // =============================================================================
 // Session Handlers
 // =============================================================================
@@ -577,7 +618,11 @@ function sessionToResponse(session: ReturnType<typeof SessionRegistry.getSession
 // Main Router
 // =============================================================================
 
-async function routeMessage(
+/**
+ * Route an external API message to the appropriate handler.
+ * Exported for use by Firefox compatibility handler in background.ts.
+ */
+export async function routeExtensionApiMessage(
   message: ExtensionApiRequest,
   sender: { id?: string; url?: string; tab?: { id?: number } },
 ): Promise<ExtensionApiResponse> {
@@ -633,6 +678,8 @@ async function routeMessage(
       return handleSystemGetCapabilities();
     case 'system.getVersion':
       return handleSystemGetVersion();
+    case 'system.syncPermissions':
+      return handleSystemSyncPermissions(payload as Parameters<typeof handleSystemSyncPermissions>[0]);
 
     default:
       return failure(`Unknown message type: ${type}`);
@@ -704,21 +751,45 @@ export function initializeExtensionApi(): void {
     });
   });
 
-  // Handle one-shot messages from other extensions
+  // Handle ALL one-shot messages from other extensions
+  // This is the single entry point for cross-extension communication
+  // Routes to appropriate handler based on message type prefix
   browserAPI.runtime.onMessageExternal.addListener(
     (message: ExtensionApiRequest, sender, sendResponse) => {
-      log('External message:', message.type, 'from', sender.id);
-
-      // Streaming requests need a port connection, not sendMessage
-      if (message.type === 'llm.chatStream') {
-        sendResponse(failure('Use browser.runtime.connect for streaming requests'));
-        return false;
+      if (!message?.type) {
+        sendResponse(failure('Invalid message: missing type'));
+        return true;
       }
+      
+      const msgType = message.type as string;
+      log('External message:', msgType, 'from', sender.id);
+      
+      // Route based on message type prefix:
+      // - llm.*, session.*, system.* -> this module (extension API)
+      // - agent.*, agents.* -> agent router
+      const isExtensionApiMessage = msgType.startsWith('llm.') || 
+                                     msgType.startsWith('session.') || 
+                                     msgType.startsWith('system.');
+      
+      if (isExtensionApiMessage) {
+        // Streaming requests need a port connection, not sendMessage
+        if (message.type === 'llm.chatStream') {
+          sendResponse(failure('Use browser.runtime.connect for streaming requests'));
+          return true;
+        }
 
-      // Route the message and send response
-      routeMessage(message, sender)
-        .then(sendResponse)
-        .catch((e) => sendResponse(failure(e)));
+        // Route the message and send response
+        routeExtensionApiMessage(message, sender)
+          .then(sendResponse)
+          .catch((e) => sendResponse(failure(e)));
+      } else {
+        // Route to agent router for agent.* and agents.* messages
+        routeExternalMessage(
+          message as { type: string; payload?: unknown; requestId?: string },
+          sender,
+          sendResponse
+        );
+      }
 
       return true; // Keep channel open for async response
     }
@@ -733,7 +804,7 @@ export function initializeExtensionApi(): void {
         handleStreamingChat(message, port.sender!, port);
       } else {
         // Non-streaming requests via port
-        routeMessage(message, port.sender!)
+        routeExtensionApiMessage(message, port.sender!)
           .then((response) => port.postMessage({ type: 'response', ...response }))
           .catch((e) => port.postMessage({ type: 'response', ok: false, error: String(e) }));
       }
