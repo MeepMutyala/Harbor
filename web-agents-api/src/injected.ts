@@ -660,13 +660,36 @@ function createBrowserApi() {
      */
     tabs: FEATURE_FLAGS.browserControl
       ? Object.freeze({
-          async list(): Promise<Array<{ id: number; url: string; title: string; active: boolean }>> {
+          async list(): Promise<Array<{
+            id: number;
+            url: string;
+            title: string;
+            active: boolean;
+            index: number;
+            windowId: number;
+            favIconUrl?: string;
+            status?: 'loading' | 'complete';
+            canControl: boolean;
+          }>> {
             return sendRequest('agent.browser.tabs.list');
           },
-          async create(url: string): Promise<{ id: number }> {
-            return sendRequest('agent.browser.tabs.create', { url });
+          async create(options: {
+            url: string;
+            active?: boolean;
+            index?: number;
+            windowId?: number;
+          }): Promise<{
+            id: number;
+            url: string;
+            title: string;
+            active: boolean;
+            index: number;
+            windowId: number;
+            canControl: boolean;
+          }> {
+            return sendRequest('agent.browser.tabs.create', options);
           },
-          async close(tabId: number): Promise<{ success: boolean }> {
+          async close(tabId: number): Promise<boolean> {
             return sendRequest('agent.browser.tabs.close', { tabId });
           },
         })
@@ -674,6 +697,42 @@ function createBrowserApi() {
           list: featureDisabledAsync('browserControl'),
           create: featureDisabledAsync('browserControl'),
           close: featureDisabledAsync('browserControl'),
+        },
+
+    /**
+     * Spawned tab operations - for tabs this origin created.
+     */
+    tab: FEATURE_FLAGS.browserControl
+      ? Object.freeze({
+          /**
+           * Extract readable content from a tab this origin created.
+           */
+          async readability(tabId: number): Promise<{
+            title: string;
+            url: string;
+            content: string;
+            text: string;
+            length: number;
+          }> {
+            return sendRequest('agent.browser.tab.readability', { tabId });
+          },
+
+          /**
+           * Get HTML content from a tab this origin created.
+           * @param tabId - The tab ID
+           * @param selector - Optional CSS selector to scope the HTML extraction
+           */
+          async getHtml(tabId: number, selector?: string): Promise<{
+            html: string;
+            url: string;
+            title: string;
+          }> {
+            return sendRequest('agent.browser.tab.getHtml', { tabId, selector });
+          },
+        })
+      : {
+          readability: featureDisabledAsync('browserControl'),
+          getHtml: featureDisabledAsync('browserControl'),
         },
   });
 }

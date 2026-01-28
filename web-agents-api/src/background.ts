@@ -95,6 +95,35 @@ function generateSessionId(): string {
   return `session-${Date.now()}-${++sessionIdCounter}`;
 }
 
+// Track tabs spawned by each origin (origin -> Set<tabId>)
+const spawnedTabs = new Map<string, Set<number>>();
+
+function trackSpawnedTab(origin: string, tabId: number): void {
+  if (!spawnedTabs.has(origin)) {
+    spawnedTabs.set(origin, new Set());
+  }
+  spawnedTabs.get(origin)!.add(tabId);
+}
+
+function untrackSpawnedTab(origin: string, tabId: number): boolean {
+  const tabs = spawnedTabs.get(origin);
+  if (tabs) {
+    return tabs.delete(tabId);
+  }
+  return false;
+}
+
+function isSpawnedTab(origin: string, tabId: number): boolean {
+  return spawnedTabs.get(origin)?.has(tabId) ?? false;
+}
+
+// Clean up spawned tabs when they are closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+  for (const tabs of spawnedTabs.values()) {
+    tabs.delete(tabId);
+  }
+});
+
 // =============================================================================
 // Permission Management
 // =============================================================================
@@ -1641,6 +1670,284 @@ async function handleBrowserReadability(ctx: RequestContext): HandlerResponse {
 }
 
 // =============================================================================
+// Tab Management (Extension 2)
+// =============================================================================
+
+/**
+ * Create a new tab.
+ */
+async function handleTabsCreate(ctx: RequestContext): HandlerResponse {
+  if (!await hasPermission(ctx.origin, 'browser:tabs.create')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission browser:tabs.create required' },
+    };
+  }
+
+  const payload = ctx.payload as { url: string; active?: boolean; index?: number; windowId?: number };
+  
+  if (!payload.url) {
+    return { id: ctx.id, ok: false, error: { code: 'ERR_INVALID_REQUEST', message: 'Missing url parameter' } };
+  }
+
+  try {
+    const tab = await chrome.tabs.create({
+      url: payload.url,
+      active: payload.active ?? false,
+      index: payload.index,
+      windowId: payload.windowId,
+    });
+
+    if (!tab.id) {
+      return { id: ctx.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'Failed to create tab' } };
+    }
+
+    // Track this tab as spawned by this origin
+    trackSpawnedTab(ctx.origin, tab.id);
+
+    return {
+      id: ctx.id,
+      ok: true,
+      result: {
+        id: tab.id,
+        url: tab.url || payload.url,
+        title: tab.title || '',
+        active: tab.active,
+        index: tab.index,
+        windowId: tab.windowId,
+        canControl: true,
+      },
+    };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Failed to create tab' },
+    };
+  }
+}
+
+/**
+ * List all tabs.
+ */
+async function handleTabsList(ctx: RequestContext): HandlerResponse {
+  if (!await hasPermission(ctx.origin, 'browser:tabs.read')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission browser:tabs.read required' },
+    };
+  }
+
+  try {
+    const tabs = await chrome.tabs.query({});
+    const result = tabs.map(tab => ({
+      id: tab.id!,
+      url: tab.url || '',
+      title: tab.title || '',
+      active: tab.active,
+      index: tab.index,
+      windowId: tab.windowId,
+      favIconUrl: tab.favIconUrl,
+      status: tab.status as 'loading' | 'complete' | undefined,
+      canControl: tab.id ? isSpawnedTab(ctx.origin, tab.id) : false,
+    }));
+
+    return { id: ctx.id, ok: true, result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Failed to list tabs' },
+    };
+  }
+}
+
+/**
+ * Close a tab that this origin created.
+ */
+async function handleTabsClose(ctx: RequestContext): HandlerResponse {
+  if (!await hasPermission(ctx.origin, 'browser:tabs.create')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission browser:tabs.create required' },
+    };
+  }
+
+  const { tabId } = ctx.payload as { tabId: number };
+  
+  if (typeof tabId !== 'number') {
+    return { id: ctx.id, ok: false, error: { code: 'ERR_INVALID_REQUEST', message: 'Missing tabId parameter' } };
+  }
+
+  // Only allow closing tabs that this origin created
+  if (!isSpawnedTab(ctx.origin, tabId)) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Can only close tabs created by this origin' },
+    };
+  }
+
+  try {
+    await chrome.tabs.remove(tabId);
+    untrackSpawnedTab(ctx.origin, tabId);
+    return { id: ctx.id, ok: true, result: true };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Failed to close tab' },
+    };
+  }
+}
+
+/**
+ * Get readability content from a spawned tab.
+ */
+async function handleSpawnedTabReadability(ctx: RequestContext): HandlerResponse {
+  if (!await hasPermission(ctx.origin, 'browser:tabs.create')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission browser:tabs.create required' },
+    };
+  }
+
+  const { tabId } = ctx.payload as { tabId: number };
+  
+  if (typeof tabId !== 'number') {
+    return { id: ctx.id, ok: false, error: { code: 'ERR_INVALID_REQUEST', message: 'Missing tabId parameter' } };
+  }
+
+  // Only allow reading from tabs that this origin created
+  if (!isSpawnedTab(ctx.origin, tabId)) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Can only read from tabs created by this origin' },
+    };
+  }
+
+  type ReadabilityResult = {
+    title: string;
+    url: string;
+    content: string;
+    text: string;
+    length: number;
+  };
+
+  try {
+    const result = await executeScriptInTab<ReadabilityResult>(
+      tabId,
+      () => {
+        const title = document.title;
+        const url = window.location.href;
+        
+        // Try to find main content
+        const mainSelectors = ['main', 'article', '[role="main"]', '.content', '#content', '.post', '.article'];
+        let content = '';
+        
+        for (const selector of mainSelectors) {
+          const el = document.querySelector(selector);
+          if (el) {
+            content = el.textContent?.trim() || '';
+            break;
+          }
+        }
+        
+        // Fallback to body text
+        if (!content) {
+          content = document.body.textContent?.trim() || '';
+        }
+        
+        // Clean up whitespace
+        content = content.replace(/\s+/g, ' ').trim();
+        
+        return {
+          title,
+          url,
+          content: content.slice(0, 50000),
+          text: content.slice(0, 50000), // Alias for compatibility
+          length: content.length,
+        };
+      },
+      []
+    );
+
+    if (!result) {
+      return { id: ctx.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'Script execution failed' } };
+    }
+    return { id: ctx.id, ok: true, result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Readability extraction failed' },
+    };
+  }
+}
+
+/**
+ * Get HTML content from a spawned tab.
+ */
+async function handleSpawnedTabGetHtml(ctx: RequestContext): HandlerResponse {
+  if (!await hasPermission(ctx.origin, 'browser:tabs.create')) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission browser:tabs.create required' },
+    };
+  }
+
+  const { tabId, selector } = ctx.payload as { tabId: number; selector?: string };
+  
+  if (typeof tabId !== 'number') {
+    return { id: ctx.id, ok: false, error: { code: 'ERR_INVALID_REQUEST', message: 'Missing tabId parameter' } };
+  }
+
+  // Only allow reading from tabs that this origin created
+  if (!isSpawnedTab(ctx.origin, tabId)) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_PERMISSION_DENIED', message: 'Can only read from tabs created by this origin' },
+    };
+  }
+
+  try {
+    const result = await executeScriptInTab<{ html: string; url: string; title: string }>(
+      tabId,
+      (containerSelector: string | null) => {
+        const container = containerSelector 
+          ? document.querySelector(containerSelector) 
+          : document.body;
+        
+        return {
+          html: container?.outerHTML || document.body.outerHTML,
+          url: window.location.href,
+          title: document.title,
+        };
+      },
+      [selector || null]
+    );
+
+    if (!result) {
+      return { id: ctx.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'Script execution failed' } };
+    }
+    return { id: ctx.id, ok: true, result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INTERNAL', message: e instanceof Error ? e.message : 'Get HTML failed' },
+    };
+  }
+}
+
+// =============================================================================
 // Message Router
 // =============================================================================
 
@@ -1700,6 +2007,20 @@ async function routeMessage(ctx: RequestContext): HandlerResponse {
       return handleBrowserReadability(ctx);
     case 'agent.browser.activeTab.select':
       return handleBrowserSelect(ctx);
+
+    // Tab management operations
+    case 'agent.browser.tabs.create':
+      return handleTabsCreate(ctx);
+    case 'agent.browser.tabs.list':
+      return handleTabsList(ctx);
+    case 'agent.browser.tabs.close':
+      return handleTabsClose(ctx);
+
+    // Spawned tab operations
+    case 'agent.browser.tab.readability':
+      return handleSpawnedTabReadability(ctx);
+    case 'agent.browser.tab.getHtml':
+      return handleSpawnedTabGetHtml(ctx);
 
     default:
       return {
