@@ -1016,6 +1016,123 @@ browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 // =============================================================================
+// Remote Server Handlers
+// =============================================================================
+
+browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'sidebar_test_remote_server') {
+    return false;
+  }
+  const { url, transport, authHeader } = message as {
+    url?: string;
+    transport?: 'sse' | 'websocket';
+    authHeader?: string;
+  };
+  if (!url) {
+    sendResponse({ ok: false, error: 'Missing URL' });
+    return true;
+  }
+  (async () => {
+    const { createRemoteTransport } = await import('./mcp/remote-transport');
+    const remoteTransport = createRemoteTransport({
+      url,
+      transport: transport || 'sse',
+      authHeader,
+      timeout: 10000,
+      autoReconnect: false,
+    });
+
+    try {
+      await remoteTransport.connect();
+
+      // Try to list tools to verify it's a working MCP server
+      const requestId = crypto.randomUUID();
+      const response = await remoteTransport.send({
+        jsonrpc: '2.0',
+        id: requestId,
+        method: 'tools/list',
+      });
+
+      remoteTransport.disconnect();
+
+      if (response.error) {
+        sendResponse({ ok: false, error: response.error.message });
+        return;
+      }
+
+      const tools = (response.result as { tools?: Array<{ name: string }> })?.tools || [];
+      sendResponse({
+        ok: true,
+        toolCount: tools.length,
+        tools: tools.map((t) => t.name),
+      });
+    } catch (error) {
+      remoteTransport.disconnect();
+      sendResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+  return true;
+});
+
+browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'sidebar_add_remote_server') {
+    return false;
+  }
+  const { url, name, transport, authHeader } = message as {
+    url?: string;
+    name?: string;
+    transport?: 'sse' | 'websocket';
+    authHeader?: string;
+  };
+  if (!url || !name) {
+    sendResponse({ ok: false, error: 'Missing URL or name' });
+    return true;
+  }
+  (async () => {
+    try {
+      // Create a unique ID for this server
+      const serverId = `remote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Create the manifest for the remote server
+      const manifest = {
+        id: serverId,
+        name,
+        version: '1.0.0',
+        runtime: 'remote' as const,
+        remoteUrl: url,
+        remoteTransport: transport || 'sse',
+        remoteAuthHeader: authHeader,
+        permissions: [],
+        tools: [] as Array<{ name: string; description?: string }>,
+      };
+
+      // Add and start the server
+      await addServer(manifest);
+
+      // Validate and start it
+      const result = await validateAndStartServer(serverId);
+      if (!result.ok) {
+        // Remove it if validation failed
+        await removeServer(serverId);
+        sendResponse({ ok: false, error: result.error || 'Failed to connect to server' });
+        return;
+      }
+
+      sendResponse({ ok: true, serverId });
+    } catch (error) {
+      sendResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+  return true;
+});
+
+// =============================================================================
 // Page Chat Message Handler
 // =============================================================================
 

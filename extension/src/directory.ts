@@ -20,12 +20,15 @@ type BundledServer = {
   name: string;
   description: string;
   version: string;
-  runtime: 'js' | 'wasm';
+  runtime: 'js' | 'wasm' | 'remote';
   icon: string;
   tags: string[];
   manifestUrl?: string;
   wasmUrl?: string;
   builtIn?: boolean; // Pre-installed with extension, can't be installed from directory
+  // Remote server configuration
+  remoteUrl?: string;
+  remoteTransport?: 'sse' | 'websocket';
   tools: Array<{
     name: string;
     description?: string;
@@ -103,6 +106,24 @@ const BUNDLED_SERVERS: BundledServer[] = [
       ],
     },
   },
+  // Example remote server (from the bring-your-chatbot demo)
+  {
+    id: 'acme-shop-remote',
+    name: 'Acme Shop (Demo)',
+    description: 'Example remote MCP server from the bring-your-chatbot demo. Runs locally on port 3001. Search products, manage cart, and get recommendations.',
+    version: '1.0.0',
+    runtime: 'remote',
+    icon: '🛒',
+    tags: ['demo', 'remote', 'shop', 'sse'],
+    remoteUrl: 'http://localhost:3001/mcp',
+    remoteTransport: 'sse',
+    tools: [
+      { name: 'search_products', description: 'Search the product catalog' },
+      { name: 'get_product_details', description: 'Get details of a product' },
+      { name: 'add_to_cart', description: 'Add item to cart' },
+      { name: 'get_cart', description: 'View cart contents' },
+    ],
+  },
 ];
 
 const STORAGE_KEY = 'harbor_wasm_servers';
@@ -146,7 +167,8 @@ function renderServerCard(server: BundledServer): HTMLElement {
   badges.className = 'server-card-badges';
 
   const runtimeBadge = document.createElement('span');
-  runtimeBadge.className = `badge badge-${server.runtime === 'wasm' ? 'wasm' : 'js'}`;
+  const runtimeClass = server.runtime === 'wasm' ? 'wasm' : server.runtime === 'remote' ? 'remote' : 'js';
+  runtimeBadge.className = `badge badge-${runtimeClass}`;
   runtimeBadge.textContent = server.runtime.toUpperCase();
   badges.appendChild(runtimeBadge);
 
@@ -265,7 +287,24 @@ async function installServer(server: BundledServer): Promise<void> {
   }
 
   try {
-    if (server.runtime === 'wasm' && server.wasmUrl) {
+    if (server.runtime === 'remote' && server.remoteUrl) {
+      // Install remote server
+      const response = await browserAPI.runtime.sendMessage({
+        type: 'sidebar_add_remote_server',
+        url: server.remoteUrl,
+        name: server.name,
+        transport: server.remoteTransport || 'sse',
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || 'Failed to connect to remote server');
+      }
+
+      installedServerIds.add(server.id);
+      showToast(`Connected to ${server.name}`, 'success');
+      refreshList();
+      return;
+    } else if (server.runtime === 'wasm' && server.wasmUrl) {
       // Load WASM module
       const wasmResponse = await fetch(browserAPI.runtime.getURL(server.wasmUrl));
       const wasmBytes = await wasmResponse.arrayBuffer();

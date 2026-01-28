@@ -7,8 +7,9 @@ type ServerStatus = {
   id: string;
   name: string;
   version: string;
-  runtime?: 'wasm' | 'js';
+  runtime?: 'wasm' | 'js' | 'remote';
   entrypoint?: string;
+  remoteUrl?: string;
   tools?: Array<{ name: string }>;
   running: boolean;
 };
@@ -69,6 +70,17 @@ const headerLogo = document.getElementById('header-logo') as HTMLDivElement;
 const serversEl = document.getElementById('servers') as HTMLDivElement;
 const addBtn = document.getElementById('add') as HTMLButtonElement;
 const fileInput = document.getElementById('file') as HTMLInputElement;
+const addRemoteBtn = document.getElementById('add-remote') as HTMLButtonElement;
+
+// Remote server form elements
+const remoteServerForm = document.getElementById('remote-server-form') as HTMLDivElement;
+const remoteServerUrlInput = document.getElementById('remote-server-url') as HTMLInputElement;
+const remoteServerNameInput = document.getElementById('remote-server-name') as HTMLInputElement;
+const remoteServerTransportSelect = document.getElementById('remote-server-transport') as HTMLSelectElement;
+const remoteServerAuthInput = document.getElementById('remote-server-auth') as HTMLInputElement;
+const remoteServerTestBtn = document.getElementById('remote-server-test') as HTMLButtonElement;
+const remoteServerSaveBtn = document.getElementById('remote-server-save') as HTMLButtonElement;
+const remoteServerCancelBtn = document.getElementById('remote-server-cancel') as HTMLButtonElement;
 
 // Bridge status elements
 const bridgeStatusIndicator = document.getElementById('bridge-status-indicator') as HTMLDivElement;
@@ -263,10 +275,15 @@ function renderServer(server: ServerStatus): HTMLElement {
   name.textContent = server.name;
   nameContainer.appendChild(name);
 
-  // Show runtime badge (JS or WASM)
+  // Show runtime badge (JS, WASM, or Remote)
   const runtimeBadge = document.createElement('span');
-  runtimeBadge.className = 'badge badge-muted';
-  runtimeBadge.textContent = server.runtime === 'js' ? 'JS' : 'WASM';
+  if (server.runtime === 'remote') {
+    runtimeBadge.className = 'badge badge-remote';
+    runtimeBadge.textContent = 'REMOTE';
+  } else {
+    runtimeBadge.className = 'badge badge-muted';
+    runtimeBadge.textContent = server.runtime === 'js' ? 'JS' : 'WASM';
+  }
   nameContainer.appendChild(runtimeBadge);
 
   // Action buttons container
@@ -342,6 +359,18 @@ function renderServer(server: ServerStatus): HTMLElement {
   statusText.style.marginRight = '12px';
   meta.appendChild(statusText);
   
+  // Show remote URL for remote servers
+  if (server.runtime === 'remote' && server.remoteUrl) {
+    const urlText = document.createElement('span');
+    urlText.textContent = server.remoteUrl;
+    urlText.style.color = 'var(--color-text-muted)';
+    urlText.style.fontSize = 'var(--text-xs)';
+    urlText.style.fontFamily = 'var(--font-mono)';
+    urlText.style.marginRight = '12px';
+    urlText.style.wordBreak = 'break-all';
+    meta.appendChild(urlText);
+  }
+
   const toolNames = (server.tools || []).map((tool) => tool.name).join(', ');
   if (toolNames.length > 0) {
     const toolsText = document.createElement('span');
@@ -473,6 +502,109 @@ fileInput.addEventListener('change', async () => {
 
 loadServers().catch((error) => {
   console.error('Failed to load servers', error);
+});
+
+// =============================================================================
+// Remote Server Form Handlers
+// =============================================================================
+
+function showRemoteServerForm(): void {
+  remoteServerForm.style.display = 'block';
+  remoteServerUrlInput.value = '';
+  remoteServerNameInput.value = '';
+  remoteServerTransportSelect.value = 'sse';
+  remoteServerAuthInput.value = '';
+  remoteServerUrlInput.focus();
+}
+
+function hideRemoteServerForm(): void {
+  remoteServerForm.style.display = 'none';
+  remoteServerUrlInput.value = '';
+  remoteServerNameInput.value = '';
+  remoteServerAuthInput.value = '';
+}
+
+addRemoteBtn?.addEventListener('click', showRemoteServerForm);
+remoteServerCancelBtn?.addEventListener('click', hideRemoteServerForm);
+
+// Test connection to remote server
+remoteServerTestBtn?.addEventListener('click', async () => {
+  const url = remoteServerUrlInput.value.trim();
+  if (!url) {
+    showToast('Please enter a server URL', 'error');
+    return;
+  }
+
+  remoteServerTestBtn.disabled = true;
+  remoteServerTestBtn.textContent = 'Testing...';
+
+  try {
+    const response = await browserAPI.runtime.sendMessage({
+      type: 'sidebar_test_remote_server',
+      url,
+      transport: remoteServerTransportSelect.value,
+      authHeader: remoteServerAuthInput.value.trim() || undefined,
+    });
+
+    if (response?.ok) {
+      showToast(`Connection successful! Found ${response.toolCount || 0} tools.`, 'success');
+      // Auto-fill name if not set and server returned one
+      if (!remoteServerNameInput.value && response.serverName) {
+        remoteServerNameInput.value = response.serverName;
+      }
+    } else {
+      showToast(`Connection failed: ${response?.error || 'Unknown error'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Test failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  }
+
+  remoteServerTestBtn.disabled = false;
+  remoteServerTestBtn.textContent = 'Test Connection';
+});
+
+// Save remote server
+remoteServerSaveBtn?.addEventListener('click', async () => {
+  const url = remoteServerUrlInput.value.trim();
+  const name = remoteServerNameInput.value.trim();
+  const transport = remoteServerTransportSelect.value as 'sse' | 'websocket';
+  const authHeader = remoteServerAuthInput.value.trim() || undefined;
+
+  if (!url) {
+    showToast('Please enter a server URL', 'error');
+    return;
+  }
+
+  if (!name) {
+    showToast('Please enter a server name', 'error');
+    return;
+  }
+
+  remoteServerSaveBtn.disabled = true;
+  remoteServerSaveBtn.textContent = 'Adding...';
+
+  try {
+    const response = await browserAPI.runtime.sendMessage({
+      type: 'sidebar_add_remote_server',
+      url,
+      name,
+      transport,
+      authHeader,
+    });
+
+    if (response?.ok) {
+      showToast(`Added remote server: ${name}`, 'success');
+      hideRemoteServerForm();
+      await loadServers();
+    } else {
+      showToast(`Failed to add server: ${response?.error || 'Unknown error'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  }
+
+  remoteServerSaveBtn.disabled = false;
+  remoteServerSaveBtn.textContent = 'Add Server';
 });
 
 // Auto-refresh servers when storage changes (e.g., from Directory page)

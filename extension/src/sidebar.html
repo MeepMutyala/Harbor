@@ -377,6 +377,10 @@
         background: var(--color-success-bg, rgba(34, 197, 94, 0.1));
         color: var(--color-success);
       }
+      .badge-remote {
+        background: rgba(59, 130, 246, 0.15);
+        color: #3b82f6;
+      }
       /* Provider list */
       .provider-list {
         display: flex;
@@ -1079,11 +1083,47 @@
           <div class="panel-title">MCP Servers</div>
         </div>
         <div class="panel-header-right">
-          <button class="btn btn-secondary btn-sm" id="add" title="Load MCP server (.json manifest or .wasm)">Add Server</button>
+          <button class="btn btn-secondary btn-sm" id="add-remote" title="Add remote MCP server (SSE/WebSocket)">+ Remote</button>
+          <button class="btn btn-secondary btn-sm" id="add" title="Load MCP server (.json manifest or .wasm)">+ File</button>
           <input id="file" type="file" accept=".wasm,.json" hidden />
         </div>
       </div>
-      <div class="panel-body" id="servers"></div>
+      <div class="panel-body" id="servers">
+        <!-- Remote Server Registration Form (hidden by default) -->
+        <div id="remote-server-form" class="api-key-config" style="display: none; margin-bottom: var(--space-3);">
+          <div class="api-key-header">
+            <span>Add Remote Server</span>
+            <button class="btn btn-ghost btn-sm" id="remote-server-cancel">×</button>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="remote-server-url">Server URL</label>
+            <input type="text" class="form-input" id="remote-server-url" placeholder="http://localhost:3001/mcp" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="remote-server-name">Name</label>
+            <input type="text" class="form-input" id="remote-server-name" placeholder="My MCP Server" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="remote-server-transport">Transport</label>
+            <select class="form-input" id="remote-server-transport">
+              <option value="sse">SSE (Server-Sent Events)</option>
+              <option value="websocket">WebSocket</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="remote-server-auth">Authorization Header (optional)</label>
+            <input type="text" class="form-input" id="remote-server-auth" placeholder="Bearer your-token" />
+          </div>
+          <div class="form-hint" style="margin-bottom: var(--space-2);">
+            Enter the URL of an MCP server that supports SSE or WebSocket transport.
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-secondary btn-sm" id="remote-server-test">Test Connection</button>
+            <button class="btn btn-primary btn-sm" id="remote-server-save" style="flex: 1;">Add Server</button>
+          </div>
+        </div>
+        <!-- Server list will be rendered here -->
+      </div>
     </div>
 
     <!-- Tool Tester Panel -->
