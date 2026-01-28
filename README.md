@@ -1,234 +1,223 @@
 # Harbor
 
-<p align="center">
-  <strong>An implementation of the Web Agent API</strong>
-</p>
+**A browser extension that brings AI agent capabilities to web applications.**
 
-Harbor is a browser extension (Firefox and Chrome) that implements the **[Web Agent API](spec/)** — a proposed standard for bringing AI agent capabilities to web applications.
-
-## What is the Web Agent API?
-
-The **Web Agent API** is a specification that defines how web pages can access AI capabilities:
-
-- **`window.ai`** — Text generation (Chrome Prompt API compatible)
-- **`window.agent`** — Tool calling, browser access, and autonomous agent tasks via [MCP](https://modelcontextprotocol.io/)
-
-**Harbor** implements this specification with two execution modes:
-1. **In-Browser** — MCP servers run as WASM or JavaScript directly in the extension
-2. **Native Bridge** — LLM inference via a Rust native messaging bridge
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                     Browser Extension                             │
-│                                                                   │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌──────────────┐ │
-│  │ Web Agent API   │    │ In-Browser MCP  │    │ Native Bridge│ │
-│  │ window.ai/agent │    │ WASM + JS       │    │ (Rust)       │ │
-│  └────────┬────────┘    └────────┬────────┘    └──────┬───────┘ │
-└───────────┼─────────────────────┼─────────────────────┼─────────┘
-            │                     │                     │
-            ▼                     ▼                     ▼
-    ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-    │  Web Pages    │    │  MCP Servers  │    │  LLM Providers│
-    │  (permission  │    │  (time, echo) │    │  (Ollama,     │
-    │   required)   │    │               │    │   OpenAI...)  │
-    └───────────────┘    └───────────────┘    └───────────────┘
-```
-
-## ✨ Features
-
-- **Local LLM Integration** — Use Ollama, llamafile, or other local models
-- **MCP Server Management** — Install, run, and manage MCP servers from a curated directory
-- **JS AI Provider** — Exposes `window.ai` and `window.agent` APIs to web pages
-- **Permission System** — Per-origin capability grants with user consent
-- **Process Isolation** — Optional crash isolation for MCP servers (forked processes)
-- **Docker Isolation** — Optional containerized execution for MCP servers
+Harbor implements the **[Web Agent API](spec/)** — a proposed standard that exposes `window.ai` and `window.agent` to web pages, giving them access to AI models and tools with user consent.
 
 ---
 
-## 📚 Documentation
+## Why This Exists
 
-### Web Agent API Specification
+**The problem:** Every website that wants AI features needs to either:
+1. Ask users for API keys (bad UX, privacy concerns)
+2. Pay for and manage their own AI infrastructure (expensive, data custody issues)
+3. Use cloud services that see all user data (privacy nightmare)
 
-| Document | Description |
-|----------|-------------|
-| **[Web Agent API Spec](spec/)** | The API specification (`window.ai`, `window.agent`) |
-| [Explainer](spec/explainer.md) | Full specification with Web IDL and examples |
-| [Security & Privacy](spec/security-privacy.md) | Security model and privacy considerations |
+**The vision:** What if the browser could provide AI capabilities directly to web pages — like it provides `fetch()` for network access or `localStorage` for persistence?
 
-### Harbor Implementation
+With the Web Agent API:
+- **Users** control their own AI (run local models, choose providers, manage permissions)
+- **Websites** get AI capabilities without managing infrastructure or handling sensitive data
+- **Privacy** is preserved because data can stay local
 
-#### For Users
+```javascript
+// Any website can use AI — no API keys, no backend needed
+const session = await window.ai.createTextSession();
+const response = await session.prompt("Summarize this page");
+```
 
-| Document | Description |
-|----------|-------------|
-| **[User Guide](docs/USER_GUIDE.md)** | Install Harbor, set up LLMs, manage MCP servers |
-
-#### For Web Developers
-
-| Document | Description |
-|----------|-------------|
-| **[Developer Guide](docs/DEVELOPER_GUIDE.md)** | Build apps using the Web Agent API |
-| [JS API Reference](docs/JS_AI_PROVIDER_API.md) | Detailed API with examples and TypeScript types |
-| [Demo Code](demo/) | Working examples |
-
-#### For AI Agents
-
-| Document | Description |
-|----------|-------------|
-| **[LLMS.txt](docs/LLMS.txt)** | Compact, token-efficient reference for AI coding assistants |
-
-#### For Contributors
-
-| Document | Description |
-|----------|-------------|
-| **[Contributing Guide](CONTRIBUTING.md)** | Build, test, and contribute to Harbor |
-| [Architecture](ARCHITECTURE.md) | System design and component overview |
-| [MCP Host](docs/MCP_HOST.md) | MCP execution environment internals |
-| [Testing Plan](docs/TESTING_PLAN.md) | Test coverage and QA procedures |
+→ **[Read the full explainer: Why Web Agents?](spec/README.md)**
 
 ---
 
-## 🚀 Quick Start
+## Quick Start: Try the Demos
 
-### Prerequisites
+**Just want to see it work? Get running in 5 minutes.**
 
-- **Firefox** 109+ or **Chrome** 120+
-- **Rust** (for building the bridge)
-- **Node.js** 18+ (for building the extension)
-- **Ollama** or **llamafile** (for LLM - optional, needed for AI features)
+### 1. Prerequisites
+- Firefox 109+ or Chrome 120+
+- [Node.js 18+](https://nodejs.org)
+- [Rust](https://rustup.rs) (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- [Ollama](https://ollama.com) for local AI (`brew install ollama && ollama serve && ollama pull llama3.2`)
 
-### Installation
+### 2. Build & Install
 
-**Option 1: macOS Installer**
 ```bash
-# Download and run Harbor-x.x.x.pkg
-# Restart your browser after installation
-```
-
-**Option 2: Build from Source**
-```bash
-# Clone with submodules
+# Clone and build
 git clone --recurse-submodules https://github.com/anthropics/harbor.git
 cd harbor
-
-# Build extension
 cd extension && npm install && npm run build && cd ..
+cd bridge-rs && cargo build --release && ./install.sh && cd ..
 
-# Build Rust bridge
-cd bridge-rs && cargo build --release && cd ..
-
-# Install native messaging manifest
-cd bridge-rs && ./install.sh && cd ..
-
-# Load extension in browser
-# Firefox: about:debugging#/runtime/this-firefox → Load Temporary Add-on → extension/dist/manifest.json
+# Load extension
+# Firefox: about:debugging → Load Temporary Add-on → extension/dist/manifest.json
 # Chrome: chrome://extensions → Developer mode → Load unpacked → extension/dist/
 ```
 
-### Verify Installation
+### 3. Run the Demos
 
-1. Click the Harbor sidebar icon in Firefox
-2. You should see "Connected" status
-3. Click "Detect" under LLM settings to find your local model
-
----
-
-## 🎯 How It Works
-
-**Web Page Integration (Web Agent API):**
-```javascript
-// Check if Web Agent API is available
-if (window.agent) {
-  // Request permissions
-  await window.agent.requestPermissions({
-    scopes: ['model:prompt', 'mcp:tools.list', 'mcp:tools.call'],
-    reason: 'Enable AI features'
-  });
-
-  // Use AI text generation
-  const session = await window.ai.createTextSession();
-  const response = await session.prompt('Hello!');
-
-  // Run agent tasks with tools
-  for await (const event of window.agent.run({ task: 'Search my files' })) {
-    console.log(event);
-  }
-}
+```bash
+cd demo && npm install && npm start
 ```
 
-**Permission Scopes:**
+Open http://localhost:8000 and try:
+- **[Getting Started](http://localhost:8000/web-agents/getting-started/)** — Interactive tutorial
+- **[Chat Demo](http://localhost:8000/web-agents/chat-poc/)** — Full chat with tools
+- **[Page Summarizer](http://localhost:8000/web-agents/summarizer/)** — One-click summaries
 
-| Scope | Description |
-|-------|-------------|
-| `model:prompt` | Basic text generation |
-| `model:tools` | AI with tool calling |
-| `mcp:tools.list` | List available MCP tools |
-| `mcp:tools.call` | Execute MCP tools |
-| `browser:activeTab.read` | Read active tab content |
+→ **[Full installation guide](docs/USER_GUIDE.md)** | **[More demos](demo/README.md)**
 
 ---
 
-## 🗂 Project Structure
+## Build With the Web Agent API
+
+**Building a hackathon project or integrating AI into your web app?**
+
+The Web Agent API gives your web pages access to:
+
+| API | What It Does |
+|-----|--------------|
+| `window.ai.createTextSession()` | Chat with AI models |
+| `window.agent.tools.list()` | List available MCP tools |
+| `window.agent.tools.call()` | Execute tools (search, files, databases) |
+| `window.agent.run()` | Run autonomous agent tasks |
+| `window.agent.browser.activeTab.readability()` | Read page content |
+
+### Minimal Example
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+  <button id="ask">Ask AI</button>
+  <div id="output"></div>
+  <script>
+    document.getElementById('ask').onclick = async () => {
+      // 1. Request permission
+      await window.agent.requestPermissions({
+        scopes: ['model:prompt'],
+        reason: 'To answer your question'
+      });
+      
+      // 2. Create session and prompt
+      const session = await window.ai.createTextSession();
+      const response = await session.prompt('What is 2+2?');
+      document.getElementById('output').textContent = response;
+    };
+  </script>
+</body>
+</html>
+```
+
+### Developer Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[API Quickstart](QUICKSTART.md)** | Get from zero to working code in 15 minutes |
+| **[Web Agents API Reference](docs/WEB_AGENTS_API.md)** | Complete API docs with examples |
+| **[JS API Reference](docs/JS_AI_PROVIDER_API.md)** | Detailed `window.ai` and `window.agent` reference |
+| **[Working Examples](spec/examples/)** | Copy-paste ready code |
+| **[Demo Source Code](demo/)** | Full demo implementations |
+
+### Key Concepts
+
+**Permissions:** All capabilities require user consent. Request what you need:
+```javascript
+await window.agent.requestPermissions({
+  scopes: ['model:prompt', 'mcp:tools.list', 'mcp:tools.call'],
+  reason: 'Enable AI features'
+});
+```
+
+**Feature Flags:** Some APIs are gated. Users enable them in the sidebar:
+- `toolCalling` — Enables `agent.run()` for autonomous tasks
+- `browserInteraction` — Enables click/fill/scroll automation
+- `browserControl` — Enables tab management and navigation
+
+→ **[Feature Flags Reference](docs/WEB_AGENTS_API.md#feature-flags)**
+
+---
+
+## Hack on Harbor
+
+**Want to contribute to Harbor or build your own Web Agent API implementation?**
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         WEB PAGE                                 │
+│            window.ai / window.agent (injected APIs)             │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │ postMessage
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    BROWSER EXTENSION                             │
+│  • Permission enforcement       • In-browser WASM/JS MCP        │
+│  • Feature flags               • Message routing                │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │ Native Messaging
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      RUST BRIDGE                                 │
+│  • LLM provider abstraction    • Native MCP servers             │
+│  • Ollama/OpenAI/Anthropic     • OAuth flows                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Contributor Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[Architecture](ARCHITECTURE.md)** | System design and component details |
+| **[Contributing Guide](CONTRIBUTING.md)** | Build, test, and submit changes |
+| **[MCP Host](docs/MCP_HOST.md)** | MCP execution environment internals |
+| **[Testing Plan](docs/TESTING_PLAN.md)** | Test coverage and QA procedures |
+
+### Development Setup
+
+```bash
+# Watch mode
+cd extension && npm run dev    # Auto-rebuild on changes
+cd bridge-rs && cargo build    # Rebuild after Rust changes
+
+# Test
+cd bridge-rs && cargo test
+cd extension && npm test
+```
+
+→ **[Full contributing guide](CONTRIBUTING.md)**
+
+---
+
+## The Web Agent API Specification
+
+Harbor is an *implementation* of the Web Agent API. The specification itself is browser-agnostic.
+
+| Document | Description |
+|----------|-------------|
+| **[Specification Overview](spec/README.md)** | What the Web Agent API is and why it matters |
+| **[Full Explainer](spec/explainer.md)** | Complete spec with Web IDL and security model |
+| **[Security & Privacy](spec/security-privacy.md)** | Threat model and mitigations |
+
+---
+
+## Project Structure
 
 ```
 harbor/
-├── extension/          # Browser Extension (TypeScript, esbuild)
-│   └── src/
-│       ├── agents/     # Web Agent API (injected.ts, orchestrator.ts)
-│       ├── js-runtime/ # In-browser JS MCP runtime
-│       ├── wasm/       # In-browser WASM MCP runtime
-│       ├── llm/        # Native bridge client
-│       ├── mcp/        # MCP protocol & host
-│       └── policy/     # Permission system
-├── bridge-rs/          # Rust Native Messaging Bridge
-│   ├── src/
-│   │   ├── js/         # QuickJS runtime for JS MCP servers
-│   │   ├── llm/        # LLM provider configuration
-│   │   └── rpc/        # RPC method handlers
-│   └── any-llm-rust/   # Multi-provider LLM library (submodule)
-├── demo/               # Example web pages
-├── docs/               # Documentation
-├── spec/               # Web Agent API specification
-└── installer/          # Distributable packages
+├── spec/               # Web Agent API specification (browser-agnostic)
+├── extension/          # Browser extension (TypeScript)
+│   └── src/agents/     # window.ai / window.agent implementation
+├── bridge-rs/          # Rust native messaging bridge
+├── demo/               # Working examples
+├── docs/               # Implementation documentation
+├── mcp-servers/        # Built-in MCP servers (WASM, JS)
+└── installer/          # macOS package builder
 ```
 
 ---
 
-## 🛠 Development
-
-```bash
-# Watch mode (extension)
-cd extension && npm run dev
-
-# Build Rust bridge (release)
-cd bridge-rs && cargo build --release
-
-# Run Rust tests
-cd bridge-rs && cargo test
-
-# TypeScript type check
-cd extension && npx tsc --noEmit
-```
-
-See [Contributing Guide](CONTRIBUTING.md) for detailed development instructions.
-
----
-
-## 📊 Roadmap
-
-- [x] Native messaging bridge
-- [x] MCP server management
-- [x] LLM integration (Ollama, llamafile)
-- [x] Chat orchestration with tool calling
-- [x] JS AI Provider (window.ai, window.agent)
-- [x] Permission system
-- [ ] v1.0 Production release
-- [ ] Windows/Linux installers
-- [ ] Chrome extension support
-
----
-
-## 📄 License
+## License
 
 MIT
