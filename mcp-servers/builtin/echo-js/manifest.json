@@ -1,0 +1,49 @@
+{
+  "$schema": "https://harbor.dev/schemas/mcp-wasm-manifest.v1.json",
+  "manifestVersion": "1.0.0",
+  "id": "echo-js",
+  "name": "Echo Server",
+  "displayName": "Echo MCP Server",
+  "version": "1.0.0",
+  "description": "A simple echo server for testing the JavaScript MCP runtime. Echoes back messages and reverses strings.",
+  "author": {
+    "name": "Harbor Project",
+    "url": "https://github.com/anthropics/harbor"
+  },
+  "license": "MIT",
+  "keywords": ["echo", "test", "demo"],
+
+  "runtime": "js",
+  "scriptUrl": "echo-server.js",
+
+  "tools": [
+    {
+      "name": "echo",
+      "description": "Echo back the input message",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "The message to echo back"
+          }
+        },
+        "required": ["message"]
+      }
+    },
+    {
+      "name": "reverse",
+      "description": "Reverse a string",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to reverse"
+          }
+        },
+        "required": ["text"]
+      }
+    }
+  ]
+}

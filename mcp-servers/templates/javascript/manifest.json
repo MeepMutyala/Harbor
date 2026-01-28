@@ -1,0 +1,53 @@
+{
+  "$schema": "https://harbor.dev/schemas/mcp-wasm-manifest.v1.json",
+  "manifestVersion": "1.0.0",
+  "id": "my-js-server",
+  "name": "My Server",
+  "displayName": "My MCP Server",
+  "version": "1.0.0",
+  "description": "A JavaScript MCP server that does something useful",
+  "author": {
+    "name": "Your Name",
+    "url": "https://github.com/yourname"
+  },
+  "license": "MIT",
+  "keywords": ["example", "template"],
+
+  "runtime": "js",
+  "scriptUrl": "server.js",
+
+  "tools": [
+    {
+      "name": "greet",
+      "description": "Say hello to someone",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the person to greet"
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "add",
+      "description": "Add two numbers together",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "a": {
+            "type": "number",
+            "description": "First number"
+          },
+          "b": {
+            "type": "number",
+            "description": "Second number"
+          }
+        },
+        "required": ["a", "b"]
+      }
+    }
+  ]
+}

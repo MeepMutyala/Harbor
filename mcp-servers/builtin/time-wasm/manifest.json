@@ -1,0 +1,35 @@
+{
+  "$schema": "https://harbor.dev/schemas/mcp-wasm-manifest.v1.json",
+  "manifestVersion": "1.0.0",
+  "id": "time-wasm",
+  "name": "mcp-time",
+  "displayName": "Time MCP Server",
+  "version": "1.0.0",
+  "description": "A simple MCP server that provides current time information. The host passes the current time to the server since WASM cannot access system clocks directly.",
+  "author": {
+    "name": "Harbor Project",
+    "url": "https://github.com/anthropics/harbor"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/anthropics/harbor",
+  "keywords": ["time", "datetime", "demo", "wasm"],
+
+  "wasm": {
+    "file": "target/wasm32-wasip1/release/mcp_time_wasm.wasm",
+    "wasi": {
+      "version": "preview1"
+    }
+  },
+
+  "tools": [
+    {
+      "name": "time.now",
+      "description": "Get the current date and time in ISO 8601 format (UTC)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  ]
+}
