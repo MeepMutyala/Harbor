@@ -53,16 +53,15 @@ chmod +x "$WRAPPER_PATH"
 echo "Created wrapper script: $WRAPPER_PATH"
 echo ""
 
-# Function to install manifest
-install_manifest() {
-    local browser="$1"
-    local manifest_dir="$2"
+# Function to install manifest for Firefox
+install_firefox_manifest() {
+    local manifest_dir="$1"
     
-    if [ -d "$(dirname "$manifest_dir")" ] || [ "$browser" = "Firefox" ]; then
-        echo "Installing native messaging manifest for $browser..."
+    if [ -d "$(dirname "$manifest_dir")" ]; then
+        echo "Installing native messaging manifest for Firefox..."
         mkdir -p "$manifest_dir"
         
-        # Generate manifest with correct binary path
+        # Firefox uses allowed_extensions
         cat > "$manifest_dir/harbor_bridge.json" << EOF
 {
   "name": "harbor_bridge",
@@ -74,15 +73,58 @@ install_manifest() {
 EOF
         echo "  Manifest installed: $manifest_dir/harbor_bridge.json"
     else
-        echo "Skipping $browser (not installed)"
+        echo "Skipping Firefox (not installed)"
+    fi
+}
+
+# Function to install manifest for Chrome
+install_chrome_manifest() {
+    local manifest_dir="$1"
+    local extension_id="${2:-}"  # Optional: specify extension ID
+    
+    if [ -d "$(dirname "$manifest_dir")" ]; then
+        echo "Installing native messaging manifest for Chrome..."
+        mkdir -p "$manifest_dir"
+        
+        # Chrome uses allowed_origins with chrome-extension:// URLs
+        # Use * to allow any extension, or specify the extension ID
+        if [ -n "$extension_id" ]; then
+            ORIGIN="chrome-extension://${extension_id}/"
+        else
+            # When extension is loaded unpacked, the ID changes
+            # Use a placeholder that can be updated after loading
+            ORIGIN="chrome-extension://*/"
+        fi
+        
+        cat > "$manifest_dir/harbor_bridge.json" << EOF
+{
+  "name": "harbor_bridge",
+  "description": "Harbor Bridge - Local LLM and MCP server for Harbor extension",
+  "path": "$WRAPPER_PATH",
+  "type": "stdio",
+  "allowed_origins": ["$ORIGIN"]
+}
+EOF
+        echo "  Manifest installed: $manifest_dir/harbor_bridge.json"
+        if [ -z "$extension_id" ]; then
+            echo ""
+            echo "  NOTE: Chrome requires a specific extension ID in allowed_origins."
+            echo "  After loading the extension in Chrome, get its ID from chrome://extensions"
+            echo "  and update the manifest file at:"
+            echo "    $manifest_dir/harbor_bridge.json"
+            echo "  Replace the 'allowed_origins' with:"
+            echo '    "allowed_origins": ["chrome-extension://YOUR_EXTENSION_ID/"]'
+        fi
+    else
+        echo "Skipping Chrome (not installed)"
     fi
 }
 
 # Install for Firefox
-install_manifest "Firefox" "$FIREFOX_MANIFEST_DIR"
+install_firefox_manifest "$FIREFOX_MANIFEST_DIR"
 
-# Install for Chrome (optional)
-# install_manifest "Chrome" "$CHROME_MANIFEST_DIR"
+# Install for Chrome
+install_chrome_manifest "$CHROME_MANIFEST_DIR"
 
 echo ""
 echo "=== Installation Complete ==="
@@ -98,3 +140,11 @@ if [ "$OS" = "Darwin" ]; then
 else
     echo "  ~/.cache/harbor-bridge.log"
 fi
+echo ""
+echo "=== Safari Notes ==="
+echo ""
+echo "Safari Web Extensions require the native messaging helper to be bundled"
+echo "inside a macOS app. See installer/safari/ for the Xcode project wrapper."
+echo "The app bundle must contain the harbor-bridge binary at:"
+echo "  Harbor.app/Contents/MacOS/harbor-bridge"
+echo "and be properly code-signed for distribution."
