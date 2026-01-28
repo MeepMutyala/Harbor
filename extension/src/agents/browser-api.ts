@@ -110,6 +110,56 @@ export async function getTabReadability(tabId: number): Promise<ActiveTabReadabi
   }
 }
 
+/**
+ * Get HTML content from a tab.
+ * 
+ * @param tabId - The tab ID to read from
+ * @param selector - Optional CSS selector to scope the HTML extraction
+ */
+export async function getTabHtml(
+  tabId: number,
+  selector?: string
+): Promise<{ html: string; url: string; title: string }> {
+  const tab = await getRequestingTab(tabId);
+
+  try {
+    const results = await browserAPI.scripting.executeScript({
+      target: { tabId },
+      func: (containerSelector: string | null) => {
+        const container = containerSelector 
+          ? document.querySelector(containerSelector) 
+          : document.body;
+        
+        return {
+          html: container?.outerHTML || document.body.outerHTML,
+          url: window.location.href,
+          title: document.title,
+        };
+      },
+      args: [selector || null],
+    });
+
+    if (!results || results.length === 0 || !results[0].result) {
+      throw new Error('Failed to extract HTML content');
+    }
+
+    return results[0].result as { html: string; url: string; title: string };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('Cannot access')) {
+        throw Object.assign(
+          new Error('Cannot read content from this page'),
+          { code: 'ERR_PERMISSION_DENIED' }
+        );
+      }
+    }
+    throw Object.assign(
+      new Error(`HTML extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`),
+      { code: 'ERR_INTERNAL' }
+    );
+  }
+}
+
 // =============================================================================
 // Page Interaction (Same-Tab Only)
 // =============================================================================
@@ -159,23 +209,29 @@ export async function clickElement(tabId: number, selector: string, options?: Cl
         throw new Error(`Element is disabled: ${sel}`);
       }
 
-      // Create and dispatch click event
-      const clickEvent = new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        button: opts?.button === 'right' ? 2 : opts?.button === 'middle' ? 1 : 0,
-      });
-
-      // For multiple clicks
-      const clickCount = opts?.clickCount || 1;
-      for (let i = 0; i < clickCount; i++) {
-        element.dispatchEvent(clickEvent);
+      // For checkboxes and radio buttons, use click() which properly toggles state and fires change
+      if (element instanceof HTMLInputElement && (element.type === 'checkbox' || element.type === 'radio')) {
+        element.click();
+        // Ensure change event fires for form validation
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
       }
 
-      // Also call click() for form elements
-      if (typeof element.click === 'function') {
-        element.click();
+      // For other elements, use click() which handles most cases correctly
+      const clickCount = opts?.clickCount || 1;
+      for (let i = 0; i < clickCount; i++) {
+        if (typeof element.click === 'function') {
+          element.click();
+        } else {
+          // Fallback: dispatch click event manually
+          const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            button: opts?.button === 'right' ? 2 : opts?.button === 'middle' ? 1 : 0,
+          });
+          element.dispatchEvent(clickEvent);
+        }
       }
     },
     args: [selector, options],

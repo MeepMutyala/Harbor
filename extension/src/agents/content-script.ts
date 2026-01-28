@@ -4,6 +4,9 @@
  * Bridges messages between:
  * - Injected script (web page context)
  * - Background script (extension context)
+ * 
+ * NOTE: Harbor exposes all features unconditionally. Feature flags are
+ * managed by the Web Agents API extension, not Harbor.
  */
 
 import { browserAPI } from '../browser-compat';
@@ -84,54 +87,15 @@ function getBackgroundPort(): RuntimePort {
 }
 
 /**
- * Fetch feature flags from background script.
- */
-async function getFeatureFlags(): Promise<{
-  browserInteraction: boolean;
-  screenshots: boolean;
-  experimental: boolean;
-  browserControl: boolean;
-  multiAgent: boolean;
-}> {
-  return new Promise((resolve) => {
-    browserAPI.runtime.sendMessage({ type: 'getFeatureFlags' }, (response) => {
-      if (browserAPI.runtime.lastError || !response) {
-        // Default to safe mode if we can't get flags
-        resolve({
-          browserInteraction: false,
-          screenshots: false,
-          experimental: false,
-          browserControl: false,
-          multiAgent: false,
-        });
-      } else {
-        resolve(response);
-      }
-    });
-  });
-}
-
-/**
- * Inject the Web Agent API script into the page with feature flags.
+ * Inject the Web Agent API script into the page.
+ * Harbor exposes all features - no feature flags needed.
  */
 let injected = false;
 
-function appendInjectedScripts(flags: {
-  browserInteraction: boolean;
-  screenshots: boolean;
-  experimental: boolean;
-  browserControl: boolean;
-  multiAgent: boolean;
-}): boolean {
+function appendInjectedScripts(): boolean {
   if (injected) return true;
   const root = document.head || document.documentElement;
   if (!root) return false;
-
-  const flagsScript = document.createElement('script');
-  flagsScript.type = 'application/json';
-  flagsScript.id = 'harbor-feature-flags';
-  flagsScript.textContent = JSON.stringify(flags);
-  root.appendChild(flagsScript);
 
   const script = document.createElement('script');
   script.src = browserAPI.runtime.getURL('dist/agents/injected.js');
@@ -147,12 +111,11 @@ function appendInjectedScripts(flags: {
   return true;
 }
 
-async function injectAgentsAPI(): Promise<void> {
-  const flags = await getFeatureFlags();
-  if (appendInjectedScripts(flags)) return;
+function injectAgentsAPI(): void {
+  if (appendInjectedScripts()) return;
 
   const retry = () => {
-    if (appendInjectedScripts(flags)) {
+    if (appendInjectedScripts()) {
       document.removeEventListener('readystatechange', retry);
       window.removeEventListener('DOMContentLoaded', retry);
     }
@@ -218,4 +181,4 @@ window.addEventListener('message', async (event: MessageEvent) => {
 });
 
 // Initialize
-injectAgentsAPI().catch(console.error);
+injectAgentsAPI();

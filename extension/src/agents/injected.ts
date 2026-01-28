@@ -5,69 +5,13 @@
  * - window.ai - Text generation API (Chrome Prompt API compatible)
  * - window.agent - Tools, browser access, and autonomous agent capabilities
  * - window.harbor - Guaranteed namespace with direct access to Harbor APIs
+ * 
+ * NOTE: Harbor exposes all features unconditionally. Feature flags are
+ * managed by the Web Agents API extension, not Harbor.
  */
 
 // Make this a module to avoid global scope conflicts with types
 export {};
-
-// =============================================================================
-// Feature Flags
-// =============================================================================
-
-interface FeatureFlags {
-  browserInteraction: boolean;
-  screenshots: boolean;
-  experimental: boolean;
-  browserControl: boolean;
-  multiAgent: boolean;
-}
-
-// Read feature flags from injected JSON element
-function getFeatureFlags(): FeatureFlags {
-  const defaults: FeatureFlags = {
-    browserInteraction: false,
-    screenshots: false,
-    experimental: false,
-    browserControl: false,
-    multiAgent: false,
-  };
-
-  try {
-    const flagsElement = document.getElementById('harbor-feature-flags');
-    if (flagsElement?.textContent) {
-      const parsed = JSON.parse(flagsElement.textContent) as Partial<FeatureFlags>;
-      return { ...defaults, ...parsed };
-    }
-  } catch {
-    // Ignore parse errors, use defaults
-  }
-
-  return defaults;
-}
-
-const FEATURE_FLAGS = getFeatureFlags();
-
-/**
- * Create a function that throws ERR_FEATURE_DISABLED for disabled features.
- */
-function featureDisabled(featureName: string): () => never {
-  return () => {
-    const err = new Error(`Feature "${featureName}" is not enabled. Enable it in Harbor settings.`);
-    (err as Error & { code?: string }).code = 'ERR_FEATURE_DISABLED';
-    throw err;
-  };
-}
-
-/**
- * Create an async function that rejects with ERR_FEATURE_DISABLED for disabled features.
- */
-function featureDisabledAsync(featureName: string): () => Promise<never> {
-  return async () => {
-    const err = new Error(`Feature "${featureName}" is not enabled. Enable it in Harbor settings.`);
-    (err as Error & { code?: string }).code = 'ERR_FEATURE_DISABLED';
-    throw err;
-  };
-}
 
 // =============================================================================
 // Types (subset needed for injected context)
@@ -752,188 +696,186 @@ const agentApi = Object.freeze({
 
     /**
      * Navigate the current tab to a new URL.
-     * Requires: browser:navigate permission AND browserControl feature flag
+     * Requires: browser:navigate permission
      * 
      * @example
      * await window.agent.browser.navigate('https://example.com');
      */
-    navigate: FEATURE_FLAGS.browserControl
-      ? async (url: string): Promise<void> => {
-          return sendRequest('agent.browser.navigate', { url });
-        }
-      : featureDisabledAsync('browserControl'),
+    async navigate(url: string): Promise<void> {
+      return sendRequest('agent.browser.navigate', { url });
+    },
 
     /**
      * Wait for the current navigation to complete.
-     * Requires: browser:navigate permission AND browserControl feature flag
+     * Requires: browser:navigate permission
      */
-    waitForNavigation: FEATURE_FLAGS.browserControl
-      ? async (options?: { timeout?: number }): Promise<void> => {
-          return sendRequest('agent.browser.waitForNavigation', options);
-        }
-      : featureDisabledAsync('browserControl'),
+    async waitForNavigation(options?: { timeout?: number }): Promise<void> {
+      return sendRequest('agent.browser.waitForNavigation', options);
+    },
 
     // =========================================================================
-    // Extension 2: Tabs API (multi-tab) - requires browserControl flag
+    // Extension 2: Tabs API (multi-tab)
     // =========================================================================
-    tabs: FEATURE_FLAGS.browserControl
-      ? Object.freeze({
-          /**
-           * List all open tabs with their metadata.
-           * Requires: browser:tabs.read permission
-           */
-          async list(): Promise<Array<{
-            id: number;
-            url: string;
-            title: string;
-            active: boolean;
-            index: number;
-            windowId: number;
-            favIconUrl?: string;
-            status?: 'loading' | 'complete';
-            canControl: boolean;
-          }>> {
-            return sendRequest('agent.browser.tabs.list');
-          },
+    tabs: Object.freeze({
+      /**
+       * List all open tabs with their metadata.
+       * Requires: browser:tabs.read permission
+       */
+      async list(): Promise<Array<{
+        id: number;
+        url: string;
+        title: string;
+        active: boolean;
+        index: number;
+        windowId: number;
+        favIconUrl?: string;
+        status?: 'loading' | 'complete';
+        canControl: boolean;
+      }>> {
+        return sendRequest('agent.browser.tabs.list');
+      },
 
-          /**
-           * Get metadata for a specific tab.
-           * Requires: browser:tabs.read permission
-           */
-          async get(tabId: number): Promise<{
-            id: number;
-            url: string;
-            title: string;
-            active: boolean;
-            index: number;
-            windowId: number;
-            favIconUrl?: string;
-            status?: 'loading' | 'complete';
-            canControl: boolean;
-          } | null> {
-            return sendRequest('agent.browser.tabs.get', { tabId });
-          },
+      /**
+       * Get metadata for a specific tab.
+       * Requires: browser:tabs.read permission
+       */
+      async get(tabId: number): Promise<{
+        id: number;
+        url: string;
+        title: string;
+        active: boolean;
+        index: number;
+        windowId: number;
+        favIconUrl?: string;
+        status?: 'loading' | 'complete';
+        canControl: boolean;
+      } | null> {
+        return sendRequest('agent.browser.tabs.get', { tabId });
+      },
 
-          /**
-           * Create a new tab.
-           * Requires: browser:tabs.create permission
-           */
-          async create(options: {
-            url: string;
-            active?: boolean;
-            index?: number;
-            windowId?: number;
-          }): Promise<{
-            id: number;
-            url: string;
-            title: string;
-            active: boolean;
-            index: number;
-            windowId: number;
-            canControl: boolean;
-          }> {
-            return sendRequest('agent.browser.tabs.create', options);
-          },
+      /**
+       * Create a new tab.
+       * Requires: browser:tabs.create permission
+       */
+      async create(options: {
+        url: string;
+        active?: boolean;
+        index?: number;
+        windowId?: number;
+      }): Promise<{
+        id: number;
+        url: string;
+        title: string;
+        active: boolean;
+        index: number;
+        windowId: number;
+        canControl: boolean;
+      }> {
+        return sendRequest('agent.browser.tabs.create', options);
+      },
 
-          /**
-           * Close a tab that this origin created.
-           * Requires: browser:tabs.create permission
-           */
-          async close(tabId: number): Promise<boolean> {
-            return sendRequest('agent.browser.tabs.close', { tabId });
-          },
-        })
-      : undefined,
+      /**
+       * Close a tab that this origin created.
+       * Requires: browser:tabs.create permission
+       */
+      async close(tabId: number): Promise<boolean> {
+        return sendRequest('agent.browser.tabs.close', { tabId });
+      },
+    }),
 
     // =========================================================================
-    // Extension 2: Spawned Tab Operations - requires browserControl flag
+    // Extension 2: Spawned Tab Operations
     // Operations on tabs that this origin created (full control)
     // =========================================================================
-    tab: FEATURE_FLAGS.browserControl
-      ? Object.freeze({
-          /**
-           * Extract readable text content from a tab this origin created.
-           */
-          async readability(tabId: number): Promise<ActiveTabReadability> {
-            return sendRequest<ActiveTabReadability>('agent.browser.tab.readability', { tabId });
-          },
+    tab: Object.freeze({
+      /**
+       * Extract readable text content from a tab this origin created.
+       */
+      async readability(tabId: number): Promise<ActiveTabReadability> {
+        return sendRequest<ActiveTabReadability>('agent.browser.tab.readability', { tabId });
+      },
 
-          /**
-           * Click an element in a tab this origin created.
-           */
-          async click(tabId: number, selector: string, options?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }): Promise<void> {
-            return sendRequest('agent.browser.tab.click', { tabId, selector, options });
-          },
+      /**
+       * Get HTML content from a tab this origin created.
+       * @param tabId - The tab ID
+       * @param selector - Optional CSS selector to scope the HTML extraction
+       */
+      async getHtml(tabId: number, selector?: string): Promise<{ html: string; url: string; title: string }> {
+        return sendRequest('agent.browser.tab.getHtml', { tabId, selector });
+      },
 
-          /**
-           * Fill an input element in a tab this origin created.
-           */
-          async fill(tabId: number, selector: string, value: string): Promise<void> {
-            return sendRequest('agent.browser.tab.fill', { tabId, selector, value });
-          },
+      /**
+       * Click an element in a tab this origin created.
+       */
+      async click(tabId: number, selector: string, options?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }): Promise<void> {
+        return sendRequest('agent.browser.tab.click', { tabId, selector, options });
+      },
 
-          /**
-           * Scroll in a tab this origin created.
-           */
-          async scroll(tabId: number, options: { x?: number; y?: number; selector?: string; behavior?: 'auto' | 'smooth' }): Promise<void> {
-            return sendRequest('agent.browser.tab.scroll', { tabId, ...options });
-          },
+      /**
+       * Fill an input element in a tab this origin created.
+       */
+      async fill(tabId: number, selector: string, value: string): Promise<void> {
+        return sendRequest('agent.browser.tab.fill', { tabId, selector, value });
+      },
 
-          /**
-           * Take a screenshot of a tab this origin created.
-           */
-          async screenshot(tabId: number, options?: { format?: 'png' | 'jpeg'; quality?: number }): Promise<string> {
-            return sendRequest<string>('agent.browser.tab.screenshot', { tabId, ...options });
-          },
+      /**
+       * Scroll in a tab this origin created.
+       */
+      async scroll(tabId: number, options: { x?: number; y?: number; selector?: string; behavior?: 'auto' | 'smooth' }): Promise<void> {
+        return sendRequest('agent.browser.tab.scroll', { tabId, ...options });
+      },
 
-          /**
-           * Navigate a tab this origin created to a new URL.
-           */
-          async navigate(tabId: number, url: string): Promise<void> {
-            return sendRequest('agent.browser.tab.navigate', { tabId, url });
-          },
+      /**
+       * Take a screenshot of a tab this origin created.
+       */
+      async screenshot(tabId: number, options?: { format?: 'png' | 'jpeg'; quality?: number }): Promise<string> {
+        return sendRequest<string>('agent.browser.tab.screenshot', { tabId, ...options });
+      },
 
-          /**
-           * Wait for navigation to complete in a tab this origin created.
-           */
-          async waitForNavigation(tabId: number, options?: { timeout?: number }): Promise<void> {
-            return sendRequest('agent.browser.tab.waitForNavigation', { tabId, ...options });
-          },
-        })
-      : undefined,
+      /**
+       * Navigate a tab this origin created to a new URL.
+       */
+      async navigate(tabId: number, url: string): Promise<void> {
+        return sendRequest('agent.browser.tab.navigate', { tabId, url });
+      },
+
+      /**
+       * Wait for navigation to complete in a tab this origin created.
+       */
+      async waitForNavigation(tabId: number, options?: { timeout?: number }): Promise<void> {
+        return sendRequest('agent.browser.tab.waitForNavigation', { tabId, ...options });
+      },
+    }),
   }),
 
   // =========================================================================
-  // Extension 2: Web Fetch API (CORS bypass) - requires browserControl flag
+  // Extension 2: Web Fetch API (CORS bypass)
   // =========================================================================
 
   /**
    * Make an HTTP request through the extension (bypasses CORS).
-   * Requires: web:fetch permission AND browserControl feature flag
+   * Requires: web:fetch permission
    * 
    * Only allowed for domains in the user's allowlist.
    */
-  fetch: FEATURE_FLAGS.browserControl
-    ? async (url: string, options?: {
-        method?: string;
-        headers?: Record<string, string>;
-        body?: string;
-      }): Promise<{
-        ok: boolean;
-        status: number;
-        statusText: string;
-        headers: Record<string, string>;
-        text: string;
-      }> => {
-        return sendRequest('agent.fetch', { url, ...options });
-      }
-    : featureDisabledAsync('browserControl'),
+  async fetch(url: string, options?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  }): Promise<{
+    ok: boolean;
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    text: string;
+  }> {
+    return sendRequest('agent.fetch', { url, ...options });
+  },
 
   // =========================================================================
-  // Extension 3: Multi-Agent API - requires multiAgent flag
+  // Extension 3: Multi-Agent API
   // =========================================================================
-  agents: FEATURE_FLAGS.multiAgent
-    ? Object.freeze({
+  agents: Object.freeze({
         /**
          * Register this page as an agent.
          * Requires: agents:register permission
@@ -1453,8 +1395,7 @@ const agentApi = Object.freeze({
         return sendRequest('agents.orchestrate.supervisor', { supervisor, tasks });
       },
     }),
-  })
-    : undefined,
+  }),
 
   run(options: {
     task: string;
