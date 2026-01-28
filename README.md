@@ -119,6 +119,22 @@ The Web Agent API gives your web pages access to:
 | **[Working Examples](spec/examples/)** | Copy-paste ready code |
 | **[Demo Source Code](demo/)** | Full demo implementations |
 
+### Create Custom Tools (MCP Servers)
+
+Want your AI to do more? Create MCP servers that give it new capabilities:
+
+```bash
+# Copy the template and start building
+cp -r mcp-servers/templates/javascript my-tool
+cd my-tool && edit server.js
+```
+
+| Document | Description |
+|----------|-------------|
+| **[Tool Creation Quickstart](QUICKSTART.md#part-3-create-your-own-tools)** | Build your first tool in 15 minutes |
+| **[MCP Authoring Guide](mcp-servers/AUTHORING_GUIDE.md)** | Complete guide (JS and WASM) |
+| **[Example: Gmail Integration](mcp-servers/examples/gmail/)** | Real-world OAuth example |
+
 ### Key Concepts
 
 **Permissions:** All capabilities require user consent. Request what you need:

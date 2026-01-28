@@ -5,6 +5,7 @@
 This guide covers:
 1. [Try the Demos](#part-1-try-the-demos) — See Harbor in action (5 min)
 2. [Build Your First App](#part-2-build-your-first-app) — Write code using the API (10 min)
+3. [Create Your Own Tools](#part-3-create-your-own-tools) — Build MCP servers (15 min)
 
 ---
 
@@ -321,7 +322,206 @@ curl http://localhost:11434/api/tags  # Should return models
 | More examples | [spec/examples/](spec/examples/) |
 | Demo source code | [demo/](demo/) |
 | Understand the spec | [spec/explainer.md](spec/explainer.md) |
+| Create custom tools | [Part 3: Create Your Own Tools](#part-3-create-your-own-tools) |
 | Contribute to Harbor | [CONTRIBUTING.md](CONTRIBUTING.md) |
+
+---
+
+# Part 3: Create Your Own Tools
+
+**Want your AI to do more than chat? Create MCP servers that give it new capabilities.**
+
+MCP (Model Context Protocol) servers are tools that AI agents can use. Examples:
+- **Search** — Query APIs, databases, or the web
+- **File access** — Read/write local files
+- **Integrations** — Connect to GitHub, Gmail, Slack, etc.
+
+## Quick Start: JavaScript MCP Server (5 min)
+
+### 1. Copy the Template
+
+```bash
+cp -r mcp-servers/templates/javascript my-tool
+cd my-tool
+```
+
+### 2. Edit `server.js`
+
+```javascript
+// Define your tools
+const TOOLS = [
+  {
+    name: 'my_tool',
+    description: 'Does something useful',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        input: { type: 'string', description: 'The input to process' }
+      },
+      required: ['input']
+    }
+  }
+];
+
+// Handle tool calls
+async function handleToolCall(toolName, args) {
+  if (toolName === 'my_tool') {
+    // Your logic here
+    return `Processed: ${args.input}`;
+  }
+  throw new Error(`Unknown tool: ${toolName}`);
+}
+```
+
+### 3. Edit `manifest.json`
+
+```json
+{
+  "manifestVersion": "1.0.0",
+  "name": "my-tool",
+  "version": "1.0.0",
+  "description": "My custom MCP tool",
+  "runtime": "js",
+  "scriptUrl": "server.js",
+  "tools": [
+    {
+      "name": "my_tool",
+      "description": "Does something useful"
+    }
+  ]
+}
+```
+
+### 4. Load in Harbor
+
+1. Open Harbor sidebar → "MCP Servers"
+2. Click "Add Server"  
+3. Select your `manifest.json` file
+4. Your tool is now available!
+
+### 5. Use Your Tool
+
+```javascript
+// From any web page
+const result = await window.agent.tools.call({
+  tool: 'my-tool/my_tool',
+  args: { input: 'hello world' }
+});
+console.log(result); // "Processed: hello world"
+```
+
+---
+
+## Example: Weather API Tool
+
+Here's a complete example that fetches weather data:
+
+**manifest.json:**
+```json
+{
+  "manifestVersion": "1.0.0",
+  "name": "weather",
+  "version": "1.0.0",
+  "runtime": "js",
+  "scriptUrl": "server.js",
+  "capabilities": {
+    "network": {
+      "required": true,
+      "hosts": ["api.openweathermap.org"]
+    }
+  },
+  "secrets": [
+    {
+      "name": "OPENWEATHER_API_KEY",
+      "description": "OpenWeatherMap API key",
+      "helpUrl": "https://openweathermap.org/api"
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get current weather for a city"
+    }
+  ]
+}
+```
+
+**server.js:**
+```javascript
+const TOOLS = [{
+  name: 'get_weather',
+  description: 'Get current weather for a city',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      city: { type: 'string', description: 'City name' }
+    },
+    required: ['city']
+  }
+}];
+
+async function handleToolCall(toolName, args) {
+  if (toolName === 'get_weather') {
+    const apiKey = process.env.OPENWEATHER_API_KEY;
+    const url = `https://api.openweathermap.org/data/2.5/weather?q=${args.city}&appid=${apiKey}&units=metric`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    return `Weather in ${args.city}: ${data.weather[0].description}, ${data.main.temp}°C`;
+  }
+}
+
+// ... rest of MCP boilerplate (see template)
+```
+
+---
+
+## JavaScript vs WASM
+
+| | JavaScript | WASM (Rust) |
+|---|---|---|
+| **Speed to build** | Fast — no compilation | Slower — needs `cargo build` |
+| **Best for** | API wrappers, prototypes | Production, security-critical |
+| **Ecosystem** | npm packages | Cargo crates |
+| **Security** | Good (Web Worker sandbox) | Excellent (WASI sandbox) |
+
+**Use JavaScript when:**
+- You're prototyping or at a hackathon
+- You're wrapping an HTTP API
+- You want to iterate quickly
+
+**Use WASM when:**
+- You need maximum security
+- You're building for production
+- Performance is critical
+
+---
+
+## MCP Server Capabilities
+
+Your server can request these capabilities in `manifest.json`:
+
+| Capability | Use Case |
+|------------|----------|
+| `network.hosts` | Make HTTP requests to specific domains |
+| `secrets` | Store API keys securely |
+| `environment` | Non-secret configuration |
+| `oauth` | Google, GitHub, etc. authentication |
+
+All capabilities require user approval when the server is installed.
+
+---
+
+## Full Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[MCP Authoring Guide](mcp-servers/AUTHORING_GUIDE.md)** | Complete guide with all options |
+| **[JS Template](mcp-servers/templates/javascript/)** | Full working JavaScript template |
+| **[Rust Template](mcp-servers/templates/wasm-rust/)** | Full working WASM template |
+| **[Manifest Spec](docs/MCP_MANIFEST_SPEC.md)** | All manifest fields |
+| **[Example: Gmail](mcp-servers/examples/gmail/)** | Real-world OAuth example |
 
 ---
 

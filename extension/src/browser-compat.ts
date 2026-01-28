@@ -45,7 +45,8 @@ export function isSafari(): boolean {
  */
 export function hasFirefoxML(): boolean {
   if (typeof browser === 'undefined') return false;
-  return 'trial' in browser && 'ml' in (browser as unknown as { trial: { ml?: unknown } }).trial;
+  const trial = (browser as unknown as { trial?: { ml?: unknown } }).trial;
+  return !!trial && !!trial.ml;
 }
 
 /**

@@ -17,6 +17,11 @@
 
 → **[Web Agents API Reference](WEB_AGENTS_API.md)** — Complete API documentation
 
+### Create custom tools (MCP servers)
+→ **[Quickstart Part 3](../QUICKSTART.md#part-3-create-your-own-tools)** — Build your first MCP server in 15 minutes
+
+→ **[MCP Authoring Guide](../mcp-servers/AUTHORING_GUIDE.md)** — Complete guide to writing MCP servers
+
 ### Understand the full specification
 → **[Explainer](../spec/explainer.md)** — Full spec with Web IDL and security model
 
@@ -43,6 +48,17 @@
 | [Sessions Guide](SESSIONS_GUIDE.md) | When to use `window.ai` vs `agent.sessions` |
 | [Working Examples](../spec/examples/) | Copy-paste ready code |
 | [Demo Source](../demo/) | Full demo implementations |
+
+### For Tool Creators (Building MCP Servers)
+
+| Document | Description |
+|----------|-------------|
+| **[Quickstart Part 3](../QUICKSTART.md#part-3-create-your-own-tools)** | Create your first tool in 15 minutes |
+| **[MCP Authoring Guide](../mcp-servers/AUTHORING_GUIDE.md)** | Complete guide (JS and WASM) |
+| [JS Template](../mcp-servers/templates/javascript/) | Copy-paste JavaScript starter |
+| [Rust/WASM Template](../mcp-servers/templates/wasm-rust/) | Copy-paste Rust starter |
+| [MCP Manifest Spec](MCP_MANIFEST_SPEC.md) | Full manifest reference |
+| [Example: Gmail](../mcp-servers/examples/gmail/) | Real-world OAuth integration |
 
 ### For AI Coding Assistants
 
@@ -90,15 +106,15 @@
                          │  QUICKSTART.md (Part 1)     │
                          └─────────────┬───────────────┘
                                        │
-           ┌───────────────────────────┼───────────────────────────┐
-           │                           │                           │
-           ▼                           ▼                           ▼
+       ┌───────────────────────────────┼───────────────────────────────┐
+       │                               │                               │
+       ▼                               ▼                               ▼
 ┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────────┐
-│   Build with API    │   │   Read the Spec     │   │  Contribute/Hack    │
+│   Build with API    │   │  Create MCP Tools   │   │  Contribute/Hack    │
 │                     │   │                     │   │                     │
-│ QUICKSTART (Part 2) │   │ spec/explainer.md   │   │ CONTRIBUTING.md     │
-│ WEB_AGENTS_API.md   │   │ security-privacy.md │   │ ARCHITECTURE.md     │
-│ JS_AI_PROVIDER_API  │   │                     │   │ MCP_HOST.md         │
+│ QUICKSTART (Part 2) │   │ QUICKSTART (Part 3) │   │ CONTRIBUTING.md     │
+│ WEB_AGENTS_API.md   │   │ AUTHORING_GUIDE.md  │   │ ARCHITECTURE.md     │
+│ JS_AI_PROVIDER_API  │   │ templates/          │   │ MCP_HOST.md         │
 └─────────────────────┘   └─────────────────────┘   └─────────────────────┘
 ```
 
@@ -115,6 +131,8 @@
 | Call MCP tools | [Web Agents API](WEB_AGENTS_API.md#tools) |
 | Run autonomous agents | [Web Agents API](WEB_AGENTS_API.md#autonomous-agent) |
 | Understand feature flags | [Web Agents API](WEB_AGENTS_API.md#feature-flags) |
+| **Create a JS MCP server** | [Quickstart Part 3](../QUICKSTART.md#part-3-create-your-own-tools) |
+| **Create a WASM MCP server** | [MCP Authoring Guide](../mcp-servers/AUTHORING_GUIDE.md#wasm-servers-rust) |
+| **Add OAuth to MCP server** | [MCP Authoring Guide](../mcp-servers/AUTHORING_GUIDE.md#oauth-integration) |
 | Read the permission model | [Explainer](../spec/explainer.md#permission-model) |
 | Build from source | [Contributing](../CONTRIBUTING.md#getting-started) |
-| Write MCP servers | [MCP Authoring Guide](../mcp-servers/AUTHORING_GUIDE.md) |
