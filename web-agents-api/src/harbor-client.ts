@@ -14,9 +14,11 @@ import { ErrorCodes, type ApiError } from './types';
 // Known Harbor extension IDs (production and development)
 const KNOWN_HARBOR_IDS = [
   'harbor@mozilla.org',  // Firefox production ID
-  // Chrome IDs are generated based on the extension's public key
-  // Add Chrome Web Store ID here when published, e.g.:
-  // 'abcdefghijklmnopabcdefghijklmnop',
+  'raffi.krikorian.harbor@gmail.com',  // Firefox AMO signed ID
+  // Chrome stable dev ID (generated from key in manifest.chrome.json)
+  // All developers loading from the repo will get this same ID
+  'ljnciidcajlichemnbohopnlaonhkpgm',
+  // Add Chrome Web Store ID here when published (will be different)
 ];
 
 // Timeout for requests (ms)

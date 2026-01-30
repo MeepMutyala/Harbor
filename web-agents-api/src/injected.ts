@@ -1201,6 +1201,100 @@ const agentApi = Object.freeze({
   browser: createBrowserApi(),
 
   /**
+   * MCP (Model Context Protocol) server management.
+   * Allows websites to register MCP servers that provide tools to the user's AI.
+   */
+  mcp: Object.freeze({
+    /**
+     * Discover MCP servers declared on this page via <link rel="mcp-server">.
+     * 
+     * @example
+     * const servers = await window.agent.mcp.discover();
+     * console.log('Found MCP servers:', servers);
+     */
+    async discover(): Promise<Array<{
+      url: string;
+      name?: string;
+      description?: string;
+      tools?: string[];
+      transport?: string;
+    }>> {
+      return sendRequest('agent.mcp.discover');
+    },
+
+    /**
+     * Register an MCP server with the browser.
+     * 
+     * @example
+     * const result = await window.agent.mcp.register({
+     *   url: 'http://localhost:3001/mcp',
+     *   name: 'My Shop Assistant',
+     *   tools: ['search_products', 'add_to_cart'],
+     *   transport: 'sse',
+     * });
+     */
+    async register(options: {
+      url: string;
+      name: string;
+      description?: string;
+      tools?: string[];
+      transport?: 'sse' | 'stdio' | 'streamable-http';
+    }): Promise<{ success: boolean; serverId?: string; error?: { code: string; message: string } }> {
+      return sendRequest('agent.mcp.register', options);
+    },
+
+    /**
+     * Unregister a previously registered MCP server.
+     */
+    async unregister(serverId: string): Promise<{ success: boolean }> {
+      return sendRequest('agent.mcp.unregister', { serverId });
+    },
+  }),
+
+  /**
+   * Browser chat UI management.
+   * Allows websites to open the user's AI chat with custom configuration.
+   */
+  chat: Object.freeze({
+    /**
+     * Check if the browser chat can be opened.
+     */
+    async canOpen(): Promise<{ available: boolean; reason?: string }> {
+      return sendRequest('agent.chat.canOpen');
+    },
+
+    /**
+     * Open the browser's chat UI with optional configuration.
+     * 
+     * @example
+     * const result = await window.agent.chat.open({
+     *   systemPrompt: 'You are a helpful shopping assistant...',
+     *   tools: ['server-id/search_products', 'server-id/add_to_cart'],
+     *   style: { accentColor: '#ff9900', theme: 'light' },
+     * });
+     */
+    async open(options?: {
+      systemPrompt?: string;
+      initialMessage?: string;
+      tools?: string[];
+      style?: {
+        theme?: 'light' | 'dark' | 'auto';
+        accentColor?: string;
+        position?: 'right' | 'left';
+      };
+    }): Promise<{ success: boolean; chatId?: string; error?: { code: string; message: string } }> {
+      return sendRequest('agent.chat.open', options);
+    },
+
+    /**
+     * Close a chat opened by this origin.
+     */
+    async close(chatId: string): Promise<{ success: boolean }> {
+      return sendRequest('agent.chat.close', { chatId });
+    },
+  }),
+
+  /**
    * Run an autonomous agent that can use tools to complete a task.
    * 
    * @example

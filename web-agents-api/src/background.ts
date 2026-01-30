@@ -248,7 +248,7 @@ async function openPermissionPrompt(options: {
 }): Promise<PermissionPromptResponse> {
   const promptId = generatePromptId();
 
-  const url = new URL(chrome.runtime.getURL('dist/permission-prompt.html'));
+  const url = new URL(chrome.runtime.getURL('permission-prompt.html'));
   url.searchParams.set('promptId', promptId);
   url.searchParams.set('origin', options.origin);
   if (options.scopes.length > 0) {
@@ -896,6 +896,177 @@ async function handleSessionsTerminate(ctx: RequestContext): HandlerResponse {
       id: ctx.id,
       ok: false,
       error: { code: 'ERR_SESSION_NOT_FOUND', message: e instanceof Error ? e.message : 'Session not found' },
+    };
+  }
+}
+
+// =============================================================================
+// MCP Server Handlers
+// =============================================================================
+
+async function handleMcpDiscover(ctx: RequestContext): HandlerResponse {
+  try {
+    const result = await harborRequest<{
+      servers: Array<{
+        url: string;
+        name?: string;
+        description?: string;
+        tools?: string[];
+        transport?: string;
+      }>;
+    }>('agent.mcp.discover', { origin: ctx.origin });
+    return { id: ctx.id, ok: true, result: result.servers || [] };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_MCP_DISCOVER', message: e instanceof Error ? e.message : 'Failed to discover MCP servers' },
+    };
+  }
+}
+
+async function handleMcpRegister(ctx: RequestContext): HandlerResponse {
+  const { url, name, description, tools, transport } = ctx.payload as {
+    url: string;
+    name: string;
+    description?: string;
+    tools?: string[];
+    transport?: 'sse' | 'stdio' | 'streamable-http';
+  };
+
+  if (!url || !name) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_REQUEST', message: 'Missing url or name' },
+    };
+  }
+
+  try {
+    const result = await harborRequest<{
+      success: boolean;
+      serverId?: string;
+      error?: { code: string; message: string };
+    }>('agent.mcp.register', {
+      origin: ctx.origin,
+      url,
+      name,
+      description,
+      tools,
+      transport,
+    });
+    return { id: ctx.id, ok: true, result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_MCP_REGISTER', message: e instanceof Error ? e.message : 'Failed to register MCP server' },
+    };
+  }
+}
+
+async function handleMcpUnregister(ctx: RequestContext): HandlerResponse {
+  const { serverId } = ctx.payload as { serverId: string };
+
+  if (!serverId) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_REQUEST', message: 'Missing serverId' },
+    };
+  }
+
+  try {
+    const result = await harborRequest<{ success: boolean }>('agent.mcp.unregister', {
+      origin: ctx.origin,
+      serverId,
+    });
+    return { id: ctx.id, ok: true, result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_MCP_UNREGISTER', message: e instanceof Error ? e.message : 'Failed to unregister MCP server' },
+    };
+  }
+}
+
+// =============================================================================
+// Chat API Handlers
+// =============================================================================
+
+async function handleChatCanOpen(ctx: RequestContext): HandlerResponse {
+  try {
+    const result = await harborRequest<{ available: boolean; reason?: string }>('agent.chat.canOpen', {
+      origin: ctx.origin,
+    });
+    return { id: ctx.id, ok: true, result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_CHAT', message: e instanceof Error ? e.message : 'Failed to check chat availability' },
+    };
+  }
+}
+
+async function handleChatOpen(ctx: RequestContext): HandlerResponse {
+  const { systemPrompt, initialMessage, tools, style } = (ctx.payload || {}) as {
+    systemPrompt?: string;
+    initialMessage?: string;
+    tools?: string[];
+    style?: {
+      theme?: 'light' | 'dark' | 'auto';
+      accentColor?: string;
+      position?: 'right' | 'left';
+    };
+  };
+
+  try {
+    const result = await harborRequest<{
+      success: boolean;
+      chatId?: string;
+      error?: { code: string; message: string };
+    }>('agent.chat.open', {
+      origin: ctx.origin,
+      tabId: ctx.tabId,
+      systemPrompt,
+      initialMessage,
+      tools,
+      style,
+    });
+    return { id: ctx.id, ok: true, result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_CHAT_OPEN', message: e instanceof Error ? e.message : 'Failed to open chat' },
+    };
+  }
+}
+
+async function handleChatClose(ctx: RequestContext): HandlerResponse {
+  const { chatId } = ctx.payload as { chatId: string };
+
+  if (!chatId) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_REQUEST', message: 'Missing chatId' },
+    };
+  }
+
+  try {
+    const result = await harborRequest<{ success: boolean }>('agent.chat.close', {
+      origin: ctx.origin,
+      chatId,
+    });
+    return { id: ctx.id, ok: true, result };
+  } catch (e) {
+    return {
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_CHAT_CLOSE', message: e instanceof Error ? e.message : 'Failed to close chat' },
     };
   }
 }
@@ -2695,6 +2866,22 @@ async function routeMessage(ctx: RequestContext): HandlerResponse {
       return handleSessionsList(ctx);
     case 'agent.sessions.terminate':
       return handleSessionsTerminate(ctx);
+
+    // MCP server operations
+    case 'agent.mcp.discover':
+      return handleMcpDiscover(ctx);
+    case 'agent.mcp.register':
+      return handleMcpRegister(ctx);
+    case 'agent.mcp.unregister':
+      return handleMcpUnregister(ctx);
+
+    // Chat API operations
+    case 'agent.chat.canOpen':
+      return handleChatCanOpen(ctx);
+    case 'agent.chat.open':
+      return handleChatOpen(ctx);
+    case 'agent.chat.close':
+      return handleChatClose(ctx);
 
     // Browser interaction operations
     case 'agent.browser.activeTab.click':

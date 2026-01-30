@@ -1,6 +1,7 @@
 import { build, context } from 'esbuild';
-import { copyFile, mkdir, cp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, cp, rm, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import sharp from 'sharp';
 
 const isWatch = process.argv.includes('--watch');
 const isChrome = process.argv.includes('--chrome');
@@ -12,9 +13,8 @@ const targetBrowser = isChrome ? 'chrome' : isSafari ? 'safari' : 'firefox';
 // Chrome and Safari use service workers which require ESM format
 const useESM = isChrome || isSafari;
 
-// Output directory - always use 'dist' for the JS output
-// The manifest selection determines which browser the build is for
-const outDir = 'dist';
+// Output directory - each browser gets its own folder
+const outDir = `dist-${targetBrowser}`;
 
 const common = {
   bundle: true,
@@ -29,19 +29,51 @@ const common = {
 const entryPoints = [
   'src/background.ts',
   'src/discovery.ts',
+  'src/discovery-injected.ts',
   'src/page-chat.ts',
   'src/directory.ts',
   'src/sidebar.ts',
   'src/demo-bootstrap.ts',
   'src/js-runtime/worker-loader.ts',
-  'src/agents/content-script.ts',
-  'src/agents/injected.ts',
 ];
+
+// Generate PNG icons from SVG for Chrome (Chrome prefers PNG)
+async function generatePngIcons(svgPath, outputDir) {
+  const sizes = [16, 32, 48, 128];
+  const svgBuffer = await readFile(svgPath);
+  
+  for (const size of sizes) {
+    await sharp(svgBuffer)
+      .resize(size, size)
+      .png()
+      .toFile(`${outputDir}/icon-${size}.png`);
+  }
+  console.log(`[Harbor] ✓ Generated PNG icons from ${svgPath}`);
+}
 
 async function copyStatic() {
   await mkdir(outDir, { recursive: true });
   await mkdir(`${outDir}/js-runtime`, { recursive: true });
-  await mkdir(`${outDir}/agents`, { recursive: true });
+  await mkdir(`${outDir}/assets`, { recursive: true });
+  
+  // Copy the correct manifest for the target browser, adjusting paths for dist/ loading
+  const manifestSource = isChrome ? 'manifest.chrome.json' 
+                       : isSafari ? 'manifest.safari.json' 
+                       : 'manifest.json';
+  let manifest = await readFile(manifestSource, 'utf-8');
+  // Remove dist/ prefix from paths since we're loading from dist/
+  manifest = manifest.replace(/["']dist\//g, '"');
+  await writeFile(`${outDir}/manifest.json`, manifest);
+  
+  // Copy assets (icons, wasm files, etc.)
+  await cp('assets', `${outDir}/assets`, { recursive: true });
+  
+  // Generate PNG icons for Chrome (Chrome has better PNG support than SVG)
+  if (isChrome || isSafari) {
+    await generatePngIcons('assets/icon.svg', `${outDir}/assets`);
+  }
+  
+  // Copy HTML and CSS files
   await copyFile('src/directory.html', `${outDir}/directory.html`);
   await copyFile('src/sidebar.html', `${outDir}/sidebar.html`);
   await copyFile('src/permission-prompt.html', `${outDir}/permission-prompt.html`);
@@ -49,31 +81,39 @@ async function copyStatic() {
   await copyFile('src/js-runtime/sandbox.html', `${outDir}/js-runtime/sandbox.html`).catch(() => {});
   await copyFile('src/js-runtime/builtin-echo-worker.js', `${outDir}/js-runtime/builtin-echo-worker.js`);
   
-  // Copy demo files (shared across all builds)
-  await cp('demo', 'demo', { recursive: true }).catch(() => {});
+  // Copy demo files into dist for self-contained extension
+  // Need to adjust paths in HTML files since the structure changes when copied
+  await cp('demo', `${outDir}/demo`, { recursive: true }).catch(() => {});
+  
+  // Fix paths in demo HTML files (they reference src/ and dist/ which don't exist in the output)
+  const demoHtmlFiles = [
+    `${outDir}/demo/chat-poc/index.html`,
+  ];
+  for (const htmlFile of demoHtmlFiles) {
+    if (existsSync(htmlFile)) {
+      let html = await readFile(htmlFile, 'utf-8');
+      // Fix CSS path: ../../src/design-tokens.css -> ../../design-tokens.css
+      html = html.replace(/\.\.\/\.\.\/src\/design-tokens\.css/g, '../../design-tokens.css');
+      // Fix JS path: ../../dist/demo-bootstrap.js -> ../../demo-bootstrap.js
+      html = html.replace(/\.\.\/\.\.\/dist\/demo-bootstrap\.js/g, '../../demo-bootstrap.js');
+      await writeFile(htmlFile, html);
+    }
+  }
   
   // Copy bundled MCP servers from project root demo folder
-  await mkdir('bundled/gmail-harbor', { recursive: true });
-  await cp('../demo/gmail-mcp-server/harbor', 'bundled/gmail-harbor', { recursive: true }).catch(() => {});
+  await mkdir(`${outDir}/bundled/gmail-harbor`, { recursive: true });
+  await cp('../demo/gmail-mcp-server/harbor', `${outDir}/bundled/gmail-harbor`, { recursive: true }).catch(() => {});
   
-  // Log which manifest to use
-  // NOTE: The build outputs to dist/, but manifests are NOT copied.
-  // Firefox: Load extension folder with manifest.json (uses background.scripts)
-  // Chrome: Copy manifest.chrome.json to manifest.json before loading (uses service_worker)
-  // Safari: Copy manifest.safari.json to manifest.json before loading
+  // Print load instructions
+  console.log('');
+  console.log(`[Harbor] ✓ Built for ${targetBrowser.charAt(0).toUpperCase() + targetBrowser.slice(1)}`);
+  console.log(`[Harbor] ✓ Load extension from: ${process.cwd()}/${outDir}`);
   if (isChrome) {
-    console.log('[Harbor] Built for Chrome (ESM format)');
-    console.log('[Harbor] To load in Chrome:');
-    console.log('         1. Copy manifest.chrome.json to manifest.json');
-    console.log('         2. Load unpacked extension from this folder');
+    console.log('[Harbor]   → chrome://extensions → Enable Developer Mode → Load unpacked');
   } else if (isSafari) {
-    console.log('[Harbor] Built for Safari (ESM format)');
-    console.log('[Harbor] To use with Safari:');
-    console.log('         1. Copy manifest.safari.json to manifest.json');
-    console.log('         2. Follow installer/safari/README.md for Xcode setup');
+    console.log('[Harbor]   → See installer/safari/README.md for Xcode setup');
   } else {
-    console.log('[Harbor] Built for Firefox (IIFE format)');
-    console.log('[Harbor] Load extension from about:debugging using manifest.json');
+    console.log('[Harbor]   → about:debugging → This Firefox → Load Temporary Add-on');
   }
 }
 

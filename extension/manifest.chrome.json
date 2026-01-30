@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Harbor",
-  "version": "0.1.0",
+  "version": "0.260128.1702",
   "description": "Infrastructure extension for AI and MCP capabilities. Provides LLM access and tool execution for other extensions.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoEnMSnvC8KBGkwY84OZX3ourJC63t+ONy4YeQe0Zvmdloae0UOR4ZW1QaY8F7SbMU5VqyfL2tyyi31lMTf66b27vk2Ia2VMuIa0aDbj1bVdPSeEKwVcsmzKfrTYW2eJhzfDmqRE7qVhcGGvgY5ODx5Ksaj7UM2XtyUrIEQcC9KW1Z8UduCE/B6HWH0Hy3cnak5oF8CNYQDefu3XWV5rCASNExUe3/DcYq5YBMx4EAiX6MryLKvCEuF9pGFlItRi3yrstdZ08W+pau5YrixyP9EeuivsNeFs2VzKwg4umMwBh/vvcG8g3LEnL9xSwQUHa2CixtC5jL08D0/wXicsmMQIDAQAB",
   "externally_connectable": {
     "ids": ["*"]
   },
@@ -26,7 +27,7 @@
   ],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*", "file://*/*"],
       "js": ["dist/discovery.js"],
       "run_at": "document_start"
     }
@@ -34,6 +35,7 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "dist/discovery-injected.js",
         "dist/page-chat.js",
         "dist/design-tokens.css",
         "dist/demo-bootstrap.js",
@@ -46,18 +48,18 @@
     }
   ],
   "icons": {
-    "16": "assets/icon.svg",
-    "32": "assets/icon.svg",
-    "48": "assets/icon.svg",
-    "128": "assets/icon.svg"
+    "16": "assets/icon-16.png",
+    "32": "assets/icon-32.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
   },
   "action": {
     "default_title": "Harbor",
     "default_popup": "dist/sidebar.html",
     "default_icon": {
-      "16": "assets/icon.svg",
-      "32": "assets/icon.svg",
-      "48": "assets/icon.svg"
+      "16": "assets/icon-16.png",
+      "32": "assets/icon-32.png",
+      "48": "assets/icon-48.png"
     }
   },
   "content_security_policy": {

@@ -765,9 +765,10 @@ export function initializeExtensionApi(): void {
       log('External message:', msgType, 'from', sender.id);
       
       // Route based on message type prefix:
-      // - llm.*, session.*, system.* -> this module (extension API)
+      // - llm.*, mcp.*, session.*, system.* -> this module (extension API)
       // - agent.*, agents.* -> agent router
       const isExtensionApiMessage = msgType.startsWith('llm.') || 
+                                     msgType.startsWith('mcp.') ||
                                      msgType.startsWith('session.') || 
                                      msgType.startsWith('system.');
       

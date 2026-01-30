@@ -151,6 +151,7 @@ interface RequestContext {
   payload: unknown;
   origin: string;
   tabId?: number;
+  senderExtensionId?: string;  // The extension ID of the sender (for cross-extension messaging)
 }
 
 type ResponseSender = {
@@ -2041,7 +2042,7 @@ function handleAgentsUnregisterMessageHandler(ctx: RequestContext, sender: Respo
 }
 
 // Track which agents have external handlers (via Web Agents API)
-const externalInvocationHandlers = new Map<string, { origin: string; tabId?: number }>();
+const externalInvocationHandlers = new Map<string, { origin: string; tabId?: number; extensionId?: string }>();
 
 function handleAgentsRegisterInvocationHandler(ctx: RequestContext, sender: ResponseSender): void {
   log('handleAgentsRegisterInvocationHandler called, payload:', JSON.stringify(ctx.payload));
@@ -2062,11 +2063,12 @@ function handleAgentsRegisterInvocationHandler(ctx: RequestContext, sender: Resp
   
   const handlerOrigin = payload?.origin || ctx.origin;
   const handlerTabId = payload?.tabId || ctx.tabId;
+  const handlerExtensionId = ctx.senderExtensionId;
   
-  log('Registering invocation handler for', agentId, 'origin:', handlerOrigin, 'tabId:', handlerTabId);
+  log('Registering invocation handler for', agentId, 'origin:', handlerOrigin, 'tabId:', handlerTabId, 'extensionId:', handlerExtensionId);
   
-  // Track that this agent has an external handler
-  externalInvocationHandlers.set(agentId, { origin: handlerOrigin, tabId: handlerTabId });
+  // Track that this agent has an external handler (including the sender's extension ID for forwarding)
+  externalInvocationHandlers.set(agentId, { origin: handlerOrigin, tabId: handlerTabId, extensionId: handlerExtensionId });
   
   // Register a handler that will forward invocations to the external handler
   registerInvocationHandler(agentId, async (request, fromAgentId, traceId) => {
@@ -2110,20 +2112,26 @@ function handleAgentsRegisterInvocationHandler(ctx: RequestContext, sender: Resp
   sender.sendResponse({ id: ctx.id, ok: true, result: undefined });
 }
 
-// Forward an invocation to Web Agents API extension for delivery to a page
+// Forward an invocation to the Web Agents API extension via runtime.sendMessage
 async function forwardInvocationToExtension(
   agentId: string,
   request: { from: string; task: string; input?: unknown; timeout?: number },
-  handlerInfo: { origin: string; tabId?: number },
+  handlerInfo: { origin: string; tabId?: number; extensionId?: string },
   traceId?: string
 ): Promise<{ success: boolean; result?: unknown; error?: { code: string; message: string }; executionTime: number }> {
   const trace = traceId || 'no-trace';
   const startTime = Date.now();
   
-  log(`[TRACE ${trace}] forwardInvocationToExtension - agentId: ${agentId}, task: ${request.task}`);
+  log(`[TRACE ${trace}] forwardInvocationToExtension - agentId: ${agentId}, task: ${request.task}, extensionId: ${handlerInfo.extensionId}, tabId: ${handlerInfo.tabId}`);
   
-  // Web Agents API extension ID - in production this should be configurable
-  const WEB_AGENTS_API_ID = 'web-agents-api@mozilla.org';
+  if (!handlerInfo.extensionId) {
+    log(`[TRACE ${trace}] ERROR - no extensionId in handlerInfo`);
+    return {
+      success: false,
+      error: { code: 'ERR_NO_EXTENSION', message: 'No extension ID available for invocation forwarding' },
+      executionTime: Date.now() - startTime,
+    };
+  }
   
   return new Promise((resolve) => {
     const timeout = request.timeout || 30000;
@@ -2136,21 +2144,22 @@ async function forwardInvocationToExtension(
       });
     }, timeout);
     
-    log(`[TRACE ${trace}] Sending to Web Agents API extension...`);
+    log(`[TRACE ${trace}] Sending to extension ${handlerInfo.extensionId}...`);
     
-    // Send to Web Agents API extension
+    // Send to the Web Agents API extension's background script
     browserAPI.runtime.sendMessage(
-      WEB_AGENTS_API_ID,
+      handlerInfo.extensionId,
       {
         type: 'harbor.forwardInvocation',
         agentId,
         request,
-        handlerInfo,
+        handlerInfo: { origin: handlerInfo.origin, tabId: handlerInfo.tabId },
         traceId: trace,
       },
       (response) => {
         clearTimeout(timeoutId);
         if (browserAPI.runtime.lastError) {
+          log(`[TRACE ${trace}] runtime.sendMessage error: ${browserAPI.runtime.lastError.message}`);
           resolve({
             success: false,
             error: { code: 'ERR_SEND_FAILED', message: browserAPI.runtime.lastError.message || 'Send failed' },
@@ -2158,6 +2167,7 @@ async function forwardInvocationToExtension(
           });
           return;
         }
+        log(`[TRACE ${trace}] Got response from extension: ${JSON.stringify(response)}`);
         resolve({
           ...response,
           executionTime: Date.now() - startTime,
@@ -2509,6 +2519,203 @@ async function handleChatClose(ctx: RequestContext, sender: ResponseSender): Pro
 }
 
 // =============================================================================
+// Website MCP Server Registration
+// =============================================================================
+
+interface WebsiteMcpServer {
+  serverId: string;
+  origin: string;
+  tabId: number;
+  url: string;
+  name: string;
+  description?: string;
+  tools?: string[];
+  transport: 'sse' | 'websocket' | 'streamable-http';
+  connected: boolean;
+  registeredAt: number;
+}
+
+// Store website-registered MCP servers (keyed by serverId)
+const websiteMcpServers = new Map<string, WebsiteMcpServer>();
+
+/**
+ * Handle agent.mcp.discover - find MCP servers declared on the current page.
+ */
+async function handleMcpDiscover(ctx: RequestContext, sender: ResponseSender): Promise<void> {
+  const { tabId } = ctx;
+  
+  if (!tabId) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_NO_TAB', message: 'No tab context for discovery' },
+    });
+    return;
+  }
+
+  try {
+    // Execute script in the tab to find <link rel="mcp-server"> elements
+    const results = await browserAPI.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const links = document.querySelectorAll('link[rel="mcp-server"]');
+        return Array.from(links).map((link) => ({
+          url: link.getAttribute('href') || '',
+          name: link.getAttribute('title') || undefined,
+          description: link.getAttribute('data-description') || undefined,
+          tools: link.getAttribute('data-tools')?.split(',').map(t => t.trim()) || undefined,
+          transport: link.getAttribute('data-transport') || 'sse',
+        }));
+      },
+    });
+
+    const servers = results?.[0]?.result || [];
+    log('MCP discover found servers:', servers.length);
+
+    sender.sendResponse({
+      id: ctx.id,
+      ok: true,
+      result: { servers },
+    });
+  } catch (err) {
+    log('MCP discover error:', err);
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_DISCOVER_FAILED', message: err instanceof Error ? err.message : 'Discovery failed' },
+    });
+  }
+}
+
+/**
+ * Handle agent.mcp.register - register a website's MCP server.
+ */
+async function handleMcpRegister(ctx: RequestContext, sender: ResponseSender): Promise<void> {
+  const { url, name, description, tools, transport } = ctx.payload as {
+    url: string;
+    name: string;
+    description?: string;
+    tools?: string[];
+    transport?: 'sse' | 'websocket' | 'streamable-http';
+  };
+
+  if (!url || !name) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_REQUEST', message: 'Missing url or name' },
+    });
+    return;
+  }
+
+  // Validate URL is allowed (must be from same origin or explicitly permitted)
+  try {
+    const serverUrl = new URL(url);
+    const originUrl = new URL(ctx.origin);
+    
+    // For now, allow localhost and same-origin servers
+    const isLocalhost = serverUrl.hostname === 'localhost' || serverUrl.hostname === '127.0.0.1';
+    const isSameOrigin = serverUrl.origin === originUrl.origin;
+    
+    if (!isLocalhost && !isSameOrigin) {
+      log('MCP register rejected - cross-origin:', url, 'from', ctx.origin);
+      sender.sendResponse({
+        id: ctx.id,
+        ok: false,
+        error: { code: 'ERR_CROSS_ORIGIN', message: 'MCP server must be on localhost or same origin' },
+      });
+      return;
+    }
+  } catch {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_URL', message: 'Invalid MCP server URL' },
+    });
+    return;
+  }
+
+  // Generate a unique server ID
+  const serverId = `website-${ctx.origin.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`;
+
+  // Create the server record
+  const server: WebsiteMcpServer = {
+    serverId,
+    origin: ctx.origin,
+    tabId: ctx.tabId || 0,
+    url,
+    name,
+    description,
+    tools,
+    transport: transport || 'sse',
+    connected: false,
+    registeredAt: Date.now(),
+  };
+
+  // Store the server
+  websiteMcpServers.set(serverId, server);
+  log('MCP server registered:', serverId, url);
+
+  // TODO: Connect to the server and verify tools
+  // For now, we just register it and trust the declared tools
+
+  sender.sendResponse({
+    id: ctx.id,
+    ok: true,
+    result: {
+      success: true,
+      serverId,
+    },
+  });
+}
+
+/**
+ * Handle agent.mcp.unregister - unregister a website's MCP server.
+ */
+function handleMcpUnregister(ctx: RequestContext, sender: ResponseSender): void {
+  const { serverId } = ctx.payload as { serverId: string };
+
+  if (!serverId) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_INVALID_REQUEST', message: 'Missing serverId' },
+    });
+    return;
+  }
+
+  const server = websiteMcpServers.get(serverId);
+  if (!server) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_NOT_FOUND', message: 'MCP server not found' },
+    });
+    return;
+  }
+
+  // Verify the origin matches
+  if (server.origin !== ctx.origin) {
+    sender.sendResponse({
+      id: ctx.id,
+      ok: false,
+      error: { code: 'ERR_FORBIDDEN', message: 'Cannot unregister server from different origin' },
+    });
+    return;
+  }
+
+  // Remove the server
+  websiteMcpServers.delete(serverId);
+  log('MCP server unregistered:', serverId);
+
+  sender.sendResponse({
+    id: ctx.id,
+    ok: true,
+    result: { success: true },
+  });
+}
+
+// =============================================================================
 
 function handleNotImplemented(ctx: RequestContext, sender: ResponseSender): void {
   sender.sendResponse({
@@ -2709,9 +2916,16 @@ async function routeMessage(ctx: RequestContext, sender: ResponseSender): Promis
     case 'ai.providers.setDefault':
     case 'ai.providers.setTypeDefault':
     case 'ai.runtime.getBest':
+      return handleNotImplemented(ctx, sender);
+
+    // MCP server registration (from websites)
     case 'agent.mcp.discover':
+      return handleMcpDiscover(ctx, sender);
     case 'agent.mcp.register':
+      return handleMcpRegister(ctx, sender);
     case 'agent.mcp.unregister':
+      return handleMcpUnregister(ctx, sender);
+
     case 'agent.addressBar.canProvide':
     case 'agent.addressBar.registerProvider':
     case 'agent.addressBar.registerToolShortcuts':
@@ -2895,9 +3109,10 @@ export function routeExternalMessage(
     payload: message.payload,
     origin: pageOrigin || sender.url || sender.id || 'external',
     tabId: pageTabId ?? sender.tab?.id,
+    senderExtensionId: sender.id,  // Store the sender's extension ID for invocation forwarding
   };
   
-  log('Final context - origin:', ctx.origin, 'tabId:', ctx.tabId);
+  log('Final context - origin:', ctx.origin, 'tabId:', ctx.tabId, 'senderExtensionId:', ctx.senderExtensionId);
 
   // Create a sender wrapper that uses sendResponse
   const responseSender: ResponseSender = {

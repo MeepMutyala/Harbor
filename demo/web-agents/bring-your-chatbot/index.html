@@ -1063,55 +1063,12 @@
     let registeredServerId = null; // Track our registered server
 
     // =============================================================================
-    // BYOC: Tool Call Handler
-    // Listen for tool calls from the browser extension and execute them
+    // MCP Tool Implementations (used by the MCP server at localhost:3001)
     // =============================================================================
+    // Note: These tool implementations are served by the external MCP server.
+    // The website does NOT directly handle tool calls - that goes through MCP.
     
-    window.addEventListener('message', (event) => {
-      if (event.source !== window) return;
-      
-      const data = event.data;
-      if (!data || data.namespace !== 'harbor-website-tools') return;
-      
-      if (data.type === 'tool_call') {
-        console.log('[Acme Shop] Tool call received:', data.toolName, data.args);
-        
-        // Execute the tool
-        const toolFn = SHOP_TOOLS[data.toolName];
-        if (!toolFn) {
-          window.postMessage({
-            namespace: 'harbor-website-tools',
-            type: 'tool_result',
-            callId: data.callId,
-            error: `Unknown tool: ${data.toolName}`,
-          }, '*');
-          return;
-        }
-        
-        // Execute and return result
-        toolFn(data.args || {})
-          .then(result => {
-            console.log('[Acme Shop] Tool result:', data.toolName, result);
-            window.postMessage({
-              namespace: 'harbor-website-tools',
-              type: 'tool_result',
-              callId: data.callId,
-              result,
-            }, '*');
-          })
-          .catch(err => {
-            console.error('[Acme Shop] Tool error:', data.toolName, err);
-            window.postMessage({
-              namespace: 'harbor-website-tools',
-              type: 'tool_result',
-              callId: data.callId,
-              error: err.message || String(err),
-            }, '*');
-          });
-      }
-    });
-
-    // MCP tool implementations
+    // MCP tool implementations (for reference - actual execution is in mcp-server/)
     const SHOP_TOOLS = {
       search_products: async (args) => {
         const query = (args.query || '').toLowerCase();
@@ -1206,25 +1163,28 @@
     // =============================================================================
     
     async function checkApiAvailability() {
-      console.log('[BYOC Demo] Checking API availability...');
+      console.log('[BYOC Demo] Checking Web Agents API availability...');
       
       try {
-        // Check base agent API
+        // Check for full Web Agents API (window.agent with mcp and chat namespaces)
         const hasAgent = typeof window.agent !== 'undefined';
-        console.log('[BYOC Demo] hasAgent:', hasAgent);
+        const hasMcp = hasAgent && typeof window.agent.mcp !== 'undefined';
+        const hasChat = hasAgent && typeof window.agent.chat !== 'undefined';
         
-        // Set overall API availability
-        if (hasAgent) {
+        console.log('[BYOC Demo] API check:', { hasAgent, hasMcp, hasChat });
+        
+        // Require full Web Agents API
+        if (hasAgent && hasMcp && hasChat) {
           apiAvailable = true;
           chatFab.classList.remove('hidden');
-          console.log('[BYOC Demo] Web Agent API detected - ready!');
+          console.log('[BYOC Demo] Web Agents API detected - ready!');
           return true;
         }
         
-        // API not available - show warning
+        // API not available - show warning, hide chat button
         noApiBanner.classList.remove('hidden');
-        chatFab.classList.remove('hidden'); // Still show FAB for demo purposes
-        console.log('[BYOC Demo] Web Agent API not available - demo mode');
+        chatFab.classList.add('hidden');
+        console.log('[BYOC Demo] Web Agents API not available - install the extension');
         return false;
         
       } catch (err) {
@@ -1366,12 +1326,18 @@
     }
 
     // =============================================================================
-    // Message Handling
+    // Message Handling (Web Agents API only)
     // =============================================================================
     
     async function sendMessage() {
       const text = chatbotInput.value.trim();
       if (!text || isProcessing) return;
+      
+      // Require Web Agents API
+      if (!apiAvailable) {
+        addAssistantMessage("Web Agents API is not available. Please install the extension.");
+        return;
+      }
       
       isProcessing = true;
       chatbotSend.disabled = true;
@@ -1381,24 +1347,8 @@
       addTypingIndicator();
       
       try {
-        if (apiAvailable) {
-          await handleWithRealApi(text);
-        } else {
-          await handleWithMockApi(text);
-        }
-      } catch (err) {
-        console.error('[BYOC Demo] Error:', err);
-        removeTypingIndicator();
-        addAssistantMessage("I'm sorry, I encountered an error. Please try again.");
-      }
-      
-      isProcessing = false;
-      chatbotSend.disabled = false;
-    }
-
-    async function handleWithRealApi(text) {
-      // Build context with shop information
-      const systemPrompt = `You are a helpful shopping assistant for Acme Shop. 
+        // Build context with shop information
+        const systemPrompt = `You are a helpful shopping assistant for Acme Shop. 
 You help customers find products, answer questions about items, and manage their cart.
 
 Available products in our catalog:
@@ -1409,105 +1359,39 @@ describe what you would do (in a real implementation, you would call the add_to_
 
 Current cart: ${cart.length === 0 ? 'Empty' : cart.map(p => p.name).join(', ')}`;
 
-      let responseText = '';
-      const toolsUsed = [];
-      
-      // Use the real agent API
-      for await (const event of window.agent.run({
-        task: `${systemPrompt}\n\nCustomer: ${text}`,
-        maxToolCalls: 3
-      })) {
-        switch (event.type) {
-          case 'token':
-            responseText += event.token || '';
-            break;
-          case 'tool_call':
-            toolsUsed.push({ name: event.tool, args: event.args });
-            break;
-          case 'final':
-            removeTypingIndicator();
-            addAssistantMessage(event.output || responseText, toolsUsed);
-            break;
-          case 'error':
-            removeTypingIndicator();
-            addAssistantMessage(`Error: ${event.error?.message || 'Unknown error'}`);
-            break;
-        }
-      }
-    }
-
-    async function handleWithMockApi(text) {
-      // Simulate AI thinking time
-      await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
-      
-      const toolsUsed = [];
-      let response = '';
-      
-      // Simple keyword-based responses for demo
-      const lowerText = text.toLowerCase();
-      
-      if (lowerText.includes('search') || lowerText.includes('find') || lowerText.includes('looking for')) {
-        // Simulate search
-        const searchTerms = ['headphones', 'watch', 'keyboard', 'webcam', 'laptop', 'usb'];
-        const foundTerm = searchTerms.find(t => lowerText.includes(t));
+        let responseText = '';
+        const toolsUsed = [];
         
-        if (foundTerm) {
-          const result = await SHOP_TOOLS.search_products({ query: foundTerm });
-          toolsUsed.push({ name: 'search_products', result });
-          
-          if (result.count > 0) {
-            response = `I found ${result.count} product(s) matching "${foundTerm}":\n\n`;
-            response += result.results.map(p => 
-              `• ${p.name} - ${p.price} (${p.inStock})`
-            ).join('\n');
-            response += '\n\nWould you like more details on any of these?';
-          } else {
-            response = `I couldn't find any products matching "${foundTerm}". Would you like to browse our categories?`;
+        // Use the Web Agents API (window.agent.run)
+        for await (const event of window.agent.run({
+          task: `${systemPrompt}\n\nCustomer: ${text}`,
+          maxToolCalls: 3
+        })) {
+          switch (event.type) {
+            case 'token':
+              responseText += event.token || '';
+              break;
+            case 'tool_call':
+              toolsUsed.push({ name: event.tool, args: event.args });
+              break;
+            case 'final':
+              removeTypingIndicator();
+              addAssistantMessage(event.output || responseText, toolsUsed);
+              break;
+            case 'error':
+              removeTypingIndicator();
+              addAssistantMessage(`Error: ${event.error?.message || 'Unknown error'}`);
+              break;
           }
-        } else {
-          response = "What type of product are you looking for? We have headphones, smartwatches, keyboards, webcams, and more!";
         }
-      } else if (lowerText.includes('cart')) {
-        const result = await SHOP_TOOLS.get_cart();
-        toolsUsed.push({ name: 'get_cart', result });
-        
-        if (result.empty) {
-          response = "Your cart is currently empty. Would you like me to help you find some products?";
-        } else {
-          response = `Your cart has ${result.itemCount} item(s):\n\n`;
-          response += result.items.map(i => `• ${i.name} - ${i.price}`).join('\n');
-          response += `\n\nTotal: ${result.total}`;
-        }
-      } else if (lowerText.includes('add') && (lowerText.includes('headphone') || lowerText.includes('watch'))) {
-        const productId = lowerText.includes('headphone') ? 'wireless-headphones' : 'smart-watch';
-        const result = await SHOP_TOOLS.add_to_cart({ productId });
-        toolsUsed.push({ name: 'add_to_cart', result });
-        
-        if (result.success) {
-          response = `${result.message}! Your cart total is now ${result.cartTotal}. Would you like to continue shopping or proceed to checkout?`;
-        } else {
-          response = `Sorry, ${result.error}. Can I help you find something else?`;
-        }
-      } else if (lowerText.includes('recommend') || lowerText.includes('suggestion')) {
-        response = "Based on our top sellers, I'd recommend:\n\n";
-        response += "🎧 **Wireless Headphones Pro** ($149.99) - Great for music lovers\n";
-        response += "⌚ **Smart Watch Series X** ($299.99) - Perfect for fitness tracking\n";
-        response += "💻 **Ergonomic Laptop Stand** ($59.99) - Essential for home office\n\n";
-        response += "Would you like more details on any of these?";
-      } else if (lowerText.includes('hello') || lowerText.includes('hi') || lowerText.includes('hey')) {
-        response = "Hello! Welcome to Acme Shop. I'm here to help you find the perfect products. What are you looking for today?";
-      } else {
-        response = "I'd be happy to help you with that! You can ask me to:\n\n";
-        response += "• Search for products (e.g., 'find headphones')\n";
-        response += "• Get product details\n";
-        response += "• Add items to your cart\n";
-        response += "• Check your cart\n";
-        response += "• Get recommendations\n\n";
-        response += "What would you like to do?";
+      } catch (err) {
+        console.error('[BYOC Demo] Error:', err);
+        removeTypingIndicator();
+        addAssistantMessage("I'm sorry, I encountered an error. Please try again.");
       }
       
-      removeTypingIndicator();
-      addAssistantMessage(response, toolsUsed);
+      isProcessing = false;
+      chatbotSend.disabled = false;
     }
 
     // =============================================================================
@@ -1618,19 +1502,17 @@ Be helpful, concise, and always confirm actions with the customer.`,
     // Event Listeners
     // =============================================================================
     
-    // Chat FAB click
+    // Chat FAB click - uses Web Agents API only
     chatFab.addEventListener('click', async () => {
-      if (apiAvailable) {
-        // Try to use the real browser chatbot
-        await openBrowserChatbot();
-      } else if (permissionGranted) {
-        openChatbot();
-      } else {
-        showPermissionPrompt();
+      if (!apiAvailable) {
+        console.log('[BYOC Demo] API not available, cannot open chat');
+        return;
       }
+      // Use Web Agents API to open browser chatbot
+      await openBrowserChatbot();
     });
 
-    // Permission buttons
+    // Permission buttons (for simulated modal - kept for visual demo)
     permDeny.addEventListener('click', () => handlePermissionChoice('deny'));
     permOnce.addEventListener('click', () => handlePermissionChoice('once'));
     permAllow.addEventListener('click', () => handlePermissionChoice('allow'));
@@ -1661,10 +1543,17 @@ Be helpful, concise, and always confirm actions with the customer.`,
       await checkApiAvailability();
       
       console.log('[BYOC Demo] Initialized');
-      console.log('  API Available:', apiAvailable);
-      console.log('');
-      console.log('This demo shows the "Bring Your Own Chatbot" concept.');
-      console.log('Click the chat button to simulate the flow.');
+      console.log('  Web Agents API Available:', apiAvailable);
+      if (apiAvailable) {
+        console.log('  Features: window.agent.mcp, window.agent.chat, window.agent.run');
+        console.log('');
+        console.log('This demo uses ONLY the Web Agents API (window.agent).');
+        console.log('Click the chat button to open the browser chatbot.');
+      } else {
+        console.log('');
+        console.log('Web Agents API not available.');
+        console.log('Install the Web Agents API extension to try this demo.');
+      }
     }
 
     // Wait for DOM and potential extension injection

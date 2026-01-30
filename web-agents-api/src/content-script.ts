@@ -136,7 +136,7 @@ function appendInjectedScripts(flags: FeatureFlags): boolean {
 
   // Then inject the main script
   const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('dist/injected.js');
+  script.src = chrome.runtime.getURL('injected.js');
   script.async = false;
   script.onload = () => {
     script.remove();
@@ -324,6 +324,63 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }, '*');
   
   sendResponse({ ok: true });
+  return true;
+});
+
+// Track pending Harbor invocations waiting for page response
+const pendingHarborInvocations = new Map<string, (response: unknown) => void>();
+
+// Listen for invocation responses from the page
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  const data = event.data;
+  if (!data || data.channel !== CHANNEL) return;
+  
+  // Handle invocation response from page (used by both internal and Harbor invocations)
+  if (data.agentInvocationResponse) {
+    const { invocationId, success, result, error } = data.agentInvocationResponse;
+    const resolver = pendingHarborInvocations.get(invocationId);
+    if (resolver) {
+      pendingHarborInvocations.delete(invocationId);
+      // Format response for Harbor
+      resolver({ success, result, error });
+    }
+  }
+});
+
+// Listen for Harbor's forwarded invocations (sent directly to tab)
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'harbor.forwardInvocation') {
+    return false;
+  }
+  
+  const trace = message.traceId || 'no-trace';
+  const { agentId, request } = message;
+  const invocationId = `harbor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  
+  console.log(`[TRACE ${trace}] Content: Harbor forward invocation - agentId: ${agentId}, task: ${request?.task}`);
+  
+  // Store the sendResponse callback for when the page responds
+  pendingHarborInvocations.set(invocationId, (response) => {
+    console.log(`[TRACE ${trace}] Content: Sending response back to Harbor`);
+    sendResponse(response);
+  });
+  
+  // Forward to page
+  window.postMessage({
+    channel: CHANNEL,
+    agentEvent: {
+      type: 'invocation',
+      invocation: {
+        invocationId,
+        from: request?.from,
+        task: request?.task,
+        input: request?.input,
+      },
+    },
+  }, '*');
+  
+  // Keep channel open for async response
   return true;
 });
 

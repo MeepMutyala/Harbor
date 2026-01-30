@@ -1,6 +1,7 @@
 import { build, context } from 'esbuild';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import sharp from 'sharp';
 
 const isWatch = process.argv.includes('--watch');
 const isChrome = process.argv.includes('--chrome');
@@ -12,12 +13,15 @@ const targetBrowser = isChrome ? 'chrome' : isSafari ? 'safari' : 'firefox';
 // Chrome and Safari use service workers which require ESM format
 const useESM = isChrome || isSafari;
 
+// Output directory - each browser gets its own folder
+const outDir = `dist-${targetBrowser}`;
+
 const common = {
   bundle: true,
   sourcemap: true,
   format: useESM ? 'esm' : 'iife',  // Chrome/Safari service workers need ESM
   target: ['es2022'],
-  outdir: 'dist',
+  outdir: outDir,
   outbase: 'src',
   logLevel: 'info',
 };
@@ -30,25 +34,56 @@ const entryPoints = [
   'src/sidebar.ts',
 ];
 
-async function copyStatic() {
-  await mkdir('dist', { recursive: true });
-  await copyFile('src/permission-prompt.html', 'dist/permission-prompt.html');
-  await copyFile('src/sidebar.html', 'dist/sidebar.html');
-  await copyFile('src/design-tokens.css', 'dist/design-tokens.css');
+// Generate PNG icons from SVG for Chrome (Chrome prefers PNG)
+async function generatePngIcons(svgPath, outputDir) {
+  const sizes = [16, 32, 48, 128];
+  const svgBuffer = await readFile(svgPath);
   
-  // Log which manifest to use - DON'T overwrite manifest.json
-  // Firefox: Use manifest.json (uses background.scripts)
-  // Chrome: Manually copy manifest.chrome.json to manifest.json (uses service_worker)
-  // Safari: Manually copy manifest.safari.json to manifest.json
+  for (const size of sizes) {
+    await sharp(svgBuffer)
+      .resize(size, size)
+      .png()
+      .toFile(`${outputDir}/icon-${size}.png`);
+  }
+  console.log(`[Web Agents API] ✓ Generated PNG icons from ${svgPath}`);
+}
+
+async function copyStatic() {
+  await mkdir(outDir, { recursive: true });
+  await mkdir(`${outDir}/assets`, { recursive: true });
+  
+  // Copy the correct manifest for the target browser, adjusting paths for dist/ loading
+  const manifestSource = isChrome ? 'manifest.chrome.json' 
+                       : isSafari ? 'manifest.safari.json' 
+                       : 'manifest.json';
+  let manifest = await readFile(manifestSource, 'utf-8');
+  // Remove dist/ prefix from paths since we're loading from dist/
+  manifest = manifest.replace(/["']dist\//g, '"');
+  await writeFile(`${outDir}/manifest.json`, manifest);
+  
+  // Copy assets (icons, etc.)
+  await cp('assets', `${outDir}/assets`, { recursive: true });
+  
+  // Generate PNG icons for Chrome (Chrome has better PNG support than SVG)
+  if (isChrome || isSafari) {
+    await generatePngIcons('assets/icon.svg', `${outDir}/assets`);
+  }
+  
+  // Copy HTML and CSS files
+  await copyFile('src/permission-prompt.html', `${outDir}/permission-prompt.html`);
+  await copyFile('src/sidebar.html', `${outDir}/sidebar.html`);
+  await copyFile('src/design-tokens.css', `${outDir}/design-tokens.css`);
+  
+  // Print load instructions
+  console.log('');
+  console.log(`[Web Agents API] ✓ Built for ${targetBrowser.charAt(0).toUpperCase() + targetBrowser.slice(1)}`);
+  console.log(`[Web Agents API] ✓ Load extension from: ${process.cwd()}/${outDir}`);
   if (isChrome) {
-    console.log('[Web Agents API] Built for Chrome (ESM format)');
-    console.log('[Web Agents API] To load in Chrome: copy manifest.chrome.json to manifest.json');
+    console.log('[Web Agents API]   → chrome://extensions → Enable Developer Mode → Load unpacked');
   } else if (isSafari) {
-    console.log('[Web Agents API] Built for Safari (ESM format)');
-    console.log('[Web Agents API] To use with Safari: copy manifest.safari.json to manifest.json');
+    console.log('[Web Agents API]   → See installer/safari/README.md for Xcode setup');
   } else {
-    console.log('[Web Agents API] Built for Firefox (IIFE format)');
-    console.log('[Web Agents API] Load extension using manifest.json');
+    console.log('[Web Agents API]   → about:debugging → This Firefox → Load Temporary Add-on');
   }
 }
 

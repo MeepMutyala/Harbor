@@ -12,31 +12,16 @@ import { browserAPI } from './browser-compat';
 
 // Inject discovery info into the page context
 function injectDiscoveryInfo(): void {
+  // First inject the extension ID as a data attribute so the injected script can read it
+  document.documentElement.setAttribute('data-harbor-extension-id', browserAPI.runtime.id);
+  
+  // Load external script to avoid CSP issues with inline scripts
   const script = document.createElement('script');
-  script.textContent = `
-    (function() {
-      // Only set if not already defined
-      if (typeof window.__harbor !== 'undefined') return;
-      
-      Object.defineProperty(window, '__harbor', {
-        value: Object.freeze({
-          version: '0.1.0',
-          extensionId: '${browserAPI.runtime.id}',
-          installed: true
-        }),
-        writable: false,
-        configurable: false,
-        enumerable: true
-      });
-      
-      // Dispatch event for extensions waiting for Harbor
-      window.dispatchEvent(new CustomEvent('harbor-discovered', {
-        detail: { version: '0.1.0', extensionId: '${browserAPI.runtime.id}' }
-      }));
-    })();
-  `;
+  script.src = browserAPI.runtime.getURL('discovery-injected.js');
+  script.async = false;
+  script.onload = () => script.remove();
+  script.onerror = () => script.remove();
   (document.head || document.documentElement).appendChild(script);
-  script.remove();
 }
 
 // Run immediately at document_start

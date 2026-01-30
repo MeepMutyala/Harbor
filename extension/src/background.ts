@@ -1133,6 +1133,19 @@ browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 // =============================================================================
+// Page Chat Ping Handler (connectivity check for built-in chat)
+// =============================================================================
+
+browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'page_chat_ping') {
+    return false;
+  }
+  // Simple ping response to verify Harbor is available
+  sendResponse({ ok: true });
+  return true;
+});
+
+// =============================================================================
 // Page Chat Message Handler
 // =============================================================================
 

@@ -123,38 +123,23 @@ function initPageChat() {
     });
   }
 
-  // Connect to Web Agent API
+  // Connect to Harbor directly (no Web Agent API required)
   connectBtn.addEventListener('click', async () => {
     connectBtn.disabled = true;
     connectBtn.innerHTML = '<span class="hpc-spinner"></span> Connecting...';
     setupError.style.display = 'none';
 
     try {
-      // Check for Web Agent API
-      if (!(window as unknown as { ai?: unknown }).ai || !(window as unknown as { agent?: unknown }).agent) {
-        throw new Error('Web Agent API not found. Make sure Harbor is installed and enabled.');
+      // Verify Harbor extension is responding via direct message
+      const response = await browserAPI.runtime.sendMessage({
+        type: 'page_chat_ping',
+      }) as { ok?: boolean } | undefined;
+
+      if (!response?.ok) {
+        throw new Error('Harbor extension not responding. Make sure Harbor is installed and enabled.');
       }
 
-      const windowAny = window as unknown as { 
-        agent: { requestPermissions: (opts: unknown) => Promise<{ granted: boolean }> };
-        ai: { createTextSession: () => Promise<{ destroy: () => Promise<void> }> };
-      };
-
-      // Request permissions
-      const result = await windowAny.agent.requestPermissions({
-        scopes: ['model:prompt'],
-        reason: 'Chat about this page content'
-      });
-
-      if (!result.granted) {
-        throw new Error('Permission denied. Please allow access to continue.');
-      }
-
-      // Test LLM
-      const session = await windowAny.ai.createTextSession();
-      await session.destroy();
-
-      // Success
+      // Success - Harbor is available, no permissions needed for built-in chat
       isConnected = true;
       pageContext = getPageContext();
 
@@ -226,75 +211,41 @@ Here is the page content:
 ${pageContext}
 ---`;
 
-      if (isByocMode) {
-        // BYOC mode - send via background script
-        console.log('[Harbor Page Chat] BYOC mode - sending via background');
+      // Always send via Harbor background script (works without Web Agents API)
+      console.log('[Harbor Page Chat] Sending via Harbor background');
+      
+      const response = await browserAPI.runtime.sendMessage({
+        type: 'page_chat_message',
+        chatId: byocConfig.chatId,
+        message: content,
+        systemPrompt,
+        tools: configuredTools,
+        pageContext: {
+          url: window.location.href,
+          title: document.title,
+        },
+      }) as { 
+        type: string; 
+        response?: string; 
+        error?: { message: string };
+        toolsUsed?: { name: string }[];
+      };
+      
+      removeThinking();
+      
+      if (response.type === 'error' || response.error) {
+        addMessage('assistant', `Error: ${response.error?.message || 'Unknown error'}`);
+      } else if (response.response) {
+        const messageEl = addMessage('assistant', response.response);
         
-        const response = await browserAPI.runtime.sendMessage({
-          type: 'page_chat_message',
-          chatId: byocConfig.chatId,
-          message: content,
-          systemPrompt,
-          tools: configuredTools,
-          pageContext: {
-            url: window.location.href,
-            title: document.title,
-          },
-        }) as { 
-          type: string; 
-          response?: string; 
-          error?: { message: string };
-          toolsUsed?: { name: string }[];
-        };
-        
-        removeThinking();
-        
-        if (response.type === 'error' || response.error) {
-          addMessage('assistant', `Error: ${response.error?.message || 'Unknown error'}`);
-        } else if (response.response) {
-          const messageEl = addMessage('assistant', response.response);
-          
-          if (response.toolsUsed && response.toolsUsed.length > 0 && messageEl) {
-            const toolsInfo = document.createElement('div');
-            toolsInfo.className = 'hpc-tools-used';
-            toolsInfo.innerHTML = `<small>🔧 Used: ${response.toolsUsed.map(t => t.name.split('/').pop()).join(', ')}</small>`;
-            messageEl.appendChild(toolsInfo);
-          }
-        } else {
-          addMessage('assistant', '(No response)');
+        if (response.toolsUsed && response.toolsUsed.length > 0 && messageEl) {
+          const toolsInfo = document.createElement('div');
+          toolsInfo.className = 'hpc-tools-used';
+          toolsInfo.innerHTML = `<small>🔧 Used: ${response.toolsUsed.map(t => t.name.split('/').pop()).join(', ')}</small>`;
+          messageEl.appendChild(toolsInfo);
         }
       } else {
-        // Standard mode - use window.ai
-        const windowAny = window as unknown as { 
-          ai: { createTextSession: (opts?: unknown) => Promise<{
-            promptStreaming: (input: string) => AsyncIterable<string>;
-            destroy: () => Promise<void>;
-          }> };
-        };
-
-        const session = await windowAny.ai.createTextSession({ systemPrompt });
-
-        let responseText = '';
-        let messageEl: HTMLElement | null = null;
-
-        for await (const chunk of session.promptStreaming(content)) {
-          responseText = chunk;
-
-          if (!messageEl) {
-            removeThinking();
-            messageEl = addMessage('assistant', responseText);
-          } else {
-            updateMessageBody(messageEl, responseText);
-          }
-          scrollToBottom();
-        }
-
-        await session.destroy();
-        removeThinking();
-
-        if (!messageEl && !responseText) {
-          addMessage('assistant', '(No response)');
-        }
+        addMessage('assistant', '(No response)');
       }
 
     } catch (err) {
