@@ -760,7 +760,7 @@ async function searchGoogleReal(topic, statusRow) {
   
   try {
     if (!agent.browser?.tabs?.create) {
-      throw new Error('Tab creation not available. Enable browserControl feature flag.');
+      throw new Error('Tab creation not available. Enable the "Browser Control" feature flag.');
     }
     
     const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(topic)}`;
@@ -791,7 +791,7 @@ async function searchGoogleReal(topic, statusRow) {
     console.log('[Searcher] Getting HTML from Google page...');
     
     if (!agent.browser?.tab?.getHtml) {
-      throw new Error('tab.getHtml not available. Enable browserControl feature flag.');
+      throw new Error('tab.getHtml not available. Enable the "Browser Control" feature flag.');
     }
     
     const response = await agent.browser.tab.getHtml(tabId);

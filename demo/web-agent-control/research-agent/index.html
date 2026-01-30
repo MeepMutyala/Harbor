@@ -258,7 +258,7 @@
             <li><code>browser:tabs.read</code> — Read tab information</li>
             <li><code>model:prompt</code> — Use AI for synthesis</li>
           </ul>
-          <p style="margin-top: var(--demo-space-3);"><strong>Feature flag:</strong> <code>browserControl</code> must be enabled in Harbor.</p>
+          <p style="margin-top: var(--demo-space-3);"><strong>Feature flag:</strong> "Browser Control" must be enabled in Harbor.</p>
         </div>
       </section>
     </div>
@@ -354,7 +354,7 @@ const searchTab = await agent.browser.tabs.create({
             const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(query);
             
             if (!agent.browser?.tabs?.create) {
-              throw new Error('Tab creation not available. Enable browserControl feature flag.');
+              throw new Error('Tab creation not available. Enable the "Browser Control" feature flag.');
             }
             
             const searchTab = await agent.browser.tabs.create({
@@ -382,7 +382,7 @@ const urls = await session.prompt('Extract URLs from: ' + html);`,
             const tabId = window._researchSearchTabId;
             
             if (!agent.browser?.tab?.getHtml) {
-              throw new Error('Tab getHtml not available. Enable browserControl feature flag.');
+              throw new Error('Tab getHtml not available. Enable the "Browser Control" feature flag.');
             }
             
             // Get HTML from the search results page

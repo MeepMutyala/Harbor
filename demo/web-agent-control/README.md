@@ -30,5 +30,5 @@ Self-contained demos that exercise active-tab interaction APIs. Each step increa
 - `browser:activeTab.read` — Required for `waitForSelector` and `readability` on active tab.
 - `browser:tabs.create` — Required for creating and controlling spawned tabs.
 - `browser:tabs.read` — Required for listing tabs.
-- Feature flag: `browserInteraction` must be enabled for active-tab interactions.
-- Feature flag: `browserControl` must be enabled for tab management APIs.
+- Feature flag: "Browser Interaction" must be enabled for active-tab interactions.
+- Feature flag: "Browser Control" must be enabled for tab management APIs.
