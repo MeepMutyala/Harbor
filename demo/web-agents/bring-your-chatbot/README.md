@@ -5,75 +5,72 @@ This demo showcases "Bring Your Own Chatbot" (BYOC) — a pattern where websites
 ## How It Works
 
 1. **Website Declares MCP Server** — The page includes a `<link rel="mcp-server">` element pointing to its MCP server
-2. **User Clicks "Chat with AI"** — Website calls `agent.mcp.register()` and `agent.chat.open()`
-3. **Browser Asks for Permission** — User sees what tools the website wants to provide
-4. **Your Chatbot Opens** — Your personal AI assistant opens with access to the website's tools
+2. **User Clicks "Chat with AI"** — Website requests permission via `agent.requestPermissions()`
+3. **Browser Asks for Permission** — User sees what capabilities the website wants
+4. **Your AI Responds** — The embedded chat uses `window.ai.createTextSession()` for responses
 
 ## Running the Demo
 
-### 1. Start the demo servers
+### 1. Start the demo server
 
 ```bash
 cd demo
 npm run dev
 ```
 
-This starts:
-- **Demo server** at `http://localhost:8000` (serves demo pages)
-- **MCP server** at `http://localhost:3001` (Acme Shop tools)
+This starts the demo server at `http://localhost:8000` (serves demo pages).
 
 ### 2. Visit the demo
 
-Open `http://localhost:8000/bring-your-chatbot/` in Firefox with Harbor installed.
+Open `http://localhost:8000/web-agents/bring-your-chatbot/` with the Web Agents API extension installed.
 
 ### 3. Try it out
 
 Click the chat button in the corner and ask questions like:
 - "What laptops do you have?"
-- "Search for headphones"
-- "Add wireless headphones to my cart"
-
-## The MCP Server
-
-The demo includes a real MCP server (`mcp-server/http-server.js`) that provides:
-
-| Tool | Description |
-|------|-------------|
-| `search_products` | Search the product catalog |
-| `get_product_details` | Get details about a product |
-| `add_to_cart` | Add items to cart |
-| `get_cart` | View cart contents |
+- "Tell me about the wireless headphones"
+- "What do you recommend for home office?"
+- "Add the laptop stand to my cart"
 
 ## Key APIs Used
 
+This demo uses **only** the Web Agents API (no direct Harbor access):
+
 ```javascript
-// Discover link-declared MCP servers
-const servers = await window.agent.mcp.discover();
-
-// Register website's MCP server
-const result = await window.agent.mcp.register({
-  url: 'http://localhost:3001/mcp',
-  name: 'Acme Shop',
-  tools: ['search_products', 'add_to_cart', 'get_cart'],
+// Request permission for text generation
+const { granted } = await window.agent.requestPermissions({
+  scopes: ['model:prompt'],
+  reason: 'To help you find products'
 });
 
-// Open the browser's chat UI
-await window.agent.chat.open({
-  systemPrompt: 'You are a shopping assistant...',
-  style: { accentColor: '#ff9900' },
+// Create a text session with context
+const session = await window.ai.createTextSession({
+  systemPrompt: 'You are a shopping assistant for Acme Shop...'
 });
+
+// Get AI responses (streaming)
+for await (const token of session.promptStreaming(userMessage)) {
+  // Display token
+}
 ```
+
+## Features
+
+- **Embedded Chat UI** — The chat panel is built into the page
+- **Streaming Responses** — Tokens appear as they're generated
+- **Shopping Context** — The AI knows about products in the catalog
+- **Cart Management** — Simple cart functionality
 
 ## Graceful Degradation
 
-If the Web Agent API isn't available (no Harbor extension), the demo shows a fallback message. Websites should always provide alternative help options.
+If the Web Agents API isn't available (no extension installed), the demo shows a message directing users to install the extension.
 
 ## Files
 
 ```
 bring-your-chatbot/
-├── index.html              # Demo page (e-commerce mockup)
-├── mcp-server/
+├── index.html              # Demo page (e-commerce mockup with embedded chat)
+├── mcp-server/             # Optional MCP server (not required for basic demo)
 │   ├── http-server.js      # Real MCP server with SSE transport
 │   └── package.json
 └── README.md               # This file
@@ -81,5 +78,5 @@ bring-your-chatbot/
 
 ## See Also
 
-- [Web Agent API Reference](../../docs/JS_AI_PROVIDER_API.md) — Full API documentation
-- [Architecture](../../ARCHITECTURE.md) — How Harbor implements BYOC
+- [Web Agents API Documentation](../../../docs/WEB_AGENTS_API.md) — Full API reference
+- [Other Demos](../) — More Web Agents API examples
