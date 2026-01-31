@@ -19,6 +19,21 @@ declare const browser: typeof chrome | undefined;
 export const browserAPI = (typeof browser !== 'undefined' ? browser : chrome) as typeof chrome;
 
 /**
+ * Get the URL for an extension resource.
+ * Safari doesn't have runtime.getURL in all contexts, so we fall back to relative URLs.
+ */
+export function getExtensionURL(path: string): string {
+  // Try runtime.getURL first (works in Firefox, Chrome, and Safari background)
+  if (browserAPI.runtime?.getURL) {
+    return browserAPI.runtime.getURL(path);
+  }
+  
+  // Fallback for Safari popup/sidebar where runtime.getURL doesn't exist
+  // Use relative URL from the extension's base
+  return path;
+}
+
+/**
  * Check if running in Firefox.
  */
 export function isFirefox(): boolean {

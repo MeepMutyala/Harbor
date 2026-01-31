@@ -74,11 +74,29 @@ export async function createWasmSession(
 
   await init();
 
+  // Resolve the WASM URL - use runtime.getURL if available (background context)
+  let wasmUrl = manifest.moduleUrl as string;
+  if (wasmUrl && !wasmUrl.startsWith('http') && !wasmUrl.startsWith('safari-web-extension:') && !wasmUrl.startsWith('moz-extension:') && !wasmUrl.startsWith('chrome-extension:')) {
+    // Relative URL - try to resolve to absolute
+    try {
+      // In background context, browser.runtime.getURL should work
+      const browser = (globalThis as unknown as { browser?: typeof chrome }).browser;
+      const chrome = (globalThis as unknown as { chrome?: typeof chrome }).chrome;
+      const runtime = browser?.runtime || chrome?.runtime;
+      if (runtime?.getURL) {
+        wasmUrl = runtime.getURL(wasmUrl);
+        console.log('[Harbor] Resolved WASM URL:', wasmUrl);
+      }
+    } catch (e) {
+      console.warn('[Harbor] Could not resolve WASM URL:', e);
+    }
+  }
+  
   const wasmBytes = manifest.moduleBytesBase64
     ? Uint8Array.from(atob(manifest.moduleBytesBase64), (char) => char.charCodeAt(0)).buffer
-    : await fetch(manifest.moduleUrl as string).then((response) => {
+    : await fetch(wasmUrl).then((response) => {
         if (!response.ok) {
-          throw new Error(`Failed to fetch WASM module: ${response.status}`);
+          throw new Error(`Failed to fetch WASM module: ${response.status} from ${wasmUrl}`);
         }
         return response.arrayBuffer();
       });

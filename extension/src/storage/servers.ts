@@ -1,4 +1,4 @@
-import { browserAPI } from '../browser-compat';
+import { browserAPI, getExtensionURL } from '../browser-compat';
 import type { McpServerManifest } from '../wasm/types';
 
 // New storage key for unified MCP servers
@@ -176,9 +176,21 @@ main().catch(err => console.error('Echo server error:', err));
 /**
  * Ensure built-in servers are always installed on startup.
  * If they were deleted, they get re-added. Only one instance of each.
+ * Also fixes moduleUrl for existing servers (Safari compatibility).
  */
 export async function ensureBuiltinServers(): Promise<McpServerManifest[]> {
   const existing = await loadInstalledServers();
+  
+  // Fix moduleUrl for existing time-wasm server (Safari compatibility)
+  const timeServer = existing.find((s) => s.id === 'time-wasm');
+  if (timeServer && timeServer.runtime === 'wasm') {
+    const correctUrl = getExtensionURL('assets/mcp-time.wasm');
+    if (timeServer.moduleUrl !== correctUrl) {
+      console.log('[Harbor] Fixing time-wasm moduleUrl for Safari');
+      timeServer.moduleUrl = correctUrl;
+      await saveInstalledServers(existing);
+    }
+  }
   
   const hasTime = existing.some((s) => s.id === 'time-wasm');
   const hasEcho = existing.some((s) => s.id === 'echo-js');
@@ -198,7 +210,7 @@ export async function ensureBuiltinServers(): Promise<McpServerManifest[]> {
       version: '0.1.0',
       runtime: 'wasm',
       entrypoint: 'mcp-time.wasm',
-      moduleUrl: browserAPI.runtime.getURL('assets/mcp-time.wasm'),
+      moduleUrl: getExtensionURL('assets/mcp-time.wasm'),
       permissions: [],
       tools: [
         {

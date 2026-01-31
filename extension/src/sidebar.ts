@@ -235,10 +235,17 @@ function updateBridgeStatusUI(connected: boolean, error?: string | null): void {
 async function checkBridgeStatus(): Promise<void> {
   try {
     const response = await browserAPI.runtime.sendMessage({ type: 'bridge_check_health' }) as BridgeStatus;
+    // Debug: show response in title attribute
+    const debugInfo = `connected: ${response.connected}, error: ${response.error || 'none'}`;
+    bridgeStatusText.title = debugInfo;
+    console.log('[Sidebar] Bridge status:', debugInfo);
     updateBridgeStatusUI(response.connected, response.error);
   } catch (err) {
-    console.error('[Sidebar] Failed to check bridge status:', err);
-    updateBridgeStatusUI(false, err instanceof Error ? err.message : 'Unknown error');
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[Sidebar] Failed to check bridge status:', errorMsg);
+    // Show error in UI for debugging
+    bridgeStatusText.title = `Error: ${errorMsg}`;
+    updateBridgeStatusUI(false, errorMsg);
   }
 }
 
