@@ -3,11 +3,79 @@
  * 
  * All communication with the native bridge happens through this module via stdio.
  * Supports RPC requests, streaming responses, and console log forwarding.
+ * 
+ * Safari uses sendNativeMessage() for each RPC call (request/response model).
+ * Firefox/Chrome use connectNative() for a persistent port connection.
  */
 
-import { browserAPI } from '../browser-compat';
+import { browserAPI, isSafari } from '../browser-compat';
 
-const NATIVE_APP_ID = 'harbor_bridge';
+// Native app ID differs by browser:
+// - Firefox/Chrome: 'harbor_bridge' (matches native messaging manifest name)
+// - Safari: App bundle identifier (messages go to the containing app)
+const NATIVE_APP_ID_DEFAULT = 'harbor_bridge';
+const NATIVE_APP_ID_SAFARI = 'org.harbor';
+
+// Safari detection - cached at module load time
+const useSafariMode = isSafari();
+const NATIVE_APP_ID = useSafariMode ? NATIVE_APP_ID_SAFARI : NATIVE_APP_ID_DEFAULT;
+
+// HTTP server port for Safari communication
+const SAFARI_HTTP_PORT = 8766;
+const SAFARI_HTTP_BASE = `http://127.0.0.1:${SAFARI_HTTP_PORT}`;
+
+/**
+ * Safari-specific: Send RPC request via HTTP to harbor-bridge server.
+ * This avoids sandbox restrictions with native messaging.
+ */
+async function safariHttpRequest<T>(method: string, params: unknown = {}): Promise<T> {
+  const id = crypto.randomUUID();
+  console.log('[Harbor:Safari] HTTP RPC request:', method, id);
+  
+  try {
+    const response = await fetch(`${SAFARI_HTTP_BASE}/rpc`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id,
+        method,
+        params,
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('[Harbor:Safari] HTTP RPC response:', data);
+    
+    if (data.error) {
+      throw new Error(data.error.message || JSON.stringify(data.error));
+    }
+    
+    return data.result as T;
+  } catch (err) {
+    console.error('[Harbor:Safari] HTTP RPC error:', err);
+    throw err;
+  }
+}
+
+/**
+ * Safari-specific: Check if HTTP server is available
+ */
+async function safariCheckHttpServer(): Promise<boolean> {
+  try {
+    const response = await fetch(`${SAFARI_HTTP_BASE}/health`, {
+      method: 'GET',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
 // Message types from bridge
 type IncomingMessage = 
@@ -162,8 +230,39 @@ function handleMessage(message: IncomingMessage): void {
 
 /**
  * Connect to the native bridge application.
+ * Safari uses HTTP to localhost (avoids sandbox), others use connectNative (persistent port).
  */
 export function connectNativeBridge(): void {
+  if (useSafariMode) {
+    // Safari: Test connection via HTTP to harbor-bridge server
+    console.log('[Harbor:Safari] Testing HTTP connection to harbor-bridge...');
+    
+    safariCheckHttpServer()
+      .then((available) => {
+        if (available) {
+          console.log('[Harbor:Safari] HTTP server available, testing health...');
+          return safariHttpRequest<{ status: string }>('system.health', {});
+        } else {
+          throw new Error('Harbor bridge HTTP server not running. Make sure Harbor.app is running.');
+        }
+      })
+      .then((response) => {
+        console.log('[Harbor:Safari] Health check response:', response);
+        updateState({ connected: true, bridgeReady: true, error: null });
+      })
+      .catch((err) => {
+        console.error('[Harbor:Safari] HTTP connection failed:', err.message);
+        updateState({
+          connected: false,
+          bridgeReady: false,
+          error: `Safari: ${err.message}`,
+        });
+      });
+    
+    return;
+  }
+  
+  // Firefox/Chrome: Use persistent port connection
   if (nativePort) {
     console.log('[Harbor] Native bridge already connected');
     return;
@@ -252,12 +351,20 @@ function sendMessage(message: Record<string, unknown>): void {
  * Make an RPC request to the bridge
  */
 export async function rpcRequest<T>(method: string, params?: unknown): Promise<T> {
+  // Safari: Use HTTP for each request
+  if (useSafariMode) {
+    if (!connectionState.bridgeReady) {
+      throw new Error('Bridge not connected. Make sure Harbor.app is running.');
+    }
+    
+    return safariHttpRequest<T>(method, params ?? {});
+  }
+  
+  // Firefox/Chrome: Use persistent port
   if (!nativePort || !connectionState.bridgeReady) {
     throw new Error('Bridge not connected');
   }
 
-  const id = crypto.randomUUID();
-  
   return new Promise<T>((resolve, reject) => {
     // Set up timeout (120 seconds for slow MCP tools like Gmail)
     const timeout = setTimeout(() => {
@@ -287,12 +394,74 @@ export async function rpcRequest<T>(method: string, params?: unknown): Promise<T
 
 /**
  * Make a streaming RPC request to the bridge
+ * 
+ * Note: Safari uses HTTP which doesn't support true streaming.
+ * For Safari, this falls back to a non-streaming request that returns all at once.
  */
 export function rpcStreamRequest(
   method: string,
   params: unknown,
   onEvent: (event: StreamEvent) => void,
 ): { cancel: () => void; done: Promise<void> } {
+  // Safari: Fall back to non-streaming HTTP request
+  if (useSafariMode) {
+    if (!connectionState.bridgeReady) {
+      const error = new Error('Bridge not connected. Make sure Harbor.app is running.');
+      return {
+        cancel: () => {},
+        done: Promise.reject(error),
+      };
+    }
+    
+    const id = crypto.randomUUID();
+    let cancelled = false;
+    
+    const done = (async () => {
+      try {
+        // Safari streaming: Request with safari_no_stream flag, bridge buffers and returns complete
+        const response = await safariHttpRequest<{
+          content?: string;
+          model?: string;
+          finish_reason?: string;
+        }>(method, { ...(params as object), safari_no_stream: true });
+        
+        if (cancelled) return;
+        
+        // Emit the complete content as a single token event
+        if (response?.content) {
+          onEvent({
+            id,
+            type: 'token',
+            token: response.content,
+          });
+        }
+        
+        // Emit done event
+        onEvent({
+          id,
+          type: 'done',
+          finish_reason: response?.finish_reason || 'stop',
+          model: response?.model,
+        });
+      } catch (err) {
+        if (!cancelled) {
+          onEvent({
+            id,
+            type: 'error',
+            error: { code: -1, message: err instanceof Error ? err.message : String(err) },
+          });
+          throw err;
+        }
+      }
+    })();
+    
+    return {
+      cancel: () => { cancelled = true; },
+      done,
+    };
+  }
+  
+  // Firefox/Chrome: Use persistent port with streaming
   if (!nativePort || !connectionState.bridgeReady) {
     const error = new Error('Bridge not connected');
     return {
