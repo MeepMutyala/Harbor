@@ -159,6 +159,26 @@ function updateThemeToggle(theme: Theme): void {
 }
 
 function initTheme(): void {
+  // Safari: Always use system theme and hide the toggle button
+  const isSafariBrowser = typeof browser !== 'undefined' && 
+    navigator.userAgent.includes('Safari') && 
+    !navigator.userAgent.includes('Chrome');
+  
+  if (isSafariBrowser) {
+    // Hide theme toggle button in Safari
+    const themeBtn = document.getElementById('theme-toggle');
+    if (themeBtn) themeBtn.style.display = 'none';
+    
+    // Always follow system theme
+    applyTheme('system');
+    
+    // Listen for system theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      applyTheme('system');
+    });
+    return;
+  }
+  
   const saved = localStorage.getItem('harbor-theme') as Theme | null;
   const theme = saved || 'system';
   applyTheme(theme);
@@ -232,6 +252,8 @@ function updateBridgeStatusUI(connected: boolean, error?: string | null): void {
   }
 }
 
+let lastBridgeConnected = false;
+
 async function checkBridgeStatus(): Promise<void> {
   try {
     const response = await browserAPI.runtime.sendMessage({ type: 'bridge_check_health' }) as BridgeStatus;
@@ -240,12 +262,26 @@ async function checkBridgeStatus(): Promise<void> {
     bridgeStatusText.title = debugInfo;
     console.log('[Sidebar] Bridge status:', debugInfo);
     updateBridgeStatusUI(response.connected, response.error);
+    
+    // If bridge just connected, refresh all data immediately
+    if (response.connected && !lastBridgeConnected) {
+      console.log('[Sidebar] Bridge connected - refreshing all data...');
+      // Refresh all data in parallel
+      Promise.all([
+        loadServers().catch(e => console.error('[Sidebar] Failed to load servers:', e)),
+        loadLlmProviders().catch(e => console.error('[Sidebar] Failed to load LLM providers:', e)),
+        loadPermissions().catch(e => console.error('[Sidebar] Failed to load permissions:', e)),
+        loadSessions().catch(e => console.error('[Sidebar] Failed to load sessions:', e)),
+      ]);
+    }
+    lastBridgeConnected = response.connected;
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[Sidebar] Failed to check bridge status:', errorMsg);
     // Show error in UI for debugging
     bridgeStatusText.title = `Error: ${errorMsg}`;
     updateBridgeStatusUI(false, errorMsg);
+    lastBridgeConnected = false;
   }
 }
 

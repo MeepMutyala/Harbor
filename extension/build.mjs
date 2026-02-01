@@ -104,6 +104,26 @@ async function copyStatic() {
   await mkdir(`${outDir}/bundled/gmail-harbor`, { recursive: true });
   await cp('../demo/gmail-mcp-server/harbor', `${outDir}/bundled/gmail-harbor`, { recursive: true }).catch(() => {});
   
+  // Safari: Patch import.meta.url and extract WASM files
+  if (isSafari) {
+    const bgPath = `${outDir}/background.js`;
+    let bgCode = await readFile(bgPath, 'utf-8');
+    if (bgCode.includes('import.meta')) {
+      bgCode = bgCode.replace(/import\.meta\.url/g, 'browser.runtime.getURL("")');
+      await writeFile(bgPath, bgCode);
+      console.log('[Harbor] ✓ Patched import.meta.url for Safari compatibility');
+    }
+    
+    // Extract wasmer WASI WASM from the library (it's embedded as a data URI)
+    const wasmerLib = await readFile('node_modules/@wasmer/wasi/dist/Library.esm.min.js', 'utf-8');
+    const wasmMatch = wasmerLib.match(/data:application\/wasm;base64,([A-Za-z0-9+/=]+)/);
+    if (wasmMatch) {
+      const wasmBytes = Buffer.from(wasmMatch[1], 'base64');
+      await writeFile(`${outDir}/wasmer_wasi_js_bg.wasm`, wasmBytes);
+      console.log(`[Harbor] ✓ Extracted wasmer WASM (${Math.round(wasmBytes.length/1024)} KB)`);
+    }
+  }
+  
   // Print load instructions
   console.log('');
   console.log(`[Harbor] ✓ Built for ${targetBrowser.charAt(0).toUpperCase() + targetBrowser.slice(1)}`);
