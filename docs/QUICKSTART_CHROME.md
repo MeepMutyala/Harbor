@@ -4,9 +4,84 @@
 
 ---
 
+## Installation Options
+
+There are two ways to install Harbor for Chrome:
+
+| Method | Best For | Time |
+|--------|----------|------|
+| **[macOS Package Installer](#option-a-macos-package-installer-recommended)** | Users, quick setup | 2 min |
+| **[Developer Setup](#option-b-developer-setup)** | Contributors, customization | 10 min |
+
+---
+
+# Option A: macOS Package Installer (Recommended)
+
+The easiest way to install Harbor for Chrome on macOS.
+
 ## Prerequisites
 
-Before you begin, make sure you have:
+| Tool | Install |
+|------|---------|
+| **Chrome 120+** | Already have it (or Edge, Brave, Arc, Vivaldi) |
+| **Ollama** (optional) | Installed automatically, or `brew install ollama` |
+
+## Step 1: Download and Install
+
+```bash
+# Build the installer (from the Harbor repo)
+cd installer/chrome
+./build-pkg.sh
+
+# Install
+sudo installer -pkg build/Harbor-Chrome-*.pkg -target /
+```
+
+Or double-click the `.pkg` file in Finder.
+
+The installer:
+- Installs the native bridge (universal binary for Intel + Apple Silicon)
+- Sets up native messaging for Chrome, Edge, Brave, Arc, Vivaldi, and Chromium
+- Downloads Ollama for local AI (if not already installed)
+- Copies the extension files to `/Library/Application Support/Harbor/`
+
+## Step 2: Load the Extension
+
+Since the extension isn't on the Chrome Web Store yet, load it in developer mode:
+
+1. Open Chrome → `chrome://extensions/`
+2. Enable **"Developer mode"** (toggle in top right)
+3. Click **"Load unpacked"**
+4. Select: `/Library/Application Support/Harbor/chrome-extension`
+5. **Note the extension ID** (32-character string like `abcdefghijklmnop...`)
+
+## Step 3: Configure Native Messaging
+
+Run the helper script with your extension ID:
+
+```bash
+/Library/Application\ Support/Harbor/configure-extension-id.sh
+```
+
+Enter your extension ID when prompted. This updates the native messaging manifests so the extension can communicate with the bridge.
+
+**Restart Chrome** for changes to take effect.
+
+## Step 4: Verify Installation
+
+1. Click the Harbor icon (⚓) in the Chrome toolbar
+2. The side panel should show "Bridge: Connected"
+3. If Ollama is running, you'll see "LLM: Ollama"
+
+**You're done!** Skip to [Run the Demos](#step-7-run-the-demos).
+
+---
+
+# Option B: Developer Setup
+
+For contributors or those who want to build from source.
+
+## Prerequisites
 
 | Tool | Install |
 |------|---------|
@@ -15,16 +90,12 @@ Before you begin, make sure you have:
 | **Chrome 120+** | Already have it |
 | **Ollama** | [ollama.com](https://ollama.com) or `brew install ollama` |
 
----
-
 ## Step 1: Clone the Repository
 
 ```bash
 git clone --recurse-submodules https://github.com/anthropics/harbor.git
 cd harbor
 ```
-
----
 
 ## Step 2: Start Ollama
 
@@ -45,8 +116,6 @@ curl http://localhost:11434/api/tags
 
 You should see a JSON response listing your downloaded models.
 
----
-
 ## Step 3: Build the Extension for Chrome
 
 Use the Chrome-specific build command:
@@ -62,8 +131,6 @@ This creates `extension/dist-chrome/` containing the built extension.
 
 > **Note:** Chrome uses a service worker architecture instead of background scripts, so the build process differs from Firefox.
 
----
-
 ## Step 4: Load the Extension in Chrome
 
 1. Open Chrome
@@ -75,8 +142,6 @@ This creates `extension/dist-chrome/` containing the built extension.
 You should see "Harbor" appear in your extensions list. **Note the extension ID** — you'll need it in the next step.
 
 The extension ID looks like: `abcdefghijklmnopabcdefghijklmnop`
-
----
 
 ## Step 5: Build and Install the Bridge
 
@@ -95,21 +160,21 @@ Chrome's native messaging requires the specific extension ID. After running `ins
 
 **macOS:**
 ```bash
-nano ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge.json
+nano ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json
 ```
 
 **Linux:**
 ```bash
-nano ~/.config/google-chrome/NativeMessagingHosts/harbor_bridge.json
+nano ~/.config/google-chrome/NativeMessagingHosts/harbor_bridge_host.json
 ```
 
 Replace the `allowed_origins` line with your extension ID:
 
 ```json
 {
-  "name": "harbor_bridge",
+  "name": "harbor_bridge_host",
   "description": "Harbor Bridge - Local LLM and MCP server for Harbor extension",
-  "path": "/path/to/harbor-bridge-native",
+  "path": "/path/to/harbor-bridge",
   "type": "stdio",
   "allowed_origins": ["chrome-extension://YOUR_EXTENSION_ID_HERE/"]
 }

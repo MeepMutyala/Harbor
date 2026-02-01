@@ -120,23 +120,28 @@ Harbor has a hybrid architecture with two execution paths:
 
 #### Option A: macOS Package Installer (Recommended for Users)
 
-Build a distributable `.pkg` installer:
+Build a distributable `.pkg` installer for your preferred browser:
 
+**Firefox:**
 ```bash
-cd installer/macos
-
-# First time: set up credentials
-cp ../credentials.env.example ../credentials.env
-# Edit credentials.env with your EXTENSION_ID and Mozilla API credentials
-
-# Build (use --clean for first build or after major changes)
-./build-pkg.sh --clean --sign-extension
-
-# Install
-sudo installer -pkg build/Harbor-*.pkg -target /
+cd installer/firefox
+./build-pkg.sh
+sudo installer -pkg build/Harbor-Firefox-*.pkg -target /
 ```
 
-See [Installer Documentation](../installer/README.md) for full details.
+**Chrome / Chromium browsers:**
+```bash
+cd installer/chrome
+./build-pkg.sh
+sudo installer -pkg build/Harbor-Chrome-*.pkg -target /
+
+# After loading the extension in developer mode, configure native messaging:
+/Library/Application\ Support/Harbor/configure-extension-id.sh
+```
+
+The Chrome installer supports: Google Chrome, Microsoft Edge, Brave, Arc, Vivaldi, and Chromium.
+
+See [Installer Documentation](../installer/README.md) for full details including signing and notarization.
 
 #### Option B: Development Setup
 
