@@ -4,7 +4,52 @@
 
 ---
 
-## Prerequisites
+## Option A: Easy Install (Recommended for Users)
+
+If you just want to use Harbor without building from source, use the pre-built installer.
+
+### Download and Install
+
+1. **Download** the latest `Harbor-Firefox-{version}.pkg` from the releases page
+2. **Double-click** the .pkg file to run the installer
+3. **Follow the prompts** - the installer will:
+   - Install the native bridge (universal binary for Intel + Apple Silicon)
+   - Open Firefox with install prompts for both extensions
+4. **Click "Add"** for each extension when Firefox prompts you:
+   - **Harbor** - Core AI agent platform
+   - **Web Agents API** - Exposes AI capabilities to web pages
+
+### After Installation
+
+1. **Open the sidebar** - Press `Cmd+B` and click the Harbor icon
+2. **Verify connection** - The sidebar should show "Bridge: Connected"
+3. **Set up Ollama** (for local AI):
+   - The installer may have installed Ollama automatically
+   - If not: `brew install ollama` or download from [ollama.com](https://ollama.com)
+   - Run: `ollama serve && ollama pull llama3.2`
+
+### What Gets Installed
+
+| Location | Description |
+|----------|-------------|
+| `/Library/Application Support/Harbor/` | Bridge binary and extensions |
+| `/Library/Application Support/Mozilla/NativeMessagingHosts/` | Native messaging config |
+| `/Applications/Uninstall Harbor.app` | GUI uninstaller |
+| `~/.harbor/` | User data (settings, logs) |
+
+### Uninstalling
+
+- **GUI**: Open "Uninstall Harbor" from Applications
+- **CLI**: Run `harbor-uninstall`
+- Then remove the extensions from Firefox: `about:addons` → Remove Harbor and Web Agents API
+
+---
+
+## Option B: Developer Setup (Build from Source)
+
+For development or contributing to Harbor, build from source.
+
+### Prerequisites
 
 Before you begin, make sure you have:
 
@@ -17,7 +62,7 @@ Before you begin, make sure you have:
 
 ---
 
-## Step 1: Clone the Repository
+### Step 1: Clone the Repository
 
 ```bash
 git clone --recurse-submodules https://github.com/anthropics/harbor.git
@@ -26,7 +71,7 @@ cd harbor
 
 ---
 
-## Step 2: Start Ollama
+### Step 2: Start Ollama
 
 Ollama provides the local LLM backend. Start the server and pull a model:
 
@@ -47,7 +92,7 @@ You should see a JSON response listing your downloaded models.
 
 ---
 
-## Step 3: Build the Extension
+### Step 3: Build the Extension
 
 The default build targets Firefox:
 
@@ -62,7 +107,7 @@ This creates `extension/dist-firefox/` containing the built extension.
 
 ---
 
-## Step 4: Build and Install the Bridge
+### Step 4: Build and Install the Bridge
 
 The bridge connects the extension to Ollama and local resources:
 
@@ -81,7 +126,7 @@ The install script:
 
 ---
 
-## Step 5: Load the Extension in Firefox
+### Step 5: Load the Extension in Firefox
 
 1. Open Firefox
 2. Navigate to `about:debugging#/runtime/this-firefox`
@@ -92,7 +137,7 @@ You should see "Harbor" appear in your extensions list.
 
 ---
 
-## Step 6: Verify the Installation
+### Step 6: Verify the Installation
 
 1. **Open the Harbor sidebar:**
    - Press `Ctrl+B` (Windows/Linux) or `Cmd+B` (macOS) to open the sidebar
@@ -109,7 +154,7 @@ You should see "Harbor" appear in your extensions list.
 
 ---
 
-## Step 7: Run the Demos
+### Step 7: Run the Demos
 
 Start the demo server:
 
@@ -123,7 +168,7 @@ Open http://localhost:8000 in Firefox.
 
 ---
 
-## Step 8: Try Your First Demo
+### Step 8: Try Your First Demo
 
 Navigate to **[Getting Started](http://localhost:8000/web-agents/getting-started/)** to walk through the basics:
 
@@ -137,7 +182,7 @@ The demo walks you through each step interactively.
 
 ---
 
-## Other Demos to Try
+### Other Demos to Try
 
 | Demo | URL | What It Shows |
 |------|-----|---------------|
@@ -147,7 +192,7 @@ The demo walks you through each step interactively.
 
 ---
 
-## Troubleshooting
+## Troubleshooting (Both Options)
 
 ### "Web Agent API not detected"
 
@@ -179,11 +224,15 @@ The built-in `time-wasm` server should be available by default. If not:
 3. Check if any servers are listed
 4. Try reloading the extension
 
-### Extension disappears after restart
+### Extension disappears after restart (Developer Setup only)
 
 Temporary add-ons in Firefox don't persist across browser restarts. You'll need to reload the extension each time via `about:debugging`.
 
-For persistent installation during development, consider using [web-ext](https://extensionworkshop.com/documentation/develop/getting-started-with-web-ext/).
+For persistent installation during development, consider:
+- Using [web-ext](https://extensionworkshop.com/documentation/develop/getting-started-with-web-ext/)
+- Building and installing the .pkg installer (see Option A)
+
+**Note**: If you installed via the .pkg installer (Option A), the extensions are permanently installed and will persist across restarts.
 
 ---
 

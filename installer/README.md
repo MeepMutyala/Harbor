@@ -331,10 +331,10 @@ Coming soon.
 
 Coming soon.
 
-## Architecture
+## Architecture (Firefox)
 
 ```
-User downloads .pkg
+User downloads Harbor-Firefox-{version}.pkg
          │
          ▼
     ┌─────────────┐
@@ -343,19 +343,19 @@ User downloads .pkg
          │           Warn about architecture
          ▼
     ┌─────────────┐
-    │   Payload   │  Copy harbor-bridge binary
-    └─────────────┘  Copy harbor.xpi extension
-         │           Copy uninstaller
-         ▼
+    │   Payload   │  Copy harbor-bridge binary (universal)
+    └─────────────┘  Copy harbor.xpi (Harbor extension)
+         │           Copy web-agents.xpi (Web Agents extension)
+         ▼           Copy uninstaller
     ┌─────────────┐
     │ Post-install│  Create native messaging manifest
     └─────────────┘  Set up launcher script
-         │           Open XPI in Firefox (triggers install prompt)
+         │           Open both XPIs in Firefox (triggers install prompts)
          ▼           Install uninstaller app
-    User clicks "Add" in Firefox
+    User clicks "Add" for each extension
          │
          ▼
-    Extension connects to bridge via native messaging
+    Extensions connect to bridge via native messaging
          │
          ▼
     ✓ Ready to use!
