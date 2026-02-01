@@ -5,6 +5,8 @@ import { McpStdioTransport } from '../mcp/stdio-transport';
 import { createWasmSession } from './session';
 import { createJsSession } from '../js-runtime/session';
 import { createRemoteTransport, type McpSseTransport, type McpWebSocketTransport } from '../mcp/remote-transport';
+import { rpcRequest, isNativeBridgeReady } from '../llm/native-bridge';
+import { isSafari } from '../browser-compat';
 
 type ToolEntry = {
   serverId: string;
@@ -166,10 +168,45 @@ export async function startMcpServer(serverId: string): Promise<boolean> {
       });
       console.log('[Harbor] Started WASM MCP server:', serverId);
     }
+    
+    // Safari: Sync tools to bridge for Web Agents compatibility
+    await syncToolsToBridge(serverId, handle.manifest);
+    
     return true;
   } catch (error) {
     console.error(`[Harbor] Failed to start ${runtime} MCP server:`, error);
     return false;
+  }
+}
+
+/**
+ * Safari: Sync server tools to the bridge for Web Agents compatibility.
+ * In Safari, Web Agents can only communicate with the bridge, not Harbor directly.
+ */
+async function syncToolsToBridge(serverId: string, manifest: McpServerManifest): Promise<void> {
+  // Only sync if bridge is ready and we're in Safari
+  if (!isNativeBridgeReady()) {
+    return;
+  }
+  
+  const tools = manifest.tools || [];
+  if (tools.length === 0) {
+    return;
+  }
+  
+  try {
+    await rpcRequest('mcp.register_tools', {
+      server_id: serverId,
+      tools: tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      })),
+    });
+    console.log(`[Harbor] Synced ${tools.length} tools to bridge for ${serverId}`);
+  } catch (err) {
+    // Non-fatal - just log and continue
+    console.warn('[Harbor] Failed to sync tools to bridge:', err);
   }
 }
 
@@ -187,8 +224,25 @@ export function stopMcpServer(serverId: string): boolean {
   session?.close();
   activeSessions.delete(serverId);
   remoteTransports.delete(serverId);
+  
+  // Safari: Unregister tools from bridge
+  unsyncToolsFromBridge(serverId);
+  
   console.log('[Harbor] Stopped MCP server:', serverId);
   return true;
+}
+
+/**
+ * Safari: Unregister server tools from the bridge.
+ */
+function unsyncToolsFromBridge(serverId: string): void {
+  if (!isNativeBridgeReady()) {
+    return;
+  }
+  
+  rpcRequest('mcp.unregister_tools', { server_id: serverId })
+    .then(() => console.log(`[Harbor] Unsynced tools from bridge for ${serverId}`))
+    .catch(() => { /* ignore errors */ });
 }
 
 /**

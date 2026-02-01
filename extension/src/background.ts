@@ -64,6 +64,54 @@ initializeRouter();
 // Cleanup expired permission grants on startup
 cleanupExpiredGrants();
 
+// Safari: Poll for pending tool calls from bridge (WASM servers run in extension)
+import { isSafari } from './browser-compat';
+import { rpcRequest, isNativeBridgeReady } from './llm/native-bridge';
+
+if (isSafari()) {
+  const POLL_INTERVAL = 500; // ms
+  
+  async function pollPendingToolCalls() {
+    if (!isNativeBridgeReady()) return;
+    
+    try {
+      const response = await rpcRequest('mcp.poll_pending_calls', {}) as { calls?: Array<{
+        call_id: string;
+        serverId: string;
+        toolName: string;
+        args: Record<string, unknown>;
+      }> };
+      
+      const calls = response?.calls || [];
+      
+      for (const call of calls) {
+        console.log('[Harbor:Safari] Executing pending tool call:', call.call_id, call.serverId, call.toolName);
+        
+        try {
+          const result = await callTool(call.serverId, call.toolName, call.args || {});
+          await rpcRequest('mcp.submit_call_result', {
+            call_id: call.call_id,
+            result: result,
+          });
+          console.log('[Harbor:Safari] Tool call succeeded:', call.call_id);
+        } catch (err) {
+          await rpcRequest('mcp.submit_call_result', {
+            call_id: call.call_id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          console.error('[Harbor:Safari] Tool call failed:', call.call_id, err);
+        }
+      }
+    } catch (err) {
+      // Ignore poll errors (bridge may not be ready)
+    }
+  }
+  
+  // Start polling
+  setInterval(pollPendingToolCalls, POLL_INTERVAL);
+  console.log('[Harbor:Safari] Started pending tool call polling');
+}
+
 // =============================================================================
 // Legacy Message Handlers (for sidebar and other internal UIs)
 // =============================================================================

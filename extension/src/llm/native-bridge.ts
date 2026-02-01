@@ -4,7 +4,7 @@
  * All communication with the native bridge happens through this module via stdio.
  * Supports RPC requests, streaming responses, and console log forwarding.
  * 
- * Safari uses sendNativeMessage() for each RPC call (request/response model).
+ * Safari uses HTTP to localhost (avoids sandbox restrictions).
  * Firefox/Chrome use connectNative() for a persistent port connection.
  */
 
@@ -29,7 +29,7 @@ const SAFARI_HTTP_BASE = `http://127.0.0.1:${SAFARI_HTTP_PORT}`;
  * This avoids sandbox restrictions with native messaging.
  */
 async function safariHttpRequest<T>(method: string, params: unknown = {}): Promise<T> {
-  const id = crypto.randomUUID();
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   console.log('[Harbor:Safari] HTTP RPC request:', method, id);
   
   try {
@@ -46,20 +46,24 @@ async function safariHttpRequest<T>(method: string, params: unknown = {}): Promi
     });
     
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const text = await response.text().catch(() => '');
+      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${text}`);
     }
     
     const data = await response.json();
-    console.log('[Harbor:Safari] HTTP RPC response:', data);
+    console.log('[Harbor:Safari] HTTP RPC response:', JSON.stringify(data).slice(0, 200));
     
-    if (data.error) {
-      throw new Error(data.error.message || JSON.stringify(data.error));
+    if (data && data.error) {
+      const errorMsg = data.error.message || (typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+      throw new Error(errorMsg);
     }
     
-    return data.result as T;
+    // Handle case where result might be undefined (some methods return void)
+    return (data?.result ?? null) as T;
   } catch (err) {
-    console.error('[Harbor:Safari] HTTP RPC error:', err);
-    throw err;
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[Harbor:Safari] HTTP RPC error:', errorMsg);
+    throw err instanceof Error ? err : new Error(errorMsg);
   }
 }
 
@@ -68,12 +72,58 @@ async function safariHttpRequest<T>(method: string, params: unknown = {}): Promi
  */
 async function safariCheckHttpServer(): Promise<boolean> {
   try {
+    console.log('[Harbor:Safari] Checking HTTP server at', SAFARI_HTTP_BASE);
     const response = await fetch(`${SAFARI_HTTP_BASE}/health`, {
       method: 'GET',
     });
+    console.log('[Harbor:Safari] Health check response:', response.ok, response.status);
     return response.ok;
-  } catch {
+  } catch (err) {
+    console.error('[Harbor:Safari] Health check failed:', err);
     return false;
+  }
+}
+
+/**
+ * Safari-specific: Check connection and update state
+ */
+async function checkSafariConnection(): Promise<void> {
+  try {
+    const available = await safariCheckHttpServer();
+    if (!available) {
+      console.log('[Harbor:Safari] Bridge not available');
+      updateState({
+        connected: false,
+        bridgeReady: false,
+        error: 'Harbor.app not running',
+      });
+      return;
+    }
+    
+    // If already connected and ready, skip RPC check (health endpoint worked)
+    if (connectionState.connected && connectionState.bridgeReady) {
+      return;
+    }
+    
+    console.log('[Harbor:Safari] HTTP server available, testing RPC...');
+    const response = await safariHttpRequest<{ status: string }>('system.health', {});
+    console.log('[Harbor:Safari] Health check response:', response);
+    
+    const wasDisconnected = !connectionState.connected;
+    updateState({ connected: true, bridgeReady: true, error: null });
+    
+    if (wasDisconnected) {
+      console.log('[Harbor:Safari] Bridge connected!');
+    }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[Harbor:Safari] Connection check failed:', errorMsg);
+    
+    updateState({
+      connected: false,
+      bridgeReady: false,
+      error: `Safari: ${errorMsg}`,
+    });
   }
 }
 
@@ -228,6 +278,10 @@ function handleMessage(message: IncomingMessage): void {
   }
 }
 
+// Safari: Polling interval for reconnection
+let safariPollInterval: ReturnType<typeof setInterval> | null = null;
+const SAFARI_POLL_INTERVAL = 3000;
+
 /**
  * Connect to the native bridge application.
  * Safari uses HTTP to localhost (avoids sandbox), others use connectNative (persistent port).
@@ -237,28 +291,12 @@ export function connectNativeBridge(): void {
     // Safari: Test connection via HTTP to harbor-bridge server
     console.log('[Harbor:Safari] Testing HTTP connection to harbor-bridge...');
     
-    safariCheckHttpServer()
-      .then((available) => {
-        if (available) {
-          console.log('[Harbor:Safari] HTTP server available, testing health...');
-          return safariHttpRequest<{ status: string }>('system.health', {});
-        } else {
-          throw new Error('Harbor bridge HTTP server not running. Make sure Harbor.app is running.');
-        }
-      })
-      .then((response) => {
-        console.log('[Harbor:Safari] Health check response:', response);
-        updateState({ connected: true, bridgeReady: true, error: null });
-      })
-      .catch((err) => {
-        console.error('[Harbor:Safari] HTTP connection failed:', err.message);
-        updateState({
-          connected: false,
-          bridgeReady: false,
-          error: `Safari: ${err.message}`,
-        });
-      });
+    // Start polling if not already polling
+    if (!safariPollInterval) {
+      safariPollInterval = setInterval(checkSafariConnection, SAFARI_POLL_INTERVAL);
+    }
     
+    checkSafariConnection();
     return;
   }
   
@@ -364,6 +402,8 @@ export async function rpcRequest<T>(method: string, params?: unknown): Promise<T
   if (!nativePort || !connectionState.bridgeReady) {
     throw new Error('Bridge not connected');
   }
+
+  const id = crypto.randomUUID();
 
   return new Promise<T>((resolve, reject) => {
     // Set up timeout (120 seconds for slow MCP tools like Gmail)

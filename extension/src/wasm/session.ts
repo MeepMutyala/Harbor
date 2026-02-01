@@ -72,7 +72,14 @@ export async function createWasmSession(
     };
   }
 
-  await init();
+  console.log('[Harbor] Initializing WASI runtime...');
+  try {
+    await init();
+    console.log('[Harbor] WASI runtime initialized successfully');
+  } catch (initError) {
+    console.error('[Harbor] WASI init failed:', initError);
+    throw initError;
+  }
 
   // Resolve the WASM URL - use runtime.getURL if available (background context)
   let wasmUrl = manifest.moduleUrl as string;
@@ -92,9 +99,11 @@ export async function createWasmSession(
     }
   }
   
+  console.log('[Harbor] Loading WASM module from:', wasmUrl);
   const wasmBytes = manifest.moduleBytesBase64
     ? Uint8Array.from(atob(manifest.moduleBytesBase64), (char) => char.charCodeAt(0)).buffer
     : await fetch(wasmUrl).then((response) => {
+        console.log('[Harbor] WASM fetch response:', response.status, response.ok);
         if (!response.ok) {
           throw new Error(`Failed to fetch WASM module: ${response.status} from ${wasmUrl}`);
         }
