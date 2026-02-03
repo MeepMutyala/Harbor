@@ -227,7 +227,7 @@ check_existing_install() {
     fi
     
     # Check for native messaging manifest
-    if [ -f "/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge_host.json" ]; then
+    if [ -f "/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge.json" ] || [ -f "/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge_host.json" ]; then
         EXISTING=1
     fi
     

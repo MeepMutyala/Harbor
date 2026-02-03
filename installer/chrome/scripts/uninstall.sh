@@ -10,12 +10,19 @@ USER_DATA="$HOME/.harbor"
 CLI_LINK="/usr/local/bin/harbor-uninstall"
 
 # Native messaging paths for all Chromium browsers
-CHROME_MANIFEST="/Library/Application Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json"
-CHROMIUM_MANIFEST="/Library/Application Support/Chromium/NativeMessagingHosts/harbor_bridge_host.json"
-EDGE_MANIFEST="/Library/Application Support/Microsoft Edge/NativeMessagingHosts/harbor_bridge_host.json"
-BRAVE_MANIFEST="/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/harbor_bridge_host.json"
-ARC_MANIFEST="/Library/Application Support/Arc/User Data/NativeMessagingHosts/harbor_bridge_host.json"
-VIVALDI_MANIFEST="/Library/Application Support/Vivaldi/NativeMessagingHosts/harbor_bridge_host.json"
+# Native messaging manifest paths (both old and new names for cleanup)
+CHROME_MANIFEST="/Library/Application Support/Google/Chrome/NativeMessagingHosts/harbor_bridge.json"
+CHROME_MANIFEST_OLD="/Library/Application Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json"
+CHROMIUM_MANIFEST="/Library/Application Support/Chromium/NativeMessagingHosts/harbor_bridge.json"
+CHROMIUM_MANIFEST_OLD="/Library/Application Support/Chromium/NativeMessagingHosts/harbor_bridge_host.json"
+EDGE_MANIFEST="/Library/Application Support/Microsoft Edge/NativeMessagingHosts/harbor_bridge.json"
+EDGE_MANIFEST_OLD="/Library/Application Support/Microsoft Edge/NativeMessagingHosts/harbor_bridge_host.json"
+BRAVE_MANIFEST="/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/harbor_bridge.json"
+BRAVE_MANIFEST_OLD="/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/harbor_bridge_host.json"
+ARC_MANIFEST="/Library/Application Support/Arc/User Data/NativeMessagingHosts/harbor_bridge.json"
+ARC_MANIFEST_OLD="/Library/Application Support/Arc/User Data/NativeMessagingHosts/harbor_bridge_host.json"
+VIVALDI_MANIFEST="/Library/Application Support/Vivaldi/NativeMessagingHosts/harbor_bridge.json"
+VIVALDI_MANIFEST_OLD="/Library/Application Support/Vivaldi/NativeMessagingHosts/harbor_bridge_host.json"
 
 # Colors
 RED='\033[0;31m'
@@ -48,8 +55,8 @@ show_removal_plan() {
         echo "      (Harbor bridge and extensions)"
     fi
     
-    # Check all native messaging manifests
-    for MANIFEST in "$CHROME_MANIFEST" "$CHROMIUM_MANIFEST" "$EDGE_MANIFEST" "$BRAVE_MANIFEST" "$ARC_MANIFEST" "$VIVALDI_MANIFEST"; do
+    # Check all native messaging manifests (both current and old names)
+    for MANIFEST in "$CHROME_MANIFEST" "$CHROME_MANIFEST_OLD" "$CHROMIUM_MANIFEST" "$CHROMIUM_MANIFEST_OLD" "$EDGE_MANIFEST" "$EDGE_MANIFEST_OLD" "$BRAVE_MANIFEST" "$BRAVE_MANIFEST_OLD" "$ARC_MANIFEST" "$ARC_MANIFEST_OLD" "$VIVALDI_MANIFEST" "$VIVALDI_MANIFEST_OLD"; do
         if [ -f "$MANIFEST" ]; then
             echo -e "  ${GREEN}✓${NC} $MANIFEST"
         fi
@@ -106,8 +113,8 @@ do_uninstall() {
         echo -e "${GREEN}done${NC}"
     fi
     
-    # Remove all native messaging manifests
-    for MANIFEST in "$CHROME_MANIFEST" "$CHROMIUM_MANIFEST" "$EDGE_MANIFEST" "$BRAVE_MANIFEST" "$ARC_MANIFEST" "$VIVALDI_MANIFEST"; do
+    # Remove all native messaging manifests (both current and old names)
+    for MANIFEST in "$CHROME_MANIFEST" "$CHROME_MANIFEST_OLD" "$CHROMIUM_MANIFEST" "$CHROMIUM_MANIFEST_OLD" "$EDGE_MANIFEST" "$EDGE_MANIFEST_OLD" "$BRAVE_MANIFEST" "$BRAVE_MANIFEST_OLD" "$ARC_MANIFEST" "$ARC_MANIFEST_OLD" "$VIVALDI_MANIFEST" "$VIVALDI_MANIFEST_OLD"; do
         if [ -f "$MANIFEST" ]; then
             BROWSER_NAME=$(echo "$MANIFEST" | sed 's/.*Support\/\([^\/]*\).*/\1/')
             echo -n "  Removing $BROWSER_NAME native manifest... "
@@ -126,9 +133,13 @@ do_uninstall() {
         USER_HOME=$(eval echo "~$ACTUAL_USER")
         
         USER_MANIFESTS=(
+            "$USER_HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts/harbor_bridge.json"
             "$USER_HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json"
+            "$USER_HOME/Library/Application Support/Chromium/NativeMessagingHosts/harbor_bridge.json"
             "$USER_HOME/Library/Application Support/Chromium/NativeMessagingHosts/harbor_bridge_host.json"
+            "$USER_HOME/Library/Application Support/Microsoft Edge/NativeMessagingHosts/harbor_bridge.json"
             "$USER_HOME/Library/Application Support/Microsoft Edge/NativeMessagingHosts/harbor_bridge_host.json"
+            "$USER_HOME/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/harbor_bridge.json"
             "$USER_HOME/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/harbor_bridge_host.json"
         )
         

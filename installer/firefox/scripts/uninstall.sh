@@ -6,7 +6,9 @@ set -e
 
 # Installation paths
 HARBOR_DIR="/Library/Application Support/Harbor"
-NATIVE_MANIFEST="/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge_host.json"
+# Native messaging manifest paths (both current and old names for cleanup)
+NATIVE_MANIFEST="/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge.json"
+NATIVE_MANIFEST_OLD="/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge_host.json"
 FIREFOX_POLICIES="/Library/Application Support/Mozilla/policies/policies.json"
 USER_DATA="$HOME/.harbor"
 CLI_LINK="/usr/local/bin/harbor-uninstall"
@@ -45,6 +47,11 @@ show_removal_plan() {
     if [ -f "$NATIVE_MANIFEST" ]; then
         echo -e "  ${GREEN}✓${NC} $NATIVE_MANIFEST"
         echo "      (Native messaging manifest)"
+    fi
+    
+    if [ -f "$NATIVE_MANIFEST_OLD" ]; then
+        echo -e "  ${GREEN}✓${NC} $NATIVE_MANIFEST_OLD"
+        echo "      (Old native messaging manifest)"
     fi
     
     if [ -f "$FIREFOX_POLICIES" ]; then
@@ -104,10 +111,16 @@ do_uninstall() {
         echo -e "${GREEN}done${NC}"
     fi
     
-    # Remove native messaging manifest
+    # Remove native messaging manifests (both current and old names)
     if [ -f "$NATIVE_MANIFEST" ]; then
         echo -n "  Removing native messaging manifest... "
         rm -f "$NATIVE_MANIFEST"
+        echo -e "${GREEN}done${NC}"
+    fi
+    
+    if [ -f "$NATIVE_MANIFEST_OLD" ]; then
+        echo -n "  Removing old native messaging manifest... "
+        rm -f "$NATIVE_MANIFEST_OLD"
         echo -e "${GREEN}done${NC}"
     fi
     

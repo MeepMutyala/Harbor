@@ -60,16 +60,7 @@ EDGE_NATIVE_HOSTS="/Library/Application Support/Microsoft Edge/NativeMessagingHo
 BRAVE_NATIVE_HOSTS="/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts"
 ARC_NATIVE_HOSTS="/Library/Application Support/Arc/User Data/NativeMessagingHosts"
 VIVALDI_NATIVE_HOSTS="/Library/Application Support/Vivaldi/NativeMessagingHosts"
-MANIFEST_NAME="harbor_bridge_host"
-
-# Extension IDs (stamped by build-pkg.sh from credentials.env)
-# Chrome extension IDs (32-char string from Web Store or generated on first load)
-CHROME_EXTENSION_ID="__CHROME_EXTENSION_ID__"
-CHROME_WEB_AGENTS_EXTENSION_ID="__CHROME_WEB_AGENTS_EXTENSION_ID__"
-
-# Web Store URLs
-CHROME_WEBSTORE_URL="__CHROME_WEBSTORE_URL__"
-CHROME_WEB_AGENTS_WEBSTORE_URL="__CHROME_WEB_AGENTS_WEBSTORE_URL__"
+MANIFEST_NAME="harbor_bridge"
 
 # =============================================================================
 # Create launcher script
@@ -121,24 +112,10 @@ install_chrome_native_manifest_for_browser() {
     
     MANIFEST_FILE="$HOSTS_DIR/${MANIFEST_NAME}.json"
     
-    # Build allowed_origins array based on configured extension IDs
+    # For unpacked extensions, allowed_origins starts empty
+    # The user will run configure-extension-id.sh to add their extension ID
+    # after loading the unpacked extension in Chrome developer mode
     ORIGINS="[]"
-    
-    if [ -n "$CHROME_EXTENSION_ID" ] && [ "$CHROME_EXTENSION_ID" != "__CHROME_EXTENSION_ID__" ]; then
-        # Published extension - use specific ID
-        if [ -n "$CHROME_WEB_AGENTS_EXTENSION_ID" ] && [ "$CHROME_WEB_AGENTS_EXTENSION_ID" != "__CHROME_WEB_AGENTS_EXTENSION_ID__" ]; then
-            ORIGINS="[\"chrome-extension://$CHROME_EXTENSION_ID/\", \"chrome-extension://$CHROME_WEB_AGENTS_EXTENSION_ID/\"]"
-        else
-            ORIGINS="[\"chrome-extension://$CHROME_EXTENSION_ID/\"]"
-        fi
-    else
-        # Dev mode - we need to allow any extension loaded in dev mode
-        # Chrome generates a unique ID when you load an unpacked extension
-        # We'll add a placeholder and update it later, or use a wildcard approach
-        # Note: Chrome doesn't support wildcards, so we'll need the user to update this
-        # For now, leave empty and provide instructions
-        ORIGINS="[]"
-    fi
     
     cat > "$MANIFEST_FILE" << EOF
 {
@@ -210,16 +187,8 @@ update_user_chrome_manifests() {
     USER_HOME=$(eval echo "~$ACTUAL_USER")
     LAUNCHER_PATH="$HARBOR_DIR/harbor-bridge-launcher"
     
-    # Build allowed_origins
-    if [ -n "$CHROME_EXTENSION_ID" ] && [ "$CHROME_EXTENSION_ID" != "__CHROME_EXTENSION_ID__" ]; then
-        if [ -n "$CHROME_WEB_AGENTS_EXTENSION_ID" ] && [ "$CHROME_WEB_AGENTS_EXTENSION_ID" != "__CHROME_WEB_AGENTS_EXTENSION_ID__" ]; then
-            ORIGINS="[\"chrome-extension://$CHROME_EXTENSION_ID/\", \"chrome-extension://$CHROME_WEB_AGENTS_EXTENSION_ID/\"]"
-        else
-            ORIGINS="[\"chrome-extension://$CHROME_EXTENSION_ID/\"]"
-        fi
-    else
-        ORIGINS="[]"
-    fi
+    # For unpacked extensions, start with empty origins
+    ORIGINS="[]"
     
     # Check and update user Chrome manifest
     USER_CHROME_DIR="$USER_HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
@@ -239,10 +208,10 @@ EOF
 }
 
 # =============================================================================
-# Install Chrome extension via Web Store or dev mode
+# Install extension configuration helper and setup assistant
 # =============================================================================
 install_chrome_extension() {
-    echo "Setting up Chrome extension..."
+    echo "Setting up Chrome extension tools..."
     
     # Get the actual user
     ACTUAL_USER="${SUDO_USER:-}"
@@ -250,148 +219,78 @@ install_chrome_extension() {
         ACTUAL_USER=$(stat -f '%Su' /dev/console 2>/dev/null || echo "")
     fi
     
-    # Check if Web Store URL is configured
-    if [ -n "$CHROME_WEBSTORE_URL" ] && [ "$CHROME_WEBSTORE_URL" != "__CHROME_WEBSTORE_URL__" ]; then
-        echo "  Opening Chrome Web Store..."
-        echo "Chrome Web Store URL: $CHROME_WEBSTORE_URL" >> "$LOG_FILE"
-        
-        if [ -n "$ACTUAL_USER" ] && [ "$ACTUAL_USER" != "root" ]; then
-            # Open Chrome Web Store page
-            su "$ACTUAL_USER" -c "open '$CHROME_WEBSTORE_URL'" 2>> "$LOG_FILE" &
-            echo "  ✓ Chrome Web Store opened"
-            echo "  Click 'Add to Chrome' to install the extension"
-            
-            # Also open Web Agents if configured
-            if [ -n "$CHROME_WEB_AGENTS_WEBSTORE_URL" ] && [ "$CHROME_WEB_AGENTS_WEBSTORE_URL" != "__CHROME_WEB_AGENTS_WEBSTORE_URL__" ]; then
-                sleep 2
-                su "$ACTUAL_USER" -c "open '$CHROME_WEB_AGENTS_WEBSTORE_URL'" 2>> "$LOG_FILE" &
-                echo "  ✓ Web Agents Chrome Web Store opened"
-            fi
-        else
-            echo "  ⚠ Could not determine user, please install manually:"
-            echo "    $CHROME_WEBSTORE_URL"
-        fi
-    else
-        # Dev mode instructions
-        echo "  ⚠ Chrome Web Store URL not configured (dev mode)"
+    # Copy the configure-extension-id.sh script
+    if [ -f "$HARBOR_DIR/configure-extension-id.sh" ]; then
+        chmod +x "$HARBOR_DIR/configure-extension-id.sh"
+        echo "  ✓ Extension ID configuration script installed"
+    fi
+    
+    # Build Setup Assistant app from AppleScript
+    build_setup_assistant
+    
+    # Show instructions
+    echo ""
+    echo "  Chrome extension requires manual loading (Developer Mode):"
+    echo ""
+    echo "    1. Open Chrome → chrome://extensions/"
+    echo "    2. Enable 'Developer mode' (top right toggle)"
+    echo "    3. Click 'Load unpacked'"
+    echo "    4. Select: $CHROME_EXTENSION_DIR"
+    echo ""
+    
+    if [ -d "$WEB_AGENTS_EXTENSION_DIR" ]; then
+        echo "  For Web Agents extension, also load:"
+        echo "    $WEB_AGENTS_EXTENSION_DIR"
         echo ""
-        echo "  To load the extension manually:"
-        echo "    1. Open Chrome → chrome://extensions/"
-        echo "    2. Enable 'Developer mode' (top right toggle)"
-        echo "    3. Click 'Load unpacked'"
-        echo "    4. Select: $CHROME_EXTENSION_DIR"
-        echo ""
-        
-        if [ -d "$WEB_AGENTS_EXTENSION_DIR" ]; then
-            echo "  For Web Agents extension, also load:"
-            echo "    $WEB_AGENTS_EXTENSION_DIR"
-            echo ""
-        fi
-        
-        # Create a helper script to update the native messaging manifest with the dev extension ID
-        create_dev_mode_helper
     fi
 }
 
 # =============================================================================
-# Create helper script for dev mode extension ID configuration
+# Build and install Setup Assistant app
 # =============================================================================
-create_dev_mode_helper() {
-    HELPER_SCRIPT="$HARBOR_DIR/configure-extension-id.sh"
+build_setup_assistant() {
+    echo "Building Setup Assistant..."
     
-    cat > "$HELPER_SCRIPT" << 'HELPER_EOF'
-#!/bin/bash
-# Harbor - Configure Extension ID for Native Messaging
-# Run this after loading the extension in developer mode
-
-echo ""
-echo "Harbor - Configure Extension ID"
-echo "================================"
-echo ""
-echo "After loading the extension in Chrome developer mode, you need to"
-echo "configure the native messaging manifest with the extension ID."
-echo ""
-echo "To find your extension ID:"
-echo "  1. Go to chrome://extensions/"
-echo "  2. Find 'Harbor' in the list"
-echo "  3. Copy the ID (32-character string like 'abcdefghijklmnopabcdefghijklmnop')"
-echo ""
-
-read -p "Enter your Harbor extension ID: " EXT_ID
-
-if [ -z "$EXT_ID" ]; then
-    echo "No extension ID provided. Exiting."
-    exit 1
-fi
-
-# Validate format (32 lowercase letters)
-if ! [[ "$EXT_ID" =~ ^[a-p]{32}$ ]]; then
-    echo "Warning: Extension ID format looks unusual (expected 32 lowercase letters a-p)"
-    read -p "Continue anyway? (y/N): " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+    SETUP_SCRIPT="$HARBOR_DIR/setup-assistant.applescript"
+    SETUP_APP="/Applications/Harbor Setup.app"
+    
+    if [ -f "$SETUP_SCRIPT" ]; then
+        # Build the app from AppleScript
+        if osacompile -o "$SETUP_APP" "$SETUP_SCRIPT" 2>> "$LOG_FILE"; then
+            echo "  ✓ Setup Assistant installed: $SETUP_APP"
+            echo "Setup Assistant built: $SETUP_APP" >> "$LOG_FILE"
+        else
+            echo "  ⚠ Could not build Setup Assistant app"
+            echo "Failed to build Setup Assistant" >> "$LOG_FILE"
+        fi
+    else
+        echo "  ⚠ Setup Assistant script not found"
+        echo "setup-assistant.applescript not found" >> "$LOG_FILE"
     fi
-fi
+}
 
-echo ""
-echo "Updating native messaging manifests..."
-
-# Find all native messaging manifest files
-MANIFEST_LOCATIONS=(
-    "/Library/Application Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json"
-    "/Library/Application Support/Chromium/NativeMessagingHosts/harbor_bridge_host.json"
-    "/Library/Application Support/Microsoft Edge/NativeMessagingHosts/harbor_bridge_host.json"
-    "/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/harbor_bridge_host.json"
-    "$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json"
-)
-
-UPDATED=0
-for MANIFEST in "${MANIFEST_LOCATIONS[@]}"; do
-    if [ -f "$MANIFEST" ]; then
-        # Update allowed_origins to include the extension ID
-        # Use Python for JSON manipulation (more reliable than sed)
-        python3 -c "
-import json
-import sys
-
-try:
-    with open('$MANIFEST', 'r') as f:
-        data = json.load(f)
+# =============================================================================
+# Launch Setup Assistant for the user
+# =============================================================================
+launch_setup_assistant() {
+    echo "Launching Setup Assistant..."
     
-    origin = 'chrome-extension://$EXT_ID/'
-    if 'allowed_origins' not in data:
-        data['allowed_origins'] = []
-    
-    if origin not in data['allowed_origins']:
-        data['allowed_origins'].append(origin)
-    
-    with open('$MANIFEST', 'w') as f:
-        json.dump(data, f, indent=2)
-    
-    print(f'  ✓ Updated: $MANIFEST')
-except Exception as e:
-    print(f'  ✗ Failed: $MANIFEST - {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null && UPDATED=$((UPDATED + 1)) || echo "  ⚠ Could not update $MANIFEST"
+    ACTUAL_USER="${SUDO_USER:-}"
+    if [ -z "$ACTUAL_USER" ]; then
+        ACTUAL_USER=$(stat -f '%Su' /dev/console 2>/dev/null || echo "")
     fi
-done
-
-if [ $UPDATED -gt 0 ]; then
-    echo ""
-    echo "✓ Updated $UPDATED manifest(s)"
-    echo ""
-    echo "Please restart Chrome for changes to take effect."
-else
-    echo ""
-    echo "⚠ No manifests were updated. You may need to run this with sudo:"
-    echo "  sudo $0"
-fi
-HELPER_EOF
-
-    chmod +x "$HELPER_SCRIPT"
-    echo "  Helper script created: $HELPER_SCRIPT"
-    echo "  Run this after loading the extension to configure native messaging"
+    
+    SETUP_APP="/Applications/Harbor Setup.app"
+    
+    if [ -d "$SETUP_APP" ] && [ -n "$ACTUAL_USER" ] && [ "$ACTUAL_USER" != "root" ]; then
+        # Launch the setup assistant as the actual user (in background, don't block installer)
+        su "$ACTUAL_USER" -c "open '$SETUP_APP'" 2>> "$LOG_FILE" &
+        echo "  ✓ Setup Assistant launched"
+        echo "Setup Assistant launched for user $ACTUAL_USER" >> "$LOG_FILE"
+    else
+        echo "  ⚠ Could not launch Setup Assistant automatically"
+        echo "    Launch manually: /Applications/Harbor Setup.app"
+    fi
 }
 
 # =============================================================================
@@ -555,36 +454,32 @@ install_chrome_extension
 install_uninstaller
 create_first_run_marker
 
+# Launch the Setup Assistant to guide the user
+launch_setup_assistant
+
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
 echo ""
 echo "✓ Harbor has been installed successfully!"
 echo ""
-
-if [ -n "$CHROME_WEBSTORE_URL" ] && [ "$CHROME_WEBSTORE_URL" != "__CHROME_WEBSTORE_URL__" ]; then
-    echo "CHROME WEB STORE:"
-    echo "  The Chrome Web Store page should have opened."
-    echo "  Click 'Add to Chrome' to install the extension."
-    echo ""
-    echo "  After installation, click the Harbor icon in the toolbar"
-    echo "  to open the side panel."
-else
-    echo "CHROME (Developer Mode):"
-    echo "  1. Open Chrome → chrome://extensions/"
-    echo "  2. Enable 'Developer mode' (top right toggle)"
-    echo "  3. Click 'Load unpacked'"
-    echo "  4. Select: $CHROME_EXTENSION_DIR"
-    echo "  5. Note the extension ID (32-character string)"
-    echo "  6. Run: $HARBOR_DIR/configure-extension-id.sh"
-    echo "     to configure native messaging"
-    echo ""
-fi
+echo "SETUP ASSISTANT:"
+echo "  The Harbor Setup Assistant should have opened to guide you"
+echo "  through loading the Chrome extension."
+echo ""
+echo "  If it didn't open, launch it manually:"
+echo "    /Applications/Harbor Setup.app"
+echo ""
+echo "  Or set up manually:"
+echo "    1. Open Chrome → chrome://extensions/"
+echo "    2. Enable 'Developer mode' (top right toggle)"
+echo "    3. Click 'Load unpacked'"
+echo "    4. Select: $CHROME_EXTENSION_DIR"
+echo "    5. Note the extension ID (32-character string)"
+echo "    6. Run: $HARBOR_DIR/configure-extension-id.sh"
+echo ""
 echo "LOCAL LLM:"
 echo "  Ollama provides fast, local AI using your Mac's GPU."
 echo "  If Ollama wasn't installed, run: brew install ollama"
-echo ""
-echo "MCP SERVERS:"
-echo "  Some MCP servers may require Docker Desktop."
 echo ""
 echo "To uninstall Harbor later:"
 echo "  • Double-click 'Uninstall Harbor' in /Applications"

@@ -321,6 +321,29 @@ copy_uninstaller() {
 }
 
 # =============================================================================
+# Copy Setup Tools (for unpacked extension workflow)
+# =============================================================================
+
+copy_setup_tools() {
+    echo_step "Copying setup tools..."
+    
+    # Copy configure-extension-id.sh script
+    if [ -f "$INSTALLER_DIR/resources/configure-extension-id.sh" ]; then
+        cp "$INSTALLER_DIR/resources/configure-extension-id.sh" "$PAYLOAD_DIR/Library/Application Support/Harbor/"
+        chmod +x "$PAYLOAD_DIR/Library/Application Support/Harbor/configure-extension-id.sh"
+        echo "  ✓ Extension ID configuration script"
+    fi
+    
+    # Copy setup assistant AppleScript (will be compiled to .app in postinstall)
+    if [ -f "$INSTALLER_DIR/resources/setup-assistant.applescript" ]; then
+        cp "$INSTALLER_DIR/resources/setup-assistant.applescript" "$PAYLOAD_DIR/Library/Application Support/Harbor/"
+        echo "  ✓ Setup Assistant script"
+    fi
+    
+    echo_success "Setup tools prepared"
+}
+
+# =============================================================================
 # Create Component Package
 # =============================================================================
 
@@ -340,12 +363,8 @@ create_component_pkg() {
     
     sed "s/__BUILD_ARCH__/$BUILD_ARCH_MARKER/g" "$INSTALLER_DIR/scripts/preinstall" > "$SCRIPTS_TEMP/preinstall"
     
-    # Stamp postinstall with extension IDs and URLs
-    sed -e "s/__CHROME_EXTENSION_ID__/${CHROME_EXTENSION_ID:-}/g" \
-        -e "s/__CHROME_WEB_AGENTS_EXTENSION_ID__/${CHROME_WEB_AGENTS_EXTENSION_ID:-}/g" \
-        -e "s|__CHROME_WEBSTORE_URL__|${CHROME_WEBSTORE_URL:-}|g" \
-        -e "s|__CHROME_WEB_AGENTS_WEBSTORE_URL__|${CHROME_WEB_AGENTS_WEBSTORE_URL:-}|g" \
-        "$INSTALLER_DIR/scripts/postinstall" > "$SCRIPTS_TEMP/postinstall"
+    # Copy postinstall (no stamping needed for unpacked extension workflow)
+    cp "$INSTALLER_DIR/scripts/postinstall" "$SCRIPTS_TEMP/postinstall"
     
     # Make scripts executable
     chmod +x "$SCRIPTS_TEMP/preinstall"
@@ -572,6 +591,7 @@ main() {
     
     copy_extension
     copy_uninstaller
+    copy_setup_tools
     create_component_pkg
     create_product_pkg
     
@@ -612,13 +632,11 @@ main() {
     echo ""
     
     # Extension installation info
-    echo "  Chrome Extension:"
-    if [ -n "$CHROME_WEBSTORE_URL" ]; then
-        echo "    ✓ Will open Chrome Web Store after install"
-    else
-        echo "    ○ Dev mode: Manual loading required"
-        echo "      Load from: /Library/Application Support/Harbor/chrome-extension"
-    fi
+    echo "  Chrome Extension (Unpacked/Developer Mode):"
+    echo "    • Setup Assistant will launch after install to guide users"
+    echo "    • Extensions at: /Library/Application Support/Harbor/"
+    echo "      - chrome-extension/ (main Harbor extension)"
+    echo "      - web-agents-chrome/ (Web Agents API extension)"
     echo ""
     
     echo "To install locally:"

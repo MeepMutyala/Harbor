@@ -12,11 +12,15 @@
             --text-muted: #666;
             --steps-bg: #f8faf8;
             --step-number-bg: #4285f4;
-            --tip-bg: #fff9e6;
-            --tip-border: #f4c430;
-            --tip-strong: #8b6914;
+            --tip-bg: #e8f4fd;
+            --tip-border: #4285f4;
+            --tip-strong: #1a73e8;
+            --warning-bg: #fff9e6;
+            --warning-border: #f4c430;
+            --warning-strong: #8b6914;
             --shadow: rgba(0,0,0,0.2);
             --link-color: #4285f4;
+            --code-bg: rgba(0,0,0,0.06);
         }
 
         @media (prefers-color-scheme: dark) {
@@ -29,11 +33,15 @@
                 --text-muted: #a0a0a0;
                 --steps-bg: #252538;
                 --step-number-bg: #4285f4;
-                --tip-bg: rgba(244, 196, 48, 0.15);
-                --tip-border: #f4c430;
-                --tip-strong: #f4c430;
+                --tip-bg: rgba(66, 133, 244, 0.15);
+                --tip-border: #4285f4;
+                --tip-strong: #8ab4f8;
+                --warning-bg: rgba(244, 196, 48, 0.15);
+                --warning-border: #f4c430;
+                --warning-strong: #f4c430;
                 --shadow: rgba(0,0,0,0.4);
                 --link-color: #8ab4f8;
+                --code-bg: rgba(255,255,255,0.1);
             }
         }
 
@@ -51,7 +59,7 @@
             background: var(--container-bg);
             border-radius: 12px;
             padding: 30px;
-            max-width: 500px;
+            max-width: 520px;
             margin: 0 auto;
             box-shadow: 0 10px 40px var(--shadow);
         }
@@ -63,9 +71,14 @@
         h1 {
             font-size: 24px;
             font-weight: 700;
-            margin: 0 0 20px 0;
+            margin: 0 0 10px 0;
             text-align: center;
             color: var(--text-primary);
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 20px;
         }
         h2 {
             font-size: 16px;
@@ -78,6 +91,30 @@
         }
         a {
             color: var(--link-color);
+        }
+        .tip {
+            background: var(--tip-bg);
+            border-left: 4px solid var(--tip-border);
+            padding: 12px 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .tip strong {
+            color: var(--tip-strong);
+        }
+        .warning {
+            background: var(--warning-bg);
+            border-left: 4px solid var(--warning-border);
+            padding: 12px 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .warning strong {
+            color: var(--warning-strong);
         }
         .steps {
             background: var(--steps-bg);
@@ -118,24 +155,22 @@
             color: var(--text-muted);
             font-size: 12px;
         }
-        .step-code {
-            font-family: 'SF Mono', Monaco, monospace;
+        code {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
             font-size: 11px;
-            background: rgba(0,0,0,0.05);
+            background: var(--code-bg);
             padding: 2px 6px;
             border-radius: 4px;
         }
-        .tip {
-            background: var(--tip-bg);
-            border-left: 4px solid var(--tip-border);
-            padding: 12px 15px;
-            margin-top: 20px;
-            border-radius: 0 8px 8px 0;
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-        .tip strong {
-            color: var(--tip-strong);
+        .path {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 10px;
+            background: var(--code-bg);
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: block;
+            margin-top: 4px;
+            word-break: break-all;
         }
         .footer {
             text-align: center;
@@ -149,51 +184,74 @@
     <div class="container">
         <div class="success-icon">✅</div>
         <h1>Installation Complete!</h1>
+        <p class="subtitle">A Setup Assistant should open to guide you through the next steps.</p>
         
-        <p>
-            Harbor has been successfully installed on your Mac. 
-            Follow these steps to get started:
-        </p>
+        <div class="tip">
+            <strong>🚀 Setup Assistant</strong><br>
+            The Harbor Setup Assistant will open automatically to help you load the Chrome extension and configure native messaging. 
+            If it doesn't appear, you can launch it from:
+            <span class="path">/Applications/Harbor Setup.app</span>
+        </div>
+        
+        <h2>Manual Setup (if needed)</h2>
+        <p>If you prefer to set up manually, follow these steps:</p>
         
         <div class="steps">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-text">
-                    <strong>Install the Chrome extension</strong><br>
-                    <span class="step-hint">If the Web Store opened, click "Add to Chrome"</span><br>
-                    <span class="step-hint">For dev mode: Go to <span class="step-code">chrome://extensions</span></span>
+                    <strong>Open Chrome Extensions</strong><br>
+                    <span class="step-hint">Go to <code>chrome://extensions</code> in Chrome</span>
                 </div>
             </div>
             
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-text">
-                    <strong>Click the Harbor icon</strong><br>
-                    <span class="step-hint">Look for the ⚓ icon in the toolbar extensions area</span>
+                    <strong>Enable Developer Mode</strong><br>
+                    <span class="step-hint">Toggle "Developer mode" ON (top right corner)</span>
                 </div>
             </div>
             
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-text">
-                    <strong>Open the side panel</strong><br>
-                    <span class="step-hint">Click the extension icon to open Harbor in the side panel</span>
+                    <strong>Load Harbor Extension</strong><br>
+                    <span class="step-hint">Click "Load unpacked" and select:</span>
+                    <span class="path">/Library/Application Support/Harbor/chrome-extension</span>
                 </div>
             </div>
             
             <div class="step">
                 <div class="step-number">4</div>
                 <div class="step-text">
-                    <strong>Follow the welcome guide</strong><br>
-                    <span class="step-hint">Configure your LLM and install the Time server to test</span>
+                    <strong>Load Web Agents Extension</strong><br>
+                    <span class="step-hint">Click "Load unpacked" again and select:</span>
+                    <span class="path">/Library/Application Support/Harbor/web-agents-chrome</span>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-text">
+                    <strong>Configure Native Messaging</strong><br>
+                    <span class="step-hint">Copy both extension IDs (32 characters each) from Chrome, then run:</span>
+                    <span class="path">/Library/Application Support/Harbor/configure-extension-id.sh</span>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-text">
+                    <strong>Restart Chrome</strong><br>
+                    <span class="step-hint">Quit and reopen Chrome for changes to take effect</span>
                 </div>
             </div>
         </div>
         
-        <div class="tip">
-            <strong>💡 Dev Mode:</strong> If you loaded the extension manually, 
-            run <span class="step-code">/Library/Application Support/Harbor/configure-extension-id.sh</span>
-            to set up native messaging with your extension ID.
+        <div class="warning">
+            <strong>⚠️ Important:</strong> Extension IDs change each time you load unpacked extensions. 
+            If you reload either extension, you'll need to run the configure script again with both IDs.
         </div>
         
         <h2>Need Help?</h2>
