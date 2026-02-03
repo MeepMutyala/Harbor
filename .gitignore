@@ -74,3 +74,6 @@ installer/safari/build/
 # Signed extension artifacts
 *.xpi
 
+
+# AMO upload tracking
+extension/.amo-upload-uuid
