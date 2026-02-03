@@ -344,6 +344,52 @@ copy_setup_tools() {
 }
 
 # =============================================================================
+# Sign Binaries (for notarization)
+# =============================================================================
+
+sign_binaries() {
+    # Get the Developer ID Application identity
+    local APP_SIGN_IDENTITY=""
+    if [ -n "$DEVELOPER_ID_APPLICATION" ]; then
+        APP_SIGN_IDENTITY="$DEVELOPER_ID_APPLICATION"
+    else
+        # Try to find it automatically
+        APP_SIGN_IDENTITY=$(security find-identity -v | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$APP_SIGN_IDENTITY" ]; then
+        echo_warn "No Developer ID Application certificate found - binaries will be unsigned"
+        echo "       Notarization will fail without signed binaries"
+        return 0
+    fi
+    
+    echo_step "Signing binaries for notarization..."
+    echo "  Using: $APP_SIGN_IDENTITY"
+    
+    # Sign harbor-bridge binary with hardened runtime
+    local BRIDGE_PATH="$PAYLOAD_DIR/Library/Application Support/Harbor/harbor-bridge"
+    if [ -f "$BRIDGE_PATH" ]; then
+        echo "  Signing harbor-bridge..."
+        codesign --force --options runtime --timestamp \
+            --sign "$APP_SIGN_IDENTITY" \
+            "$BRIDGE_PATH"
+        echo "    ✓ harbor-bridge signed"
+    fi
+    
+    # Sign Uninstall Harbor.app with hardened runtime
+    local UNINSTALLER_APP="$PAYLOAD_DIR/Library/Application Support/Harbor/Uninstall Harbor.app"
+    if [ -d "$UNINSTALLER_APP" ]; then
+        echo "  Signing Uninstall Harbor.app..."
+        codesign --force --deep --options runtime --timestamp \
+            --sign "$APP_SIGN_IDENTITY" \
+            "$UNINSTALLER_APP"
+        echo "    ✓ Uninstall Harbor.app signed"
+    fi
+    
+    echo_success "Binaries signed"
+}
+
+# =============================================================================
 # Create Component Package
 # =============================================================================
 
@@ -417,22 +463,30 @@ create_product_pkg() {
 # =============================================================================
 
 sign_package() {
-    if [ -n "$DEVELOPER_ID" ]; then
+    # Support both DEVELOPER_ID_INSTALLER (full identity) and DEVELOPER_ID (name only)
+    local SIGN_IDENTITY=""
+    if [ -n "$DEVELOPER_ID_INSTALLER" ]; then
+        SIGN_IDENTITY="$DEVELOPER_ID_INSTALLER"
+    elif [ -n "$DEVELOPER_ID" ]; then
+        SIGN_IDENTITY="Developer ID Installer: $DEVELOPER_ID"
+    fi
+    
+    if [ -n "$SIGN_IDENTITY" ]; then
         echo_step "Signing package..."
         
         SIGNED_PKG="${OUTPUT_PKG%.pkg}-signed.pkg"
         
         productsign \
-            --sign "Developer ID Installer: $DEVELOPER_ID" \
+            --sign "$SIGN_IDENTITY" \
             "$OUTPUT_PKG" \
             "$SIGNED_PKG"
         
         # Replace unsigned with signed
         mv "$SIGNED_PKG" "$OUTPUT_PKG"
         
-        echo_success "Package signed"
+        echo_success "Package signed with: $SIGN_IDENTITY"
     else
-        echo_warn "Skipping package signing (set DEVELOPER_ID in credentials.env)"
+        echo_warn "Skipping package signing (set DEVELOPER_ID_INSTALLER in credentials.env)"
     fi
 }
 
@@ -441,22 +495,17 @@ sign_package() {
 # =============================================================================
 
 notarize_package() {
-    if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ]; then
-        echo_step "Notarizing package..."
-        
-        xcrun notarytool submit "$OUTPUT_PKG" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "@keychain:AC_PASSWORD" \
-            --wait
-        
-        # Staple the notarization ticket
-        xcrun stapler staple "$OUTPUT_PKG"
-        
-        echo_success "Package notarized"
-    else
-        echo_warn "Skipping notarization (set APPLE_ID and APPLE_TEAM_ID in credentials.env)"
-    fi
+    echo_step "Notarizing package..."
+    
+    # Use keychain profile (set up via: xcrun notarytool store-credentials "AC_PASSWORD")
+    xcrun notarytool submit "$OUTPUT_PKG" \
+        --keychain-profile "AC_PASSWORD" \
+        --wait
+    
+    # Staple the notarization ticket
+    xcrun stapler staple "$OUTPUT_PKG"
+    
+    echo_success "Package notarized"
 }
 
 # =============================================================================
@@ -559,7 +608,7 @@ main() {
     
     # Resolve "auto" settings based on available credentials
     if [ "$SIGN_PKG" = "auto" ]; then
-        if [ -n "$DEVELOPER_ID" ]; then
+        if [ -n "$DEVELOPER_ID_INSTALLER" ] || [ -n "$DEVELOPER_ID" ]; then
             SIGN_PKG=true
             echo_step "Auto-detected: Package signing credentials available"
         else
@@ -568,11 +617,14 @@ main() {
     fi
     
     if [ "$NOTARIZE" = "auto" ]; then
-        if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$DEVELOPER_ID" ]; then
+        # Check if keychain profile exists by testing it
+        if xcrun notarytool history --keychain-profile "AC_PASSWORD" &>/dev/null; then
             NOTARIZE=true
-            echo_step "Auto-detected: Notarization credentials available"
+            echo_step "Auto-detected: Notarization keychain profile available"
         else
             NOTARIZE=false
+            echo_warn "Notarization keychain profile 'AC_PASSWORD' not found"
+            echo "       Set up with: xcrun notarytool store-credentials \"AC_PASSWORD\""
         fi
     fi
     
@@ -592,6 +644,12 @@ main() {
     copy_extension
     copy_uninstaller
     copy_setup_tools
+    
+    # Sign binaries if we're going to notarize
+    if [ "$SIGN_PKG" = true ]; then
+        sign_binaries
+    fi
+    
     create_component_pkg
     create_product_pkg
     
@@ -622,7 +680,7 @@ main() {
     if [ "$SIGN_PKG" = true ]; then
         echo "    ✓ Package: Signed with Developer ID"
     else
-        echo "    ○ Package: Unsigned (set DEVELOPER_ID in credentials.env)"
+        echo "    ○ Package: Unsigned (set DEVELOPER_ID_INSTALLER in credentials.env)"
     fi
     if [ "$NOTARIZE" = true ]; then
         echo "    ✓ Notarization: Submitted and stapled"
