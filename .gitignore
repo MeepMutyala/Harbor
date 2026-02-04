@@ -81,3 +81,5 @@ xcuserdata/
 
 # AMO upload tracking
 extension/.amo-upload-uuid
+extension/dist
+bridge-ts/harbor-bridge
