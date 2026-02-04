@@ -754,6 +754,7 @@ apiKeyCancelBtn.addEventListener('click', () => {
 });
 
 async function loadLlmProviders(): Promise<void> {
+  console.log('[Sidebar] loadLlmProviders starting...');
   try {
     // Load configured models, available models, and providers in parallel
     const [configuredModelsRes, modelsRes, providersRes] = await Promise.all([
@@ -774,8 +775,13 @@ async function loadLlmProviders(): Promise<void> {
       }>,
     ]);
 
+    console.log('[Sidebar] configuredModelsRes:', JSON.stringify(configuredModelsRes));
+    console.log('[Sidebar] modelsRes:', modelsRes.ok ? `${modelsRes.models?.length} models` : modelsRes.error);
+    console.log('[Sidebar] providersRes:', providersRes.ok ? `${providersRes.providers?.length} providers` : providersRes.error);
+
     // Handle configured models
     const configuredModels = configuredModelsRes.ok ? (configuredModelsRes.models || []) : [];
+    console.log('[Sidebar] Rendering configured models:', configuredModels.length);
     renderConfiguredModels(configuredModels);
 
     // Handle available models for dropdown
@@ -983,6 +989,7 @@ addModelBtn.addEventListener('click', async () => {
   const modelId = availableModelsSelect.value;
   if (!modelId) return;
   
+  console.log('[Sidebar] Adding model:', modelId);
   addModelBtn.disabled = true;
   try {
     const response = await browserAPI.runtime.sendMessage({
@@ -990,22 +997,28 @@ addModelBtn.addEventListener('click', async () => {
       model_id: modelId,
     }) as { ok: boolean; name?: string; error?: string };
     
+    console.log('[Sidebar] Add model response:', JSON.stringify(response));
+    
     if (response.ok) {
-      showToast(`Added "${response.name}"`);
+      showToast(`Added "${response.name}"`, 'success');
+      console.log('[Sidebar] Refreshing model list after add...');
       await loadLlmProviders();
+      console.log('[Sidebar] Refresh complete');
     } else {
-      showToast('Failed to add model');
+      const errorMsg = response.error || 'Unknown error';
+      console.error('[Harbor] Failed to add model:', errorMsg);
+      showToast(`Failed to add model: ${errorMsg}`, 'error');
     }
   } catch (err) {
-    showToast('Failed to add model');
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[Harbor] Failed to add model:', errorMsg);
+    showToast(`Failed to add model: ${errorMsg}`, 'error');
   }
   addModelBtn.disabled = false;
 });
 
-// Load LLM providers on startup
-loadLlmProviders().catch((error) => {
-  console.error('Failed to load LLM providers', error);
-});
+// LLM providers are loaded when bridge becomes ready (see checkBridgeStatus)
+// Don't call loadLlmProviders() here - it causes a race condition
 
 // =============================================================================
 // Permissions Panel

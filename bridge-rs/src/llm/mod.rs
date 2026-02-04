@@ -67,19 +67,21 @@ pub async fn list_models() -> Result<serde_json::Value, RpcError> {
     // Check remote providers if configured
     let cfg = get_config();
     if let Some(config) = &cfg {
-        for (provider, settings) in &config.providers {
+        for (_instance_id, settings) in &config.providers {
+            // Use provider_type (e.g., "openai") not instance_id (e.g., "openai-3090e2")
+            let provider_type = &settings.provider_type;
             if settings.enabled && settings.api_key.is_some() {
                 let provider_config = Some(ProviderConfig {
                     api_key: Some(settings.api_key.clone()),
                     base_url: settings.base_url.clone(),
                     ..Default::default()
                 });
-                if let Ok(models) = any_llm_list_models(provider, provider_config).await {
-                    // Prefix model IDs with provider name for routing
+                if let Ok(models) = any_llm_list_models(provider_type, provider_config).await {
+                    // Prefix model IDs with provider type for routing
                     for model in models {
                         all_models.push(serde_json::json!({
-                            "id": format!("{}:{}", provider, model.id),
-                            "provider": provider,
+                            "id": format!("{}:{}", provider_type, model.id),
+                            "provider": provider_type,
                             "owned_by": model.owned_by,
                         }));
                     }

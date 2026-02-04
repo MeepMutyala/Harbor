@@ -174,15 +174,15 @@ browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: false, error: 'Missing serverId' });
     return true;
   }
-  try {
-    const stopped = stopServer(serverId);
+  (async () => {
+    const stopped = await stopServer(serverId);
     sendResponse({ ok: stopped });
-  } catch (error) {
+  })().catch((error) => {
     sendResponse({
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     });
-  }
+  });
   return true;
 });
 
@@ -475,10 +475,13 @@ browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'llm_list_configured_models') {
     return false;
   }
+  console.log('[Background] llm_list_configured_models request');
   (async () => {
     const result = await bridgeRequest<{ models: unknown[] }>('llm.list_configured_models');
+    console.log('[Background] llm_list_configured_models result:', JSON.stringify(result));
     sendResponse({ ok: true, models: result.models });
   })().catch((error) => {
+    console.error('[Background] llm_list_configured_models error:', error);
     sendResponse({
       ok: false,
       error: error instanceof Error ? error.message : String(error),

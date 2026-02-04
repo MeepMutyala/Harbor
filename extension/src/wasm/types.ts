@@ -108,6 +108,9 @@ export type McpServerManifest = {
 
   /** Tool definitions exposed by this server */
   tools?: McpToolDefinition[];
+
+  /** Whether this server should auto-start on extension load */
+  autostart?: boolean;
 };
 
 /**
