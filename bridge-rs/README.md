@@ -1,13 +1,226 @@
-# Harbor Rust Bridge
+# Harbor Native Bridge
 
-Minimal Rust bridge for local LLM and filesystem access.
+**The native messaging bridge that connects Harbor browser extensions to local resources.**
 
-## Responsibilities
-- Expose JSON-RPC over localhost (`/rpc`).
-- Route LLM calls through `any-llm-rust` (planned).
-- Provide scoped filesystem access.
+The bridge is a Rust binary that runs locally and communicates with the browser extension via [Native Messaging](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_messaging). It provides:
 
-## Run (dev)
+- **LLM Provider Access** — Connects to Ollama, OpenAI, Anthropic, and other providers
+- **MCP Server Execution** — Runs native MCP servers outside the browser sandbox
+- **OAuth Flows** — Handles OAuth authentication for MCP servers
+- **Filesystem Access** — Scoped file read/write for MCP servers
+
+---
+
+## Quick Start
+
+### Build
+
+```bash
+cargo build --release
 ```
+
+The binary is created at `target/release/harbor-bridge`.
+
+### Install (Firefox and Chrome)
+
+```bash
+./install.sh
+```
+
+This script:
+1. Copies the binary to `~/.harbor/bin/harbor-bridge`
+2. Creates native messaging manifests for Firefox and Chrome
+
+### Verify Installation
+
+**Firefox:**
+```bash
+cat ~/Library/Application\ Support/Mozilla/NativeMessagingHosts/harbor_bridge.json
+```
+
+**Chrome:**
+```bash
+cat ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json
+```
+
+---
+
+## Browser-Specific Setup
+
+### Firefox
+
+Firefox native messaging works automatically after running `install.sh`. The manifest identifies the extension by its ID in the manifest.json.
+
+**Manifest location:**
+- macOS: `~/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge.json`
+- Linux: `~/.mozilla/native-messaging-hosts/harbor_bridge.json`
+
+### Chrome / Chromium Browsers
+
+Chrome requires your specific extension ID in the native messaging manifest. After loading the extension:
+
+1. Get your extension ID from `chrome://extensions`
+2. Edit the manifest file:
+   ```bash
+   nano ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json
+   ```
+3. Update `allowed_origins` with your extension ID:
+   ```json
+   "allowed_origins": ["chrome-extension://YOUR_EXTENSION_ID_HERE/"]
+   ```
+4. Restart Chrome completely
+
+**Manifest locations for other Chromium browsers:**
+- **Edge:** `~/Library/Application Support/Microsoft Edge/NativeMessagingHosts/`
+- **Brave:** `~/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/`
+- **Vivaldi:** `~/Library/Application Support/Vivaldi/NativeMessagingHosts/`
+
+### Safari
+
+Safari is different — the bridge is **bundled inside the Harbor.app** and doesn't use native messaging manifests. The app handles communication internally.
+
+You don't need to run `install.sh` for Safari; just build and run the Xcode project.
+
+---
+
+## Development
+
+### Run Directly (for testing)
+
+```bash
 cargo run
 ```
+
+### Watch Mode
+
+```bash
+cargo watch -x run
+```
+
+### Run Tests
+
+```bash
+cargo test
+```
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    BROWSER EXTENSION                        │
+│  • Sends JSON-RPC requests via native messaging             │
+└───────────────────────────────┬─────────────────────────────┘
+                                │ stdin/stdout (JSON)
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     HARBOR BRIDGE                           │
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │  LLM Layer  │  │  MCP Host   │  │ OAuth/Auth  │         │
+│  │             │  │             │  │             │         │
+│  │ • Ollama    │  │ • JS runtime│  │ • Google    │         │
+│  │ • OpenAI    │  │ • WASM host │  │ • GitHub    │         │
+│  │ • Anthropic │  │ • Native    │  │ • Custom    │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+                    Local Resources (Ollama, files, etc.)
+```
+
+---
+
+## Troubleshooting
+
+### "Bridge Disconnected" in the extension
+
+1. **Verify the binary exists:**
+   ```bash
+   ls -la ~/.harbor/bin/harbor-bridge
+   ```
+
+2. **Verify the manifest exists:**
+   ```bash
+   # Firefox
+   cat ~/Library/Application\ Support/Mozilla/NativeMessagingHosts/harbor_bridge.json
+   
+   # Chrome
+   cat ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json
+   ```
+
+3. **Check the path in the manifest** points to the correct binary location
+
+4. **Re-run the install script:**
+   ```bash
+   ./install.sh
+   ```
+
+5. **Restart the browser completely** (quit and reopen, not just close tabs)
+
+### Chrome: Extension ID Mismatch
+
+The most common Chrome issue. The extension ID in the manifest must exactly match your loaded extension's ID.
+
+```bash
+# Check what ID is in the manifest
+grep allowed_origins ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json
+
+# Compare with your extension ID from chrome://extensions
+```
+
+### Check Bridge Logs
+
+```bash
+# macOS
+cat ~/.harbor/logs/bridge.log
+
+# Or check the cache location
+cat ~/Library/Caches/harbor-bridge.log
+```
+
+---
+
+## Project Structure
+
+```
+bridge-rs/
+├── src/
+│   ├── main.rs              # Entry point, native messaging loop
+│   ├── native_messaging.rs  # Native messaging protocol
+│   ├── llm/                  # LLM provider integrations
+│   ├── mcp/                  # MCP server host
+│   ├── oauth/                # OAuth flow handling
+│   ├── fs/                   # Filesystem access
+│   └── rpc/                  # JSON-RPC handlers
+├── any-llm-rust/            # LLM abstraction layer (submodule)
+├── native-messaging/         # Manifest templates
+├── install.sh               # Installation script
+└── Cargo.toml
+```
+
+---
+
+## Configuration
+
+The bridge reads configuration from:
+- `~/.harbor/config.toml` — User configuration
+- Environment variables — For API keys and secrets
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `OLLAMA_HOST` | Ollama server URL (default: `http://localhost:11434`) |
+
+---
+
+## See Also
+
+- [Main Quickstart](../QUICKSTART.md) — Full setup guide
+- [Firefox Setup](../docs/QUICKSTART_FIREFOX.md) — Firefox-specific instructions
+- [Chrome Setup](../docs/QUICKSTART_CHROME.md) — Chrome-specific instructions (extension ID config)
+- [Architecture](../ARCHITECTURE.md) — System design overview
