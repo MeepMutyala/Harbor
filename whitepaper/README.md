@@ -1,36 +1,30 @@
-# Web Agent API
+# Your AI
 
-a sketch for user-controlled AI on the web.
+a proposal for AI that's on your side.
 
 ## documents
 
 | document | description |
 |----------|-------------|
-| [index.md](index.md) | the proposal — values, problem, what we're building, invitation to collaborate |
-| [values.md](values.md) | the principles that guide design decisions |
-| [feedback.md](feedback.md) | specific areas where we need input |
+| [index.md](index.md) | the proposal — what's broken, the architecture, the sketch, the invitation |
+| [values.md](values.md) | the principles we design by |
+| [feedback.md](feedback.md) | specific questions we need help with |
 
 ## publishing
 
-these documents are designed for GitHub Pages:
+for GitHub Pages:
 
-1. go to repository Settings → Pages
-2. set Source to "Deploy from a branch"
-3. select the branch and `/whitepaper` folder
+1. repository Settings → Pages
+2. Source: "Deploy from a branch"
+3. select branch and `/whitepaper` folder
 4. save
-
-the whitepaper will be available at `https://<org>.github.io/<repo>/`
 
 ## local preview
 
 ```bash
 cd whitepaper
-bundle install  # first time only
+bundle install
 bundle exec jekyll serve
 ```
 
-then open http://localhost:4000
-
-## contributing
-
-we welcome input. see [feedback.md](feedback.md) for specific areas where your perspective would help.
+open http://localhost:4000
