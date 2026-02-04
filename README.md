@@ -6,6 +6,16 @@ Harbor implements the **[Web Agent API](spec/)** — a proposed standard that ex
 
 ---
 
+## Browser Support
+
+| Browser | Status | Notes |
+|---------|--------|-------|
+| **Firefox** | ✅ Primary | Best supported, recommended for development |
+| **Chrome** | ✅ Supported | Also works with Edge, Brave, Arc, Vivaldi |
+| **Safari** | ⚠️ Experimental | macOS only, code in repo but not fully supported |
+
+---
+
 ## Why This Exists
 
 **The problem:** Every website that wants AI features needs to either:
@@ -30,65 +40,79 @@ const response = await session.prompt("Summarize this page");
 
 ---
 
-## Quick Start: Try the Demos
+## Quick Start
 
-**Just want to see it work? Get running in 5 minutes.**
+**Get Harbor running in 10 minutes.**
 
-### 1. Prerequisites
-- Firefox 109+, Chrome 120+, or Safari 16+ (macOS)
-- [Ollama](https://ollama.com) for local AI (`brew install ollama && ollama serve && ollama pull llama3.2`)
+### Prerequisites
 
-For building from source: [Node.js 18+](https://nodejs.org) and [Rust](https://rustup.rs)
+| Tool | Install |
+|------|---------|
+| **Node.js 18+** | [nodejs.org](https://nodejs.org) |
+| **Rust** | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| **Ollama** | [ollama.com](https://ollama.com) or `brew install ollama` |
+| **Firefox 109+** or **Chrome 120+** | Firefox recommended |
 
-### 2. Install
-
-**macOS Package Installers (Recommended):**
+### 1. Clone and Build
 
 ```bash
 git clone --recurse-submodules https://github.com/anthropics/harbor.git
 cd harbor
 
-# Firefox
-cd installer/firefox && ./build-pkg.sh && cd ../..
-sudo installer -pkg installer/firefox/build/Harbor-Firefox-*.pkg -target /
+# Build the Harbor extension
+cd extension && npm install && npm run build && cd ..
 
-# Chrome / Edge / Brave / Arc / Vivaldi
-cd installer/chrome && ./build-pkg.sh && cd ../..
-sudo installer -pkg installer/chrome/build/Harbor-Chrome-*.pkg -target /
-# Load extension from: /Library/Application Support/Harbor/chrome-extension
-# Then run: /Library/Application\ Support/Harbor/configure-extension-id.sh
+# Build the Web Agents API extension
+cd web-agents-api && npm install && npm run build && cd ..
 
-# Safari
-cd installer/safari && ./build-installer.sh --fast && cd ../..
-open installer/safari/build/Debug/Harbor.app
-# Enable in Safari → Settings → Extensions
+# Build and install the native bridge
+cd bridge-rs && cargo build --release && ./install.sh && cd ..
 ```
 
-**Or build from source:**
+### 2. Start Ollama
 
 ```bash
-cd extension && npm install && npm run build && cd ..
-cd bridge-rs && cargo build --release && ./install.sh && cd ..
-
-# Load extension
-# Firefox: about:debugging → Load Temporary Add-on → extension/dist/manifest.json
-# Chrome: chrome://extensions → Developer mode → Load unpacked → extension/dist-chrome/
+ollama serve &
+ollama pull llama3.2
 ```
 
-### 3. Run the Demos
+### 3. Load Extensions
+
+Harbor requires **two extensions** working together:
+- **Harbor** — Core platform (MCP servers, native bridge, chat sidebar)
+- **Web Agents API** — Injects `window.ai` / `window.agent` into web pages
+
+**Firefox:**
+1. Go to `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on..."
+3. Select `extension/dist-firefox/manifest.json` (Harbor)
+4. Click "Load Temporary Add-on..." again
+5. Select `web-agents-api/dist-firefox/manifest.json` (Web Agents API)
+
+**Chrome:**
+1. Go to `chrome://extensions`
+2. Enable "Developer mode"
+3. Click "Load unpacked" → select `extension/dist-chrome/`
+4. Click "Load unpacked" → select `web-agents-api/dist-chrome/`
+5. **Important:** Note the Harbor extension ID and update native messaging — see [Chrome Quickstart](docs/QUICKSTART_CHROME.md#step-5-configure-native-messaging)
+
+### 4. Verify Setup
+
+1. Open the Harbor sidebar (Firefox: `Cmd+B`, Chrome: click toolbar icon)
+2. Check for "Bridge: Connected" (green indicator)
+3. Check for "LLM: Ollama" 
+
+### 5. Run the Demos
 
 ```bash
 cd demo && npm install && npm start
 ```
 
-Open http://localhost:8000 and try:
-- **[Getting Started](http://localhost:8000/web-agents/getting-started/)** — Interactive tutorial
-- **[Chat Demo](http://localhost:8000/web-agents/chat-poc/)** — Full chat with tools
-- **[Page Summarizer](http://localhost:8000/web-agents/summarizer/)** — One-click summaries
+Open http://localhost:8000 and try the interactive demos.
 
-→ **[Firefox Quickstart](docs/QUICKSTART_FIREFOX.md)** | **[Chrome Quickstart](docs/QUICKSTART_CHROME.md)** | **[Safari Setup](installer/safari/README.md)**
+→ **[Detailed Firefox Setup](docs/QUICKSTART_FIREFOX.md)** | **[Detailed Chrome Setup](docs/QUICKSTART_CHROME.md)**
 
-→ **[Full installation guide](docs/USER_GUIDE.md)** | **[More demos](demo/README.md)**
+> **Safari (Experimental):** Safari support is checked into the repo under `installer/safari/Harbor/` but is not fully supported. See [Safari Setup](docs/QUICKSTART_SAFARI.md) if you want to experiment.
 
 ---
 
@@ -249,13 +273,13 @@ Harbor is an *implementation* of the Web Agent API. The specification itself is 
 ```
 harbor/
 ├── spec/               # Web Agent API specification (browser-agnostic)
-├── extension/          # Browser extension (TypeScript)
-│   └── src/agents/     # window.ai / window.agent implementation
+├── extension/          # Harbor browser extension (TypeScript)
+├── web-agents-api/     # Web Agents API extension (injects window.ai/window.agent)
 ├── bridge-rs/          # Rust native messaging bridge
 ├── demo/               # Working examples
 ├── docs/               # Implementation documentation
 ├── mcp-servers/        # Built-in MCP servers (WASM, JS)
-└── installer/          # macOS package builder
+└── installer/          # Safari Xcode project (experimental)
 ```
 
 ---
