@@ -44,6 +44,36 @@ async function bridgeRequest<T>(method: string, params?: unknown): Promise<T> {
 let sessionCounter = 0;
 
 /**
+ * Sanitize tool names for LLM APIs (especially OpenAI).
+ * OpenAI only allows: ^[a-zA-Z0-9_-]+$
+ * 
+ * Converts: "server-id/tool.name" → "server-id__tool_name"
+ * - "/" becomes "__" (double underscore for reversibility)
+ * - "." becomes "_"
+ */
+function sanitizeToolNameForLLM(name: string): string {
+  return name.replace(/\//g, '__').replace(/\./g, '_');
+}
+
+/**
+ * Restore original tool name from LLM-sanitized version.
+ * Converts: "server-id__tool_name" → "server-id/tool.name"
+ * 
+ * Note: This is a best-effort restoration. If the original name had underscores,
+ * they may be indistinguishable from converted dots.
+ */
+function restoreToolNameFromLLM(sanitized: string, availableTools: string[]): string {
+  // First try to find an exact match in available tools after sanitizing them
+  for (const tool of availableTools) {
+    if (sanitizeToolNameForLLM(tool) === sanitized) {
+      return tool;
+    }
+  }
+  // If no match, do a basic restoration (may not be perfectly accurate)
+  return sanitized.replace(/__/g, '/');
+}
+
+/**
  * Check if a model supports native tool calling.
  * 
  * Native tool calling means the model can receive tools in the API request
@@ -149,13 +179,19 @@ const ai = {
         }
         
         // For models with native tool calling, pass tools directly to the bridge
+        // Note: Tool names must be sanitized for OpenAI (only alphanumeric, underscore, hyphen allowed)
         if (promptTools && promptTools.length > 0 && model && modelSupportsNativeTools(model)) {
           requestParams.tools = promptTools.map(t => ({
-            name: t.name,
+            name: sanitizeToolNameForLLM(t.name),
             description: t.description,
             input_schema: t.inputSchema || { type: 'object', properties: {} },
           }));
           console.log(`[demo-bootstrap] Passing ${requestParams.tools.length} tools to native tool calling model`);
+        }
+        
+        console.log(`[demo-bootstrap] Sending chat request to model: ${model}`);
+        if (requestParams.tools) {
+          console.log(`[demo-bootstrap] With ${requestParams.tools.length} tools:`, requestParams.tools.map(t => t.name));
         }
         
         // Bridge returns CompletionResponse in OpenAI-compatible format
@@ -170,8 +206,11 @@ const ai = {
         if (toolCalls && toolCalls.length > 0) {
           // Return the tool call as JSON so it can be parsed
           const tc = toolCalls[0];
+          // Restore the original tool name from the sanitized version
+          const originalToolNames = promptTools?.map(t => t.name) || [];
+          const restoredName = restoreToolNameFromLLM(tc.function.name, originalToolNames);
           const toolCallJson = {
-            name: tc.function.name,
+            name: restoredName,
             parameters: JSON.parse(tc.function.arguments || '{}'),
           };
           console.log('[demo-bootstrap] Native tool call detected:', toolCallJson);
