@@ -3,102 +3,276 @@
 **Get Harbor running and build your first AI-powered web app.**
 
 This guide covers:
-1. [Try the Demos](#part-1-try-the-demos) — See Harbor in action (5 min)
-2. [Build Your First App](#part-2-build-your-first-app) — Write code using the API (10 min)
-3. [Create Your Own Tools](#part-3-create-your-own-tools) — Build MCP servers (15 min)
+1. [Prerequisites](#prerequisites)
+2. [Build Everything](#build-everything)
+3. [Set Up Firefox](#set-up-firefox-recommended) (recommended)
+4. [Set Up Chrome](#set-up-chrome)
+5. [Set Up Safari](#set-up-safari-experimental) (experimental)
+6. [Verify Your Setup](#verify-your-setup)
+7. [Run the Demos](#run-the-demos)
+8. [Build Your First App](#build-your-first-app)
+9. [Create Your Own Tools](#create-your-own-tools)
 
 > **Using an AI coding assistant?** Point it to **[docs/LLMS.txt](docs/LLMS.txt)** — a compact reference designed for Claude, Cursor, Copilot, and other AI tools to quickly understand and build with the API.
 
 ---
 
-# Part 1: Try the Demos
-
 ## Prerequisites
 
-| Tool | Install |
-|------|---------|
-| **Node.js 18+** | [nodejs.org](https://nodejs.org) |
-| **Rust** | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
-| **Browser** | Firefox 109+, Chrome 120+, or Safari 16+ (macOS only) |
-| **Ollama** | [ollama.com](https://ollama.com) or `brew install ollama` |
+| Tool | Install | Why |
+|------|---------|-----|
+| **Node.js 18+** | [nodejs.org](https://nodejs.org) | Build the extensions |
+| **Rust** | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | Build the native bridge |
+| **Ollama** | [ollama.com](https://ollama.com) or `brew install ollama` | Local LLM provider |
+| **Browser** | Firefox 109+ (recommended) or Chrome 120+ | Run the extensions |
 
-## Step 1: Start Ollama
+---
 
-```bash
-ollama serve &
-ollama pull llama3.2    # or: mistral, codellama, etc.
-```
+## Build Everything
 
-## Step 2: Build Harbor
+### 1. Clone the Repository
 
 ```bash
 git clone --recurse-submodules https://github.com/anthropics/harbor.git
 cd harbor
-
-# Build extension
-cd extension && npm install && npm run build && cd ..
-
-# Build bridge
-cd bridge-rs && cargo build --release && ./install.sh && cd ..
 ```
 
-## Step 3: Load the Extension
+### 2. Build the Harbor Extension
 
-**Firefox:**
-1. Go to `about:debugging#/runtime/this-firefox`
-2. Click "Load Temporary Add-on..."
-3. Select `extension/dist/manifest.json`
-
-**Chrome:**
-1. Go to `chrome://extensions`
-2. Enable "Developer mode"
-3. Click "Load unpacked" → select `extension/dist/`
-
-**Safari (macOS only):**
-
-Safari requires building a macOS app. Use the installer script:
+This is the core extension that provides the chat sidebar, MCP server management, and native bridge connection.
 
 ```bash
-cd installer/safari
-./build-installer.sh --fast    # Quick dev build
+cd extension
+npm install
+npm run build          # Firefox (default)
+npm run build:chrome   # Chrome/Edge/Brave/Arc
+cd ..
 ```
 
-Then:
-1. Open the built app: `open build/Debug/Harbor.app`
-2. In Safari: **Settings → Extensions**
-3. Enable both **Harbor** and **Web Agents API** extensions
-4. For unsigned extensions: **Safari → Develop → Allow Unsigned Extensions**
+**Output:**
+- Firefox: `extension/dist-firefox/`
+- Chrome: `extension/dist-chrome/`
 
-→ See [installer/safari/README.md](installer/safari/README.md) for full Safari setup
+### 3. Build the Web Agents API Extension
 
-## Step 4: Run Demos
+This extension injects `window.ai` and `window.agent` into web pages. It communicates with the Harbor extension to provide AI capabilities to websites.
 
 ```bash
-cd demo && npm install && npm start
+cd web-agents-api
+npm install
+npm run build          # Firefox (default)
+npm run build:chrome   # Chrome
+cd ..
 ```
 
-Open http://localhost:8000 and try:
+**Output:**
+- Firefox: `web-agents-api/dist-firefox/`
+- Chrome: `web-agents-api/dist-chrome/`
 
-| Demo | What It Shows |
-|------|---------------|
-| **[Getting Started](http://localhost:8000/web-agents/getting-started/)** | Step-by-step API tutorial |
-| **[Chat Demo](http://localhost:8000/web-agents/chat-poc/)** | Full chat with tools |
-| **[Page Summarizer](http://localhost:8000/web-agents/summarizer/)** | AI-powered page summaries |
+### 4. Build the Native Bridge
+
+The bridge connects the browser extension to local resources (Ollama, MCP servers, filesystem).
+
+```bash
+cd bridge-rs
+cargo build --release
+cd ..
+```
+
+### 5. Start Ollama
+
+```bash
+ollama serve &
+ollama pull llama3.2    # or: mistral, codellama, phi3
+```
+
+Verify it's running:
+
+```bash
+curl http://localhost:11434/api/tags
+```
 
 ---
 
-# Part 2: Build Your First App
+## Set Up Firefox (Recommended)
 
-## The Basics
+Firefox is the primary supported browser with the best developer experience.
+
+### Install the Native Bridge
+
+```bash
+cd bridge-rs
+./install.sh
+cd ..
+```
+
+This installs the native messaging manifest to:
+- **macOS:** `~/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge.json`
+- **Linux:** `~/.mozilla/native-messaging-hosts/harbor_bridge.json`
+
+### Load Both Extensions
+
+1. Open Firefox and go to `about:debugging#/runtime/this-firefox`
+
+2. **Load Harbor:**
+   - Click "Load Temporary Add-on..."
+   - Navigate to `extension/dist-firefox/`
+   - Select `manifest.json`
+
+3. **Load Web Agents API:**
+   - Click "Load Temporary Add-on..." again
+   - Navigate to `web-agents-api/dist-firefox/`
+   - Select `manifest.json`
+
+Both extensions should now appear in the list.
+
+> **Note:** Temporary add-ons don't persist across Firefox restarts. You'll need to reload them each time. For development, use `npm run dev` in watch mode.
+
+→ **[Detailed Firefox guide with troubleshooting](docs/QUICKSTART_FIREFOX.md)**
+
+---
+
+## Set Up Chrome
+
+Chrome requires an extra step to configure native messaging with your extension ID.
+
+### Load Both Extensions
+
+1. Open Chrome and go to `chrome://extensions`
+2. Enable **"Developer mode"** (toggle in top right)
+
+3. **Load Harbor:**
+   - Click "Load unpacked"
+   - Select `extension/dist-chrome/`
+   - **Copy the extension ID** (32-character string like `abcdefgh...`)
+
+4. **Load Web Agents API:**
+   - Click "Load unpacked"
+   - Select `web-agents-api/dist-chrome/`
+
+### Install and Configure the Native Bridge
+
+```bash
+cd bridge-rs
+./install.sh
+cd ..
+```
+
+**Important:** Chrome's native messaging requires your specific extension ID. Edit the manifest:
+
+**macOS:**
+```bash
+nano ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json
+```
+
+**Linux:**
+```bash
+nano ~/.config/google-chrome/NativeMessagingHosts/harbor_bridge_host.json
+```
+
+Update the `allowed_origins` with your Harbor extension ID:
+
+```json
+{
+  "name": "harbor_bridge_host",
+  "description": "Harbor Bridge",
+  "path": "/path/to/harbor-bridge",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://YOUR_EXTENSION_ID_HERE/"]
+}
+```
+
+**Restart Chrome** for changes to take effect.
+
+→ **[Detailed Chrome guide with troubleshooting](docs/QUICKSTART_CHROME.md)**
+
+---
+
+## Set Up Safari (Experimental)
+
+> ⚠️ **Safari support is experimental.** The code is checked into the repository but is not fully supported.
+
+Safari requires building a native macOS app that contains the extensions.
+
+### Build the Safari App
+
+The Safari project is an Xcode project located at `installer/safari/Harbor/`.
+
+```bash
+cd installer/safari/Harbor
+open Harbor.xcodeproj
+```
+
+In Xcode:
+1. Select the "Harbor" scheme
+2. Build and run (⌘R)
+
+### Enable the Extensions
+
+1. Open Safari
+2. Go to **Safari → Settings → Extensions**
+3. Enable both **Harbor** and **Web Agents API**
+4. For unsigned builds: **Safari → Develop → Allow Unsigned Extensions**
+
+> **Note:** The Safari app bundles the native bridge inside the app itself, so you don't need to run `install.sh` separately.
+
+---
+
+## Verify Your Setup
+
+After loading both extensions:
+
+1. **Open the Harbor sidebar:**
+   - Firefox: Press `Cmd+B` (macOS) or `Ctrl+B` (Linux/Windows), then click the Harbor icon
+   - Chrome: Click the Harbor icon in the toolbar (or puzzle piece menu → Harbor)
+
+2. **Check the status indicators:**
+   - **Bridge: Connected** (green) — Native bridge is working
+   - **LLM: Ollama** — AI provider is detected
+
+3. **If "Bridge: Disconnected":**
+   - Re-run `./install.sh` in `bridge-rs/`
+   - Restart your browser
+   - For Chrome: verify the extension ID in the native messaging manifest
+
+4. **If "No LLM Provider":**
+   - Make sure Ollama is running: `ollama serve`
+   - Verify with: `curl http://localhost:11434/api/tags`
+
+---
+
+## Run the Demos
+
+Start the demo server:
+
+```bash
+cd demo
+npm install
+npm start
+```
+
+Open http://localhost:8000 in your browser.
+
+### Recommended Demo Path
+
+| Demo | URL | What It Shows |
+|------|-----|---------------|
+| **Getting Started** | http://localhost:8000/web-agents/getting-started/ | Step-by-step API tutorial |
+| **Chat Demo** | http://localhost:8000/web-agents/chat-poc/ | Full chat with tool calling |
+| **Page Summarizer** | http://localhost:8000/web-agents/summarizer/ | AI-powered page summaries |
+
+---
+
+## Build Your First App
 
 Harbor exposes two JavaScript APIs to web pages:
 
 ```javascript
-window.ai      // Text generation
-window.agent   // Tools, permissions, autonomous agents
+window.ai      // Text generation (Chrome Prompt API compatible)
+window.agent   // Tools, permissions, browser access, sessions
 ```
 
-## Minimal Example
+### Minimal Example
 
 Create an HTML file and open it in your browser:
 
@@ -149,226 +323,50 @@ Create an HTML file and open it in your browser:
 </html>
 ```
 
-## Core API Patterns
+### Core API Patterns
 
-### Pattern 1: Simple Chat
-
+**Simple Chat:**
 ```javascript
-// Request permission
-await window.agent.requestPermissions({
-  scopes: ['model:prompt'],
-  reason: 'Chat feature'
-});
-
-// Create session with system prompt
 const session = await window.ai.createTextSession({
   systemPrompt: 'You are a helpful assistant.',
   temperature: 0.7
 });
-
-// Get response
 const response = await session.prompt('What is JavaScript?');
-console.log(response);
-
-// Streaming response
-for await (const event of session.promptStreaming('Explain React hooks')) {
-  if (event.type === 'token') {
-    document.getElementById('output').textContent += event.token;
-  }
-}
-
-// Clean up
 session.destroy();
 ```
 
-### Pattern 2: List and Call Tools
-
+**List and Call Tools:**
 ```javascript
-// Request tool permissions
 await window.agent.requestPermissions({
-  scopes: ['mcp:tools.list', 'mcp:tools.call'],
-  reason: 'To use AI tools'
+  scopes: ['mcp:tools.list', 'mcp:tools.call']
 });
 
-// List available tools
 const tools = await window.agent.tools.list();
-console.log('Available tools:', tools.map(t => t.name));
-
-// Call a specific tool
 const result = await window.agent.tools.call({
   tool: 'time-wasm/time.now',
   args: { timezone: 'America/New_York' }
 });
-console.log('Time:', result);
 ```
 
-### Pattern 3: Autonomous Agent
-
+**Autonomous Agent:**
 ```javascript
-// Request all permissions for agent
-await window.agent.requestPermissions({
-  scopes: ['model:tools', 'mcp:tools.list', 'mcp:tools.call'],
-  reason: 'Run autonomous tasks'
-});
-
-// Run an agent task
 for await (const event of window.agent.run({
   task: 'What is the current time in Tokyo?',
   maxToolCalls: 5
 })) {
-  switch (event.type) {
-    case 'tool_call':
-      console.log('Calling:', event.tool, event.args);
-      break;
-    case 'tool_result':
-      console.log('Result:', event.result);
-      break;
-    case 'token':
-      document.getElementById('output').textContent += event.token;
-      break;
-    case 'final':
-      console.log('Final answer:', event.output);
-      break;
-    case 'error':
-      console.error('Error:', event.error);
-      break;
+  if (event.type === 'final') {
+    console.log(event.output);
   }
 }
 ```
 
-### Pattern 4: Read the Current Page
-
-```javascript
-await window.agent.requestPermissions({
-  scopes: ['model:prompt', 'browser:activeTab.read'],
-  reason: 'To analyze this page'
-});
-
-// Get page content
-const page = await window.agent.browser.activeTab.readability();
-console.log('Title:', page.title);
-console.log('URL:', page.url);
-console.log('Content:', page.text.slice(0, 500));
-
-// Summarize it
-const session = await window.ai.createTextSession({
-  systemPrompt: 'Summarize text in 2-3 sentences.'
-});
-const summary = await session.prompt(page.text);
-console.log('Summary:', summary);
-```
+→ **[Full API Reference](docs/WEB_AGENTS_API.md)**
 
 ---
 
-## Permission Scopes
+## Create Your Own Tools
 
-| Scope | Risk | What It Does |
-|-------|------|--------------|
-| `model:prompt` | 🟢 Low | Generate text with AI |
-| `model:tools` | 🟡 Medium | Let AI call tools autonomously |
-| `mcp:tools.list` | 🟢 Low | List available tools |
-| `mcp:tools.call` | 🟡 Medium | Execute tools |
-| `browser:activeTab.read` | 🟡 Medium | Read page content |
-
----
-
-## Feature Flags
-
-Some features are disabled by default. Enable them in the Harbor sidebar:
-
-| Flag | Default | What It Enables |
-|------|---------|-----------------|
-| `toolCalling` | ❌ Off | `agent.run()` for autonomous tasks |
-| `browserInteraction` | ❌ Off | Click, fill, scroll on pages |
-| `browserControl` | ❌ Off | Navigate, create tabs |
-| `multiAgent` | ❌ Off | Agent-to-agent communication |
-
----
-
-## Error Handling
-
-```javascript
-try {
-  const tools = await window.agent.tools.list();
-} catch (err) {
-  switch (err.code) {
-    case 'ERR_SCOPE_REQUIRED':
-      // Need to request permission first
-      await window.agent.requestPermissions({ scopes: ['mcp:tools.list'] });
-      break;
-    case 'ERR_PERMISSION_DENIED':
-      console.log('User denied permission');
-      break;
-    case 'ERR_FEATURE_DISABLED':
-      console.log('Enable this feature in Harbor settings');
-      break;
-    default:
-      console.error('Error:', err.message);
-  }
-}
-```
-
----
-
-## Troubleshooting
-
-**"Web Agent API not detected"**
-- Is Harbor loaded? Check `about:debugging` (Firefox), `chrome://extensions` (Chrome), or Safari → Settings → Extensions
-- Refresh the page after loading the extension
-
-**"Bridge Disconnected" in sidebar**
-```bash
-# Firefox/Chrome:
-cd bridge-rs && ./install.sh
-
-# Safari: The bridge is bundled in the app - rebuild with:
-cd installer/safari && ./build-installer.sh --fast
-```
-
-**"No LLM Provider Found"**
-```bash
-ollama serve
-curl http://localhost:11434/api/tags  # Should return models
-```
-
-**"No tools available"**
-- Start an MCP server in the Harbor sidebar first
-- Check the "Curated Servers" section and install one
-
-**Safari: "Extension not loaded"**
-1. Ensure Harbor.app is running (check Dock)
-2. Go to Safari → Develop → Allow Unsigned Extensions (for dev builds)
-3. Go to Safari → Settings → Extensions and enable both extensions
-
-**Safari: "Cannot connect to native messaging host"**
-- Verify Harbor.app contains harbor-bridge: `ls build/Debug/Harbor.app/Contents/MacOS/`
-- Rebuild: `./build-installer.sh --clean --fast`
-
----
-
-## Next Steps
-
-| What You Want | Where to Go |
-|---------------|-------------|
-| Full API reference | [docs/WEB_AGENTS_API.md](docs/WEB_AGENTS_API.md) |
-| More examples | [spec/examples/](spec/examples/) |
-| Demo source code | [demo/](demo/) |
-| Understand the spec | [spec/explainer.md](spec/explainer.md) |
-| Create custom tools | [Part 3: Create Your Own Tools](#part-3-create-your-own-tools) |
-| Contribute to Harbor | [CONTRIBUTING.md](CONTRIBUTING.md) |
-
----
-
-# Part 3: Create Your Own Tools
-
-**Want your AI to do more than chat? Create MCP servers that give it new capabilities.**
-
-MCP (Model Context Protocol) servers are tools that AI agents can use. Examples:
-- **Search** — Query APIs, databases, or the web
-- **File access** — Read/write local files
-- **Integrations** — Connect to GitHub, Gmail, Slack, etc.
-
-## Quick Start: JavaScript MCP Server (5 min)
+MCP servers give your AI new capabilities. Create one in 5 minutes:
 
 ### 1. Copy the Template
 
@@ -380,217 +378,102 @@ cd my-tool
 ### 2. Edit `server.js`
 
 ```javascript
-// Define your tools
-const TOOLS = [
-  {
-    name: 'my_tool',
-    description: 'Does something useful',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        input: { type: 'string', description: 'The input to process' }
-      },
-      required: ['input']
-    }
+const TOOLS = [{
+  name: 'my_tool',
+  description: 'Does something useful',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      input: { type: 'string', description: 'The input to process' }
+    },
+    required: ['input']
   }
-];
+}];
 
-// Handle tool calls
 async function handleToolCall(toolName, args) {
   if (toolName === 'my_tool') {
-    // Your logic here
     return `Processed: ${args.input}`;
   }
   throw new Error(`Unknown tool: ${toolName}`);
 }
 ```
 
-### 3. Edit `manifest.json`
-
-```json
-{
-  "manifestVersion": "1.0.0",
-  "name": "my-tool",
-  "version": "1.0.0",
-  "description": "My custom MCP tool",
-  "runtime": "js",
-  "scriptUrl": "server.js",
-  "tools": [
-    {
-      "name": "my_tool",
-      "description": "Does something useful"
-    }
-  ]
-}
-```
-
-### 4. Load in Harbor
+### 3. Load in Harbor
 
 1. Open Harbor sidebar → "MCP Servers"
-2. Click "Add Server"  
+2. Click "Add Server"
 3. Select your `manifest.json` file
-4. Your tool is now available!
 
-### 5. Use Your Tool
+### 4. Use Your Tool
 
 ```javascript
-// From any web page
 const result = await window.agent.tools.call({
   tool: 'my-tool/my_tool',
   args: { input: 'hello world' }
 });
-console.log(result); // "Processed: hello world"
 ```
 
+→ **[MCP Authoring Guide](mcp-servers/AUTHORING_GUIDE.md)**
+
 ---
 
-## Example: Weather API Tool
+## Troubleshooting
 
-Here's a complete example that fetches weather data:
+### "Web Agent API not detected"
 
-**manifest.json:**
-```json
-{
-  "manifestVersion": "1.0.0",
-  "name": "weather",
-  "version": "1.0.0",
-  "runtime": "js",
-  "scriptUrl": "server.js",
-  "capabilities": {
-    "network": {
-      "required": true,
-      "hosts": ["api.openweathermap.org"]
-    }
-  },
-  "secrets": [
-    {
-      "name": "OPENWEATHER_API_KEY",
-      "description": "OpenWeatherMap API key",
-      "helpUrl": "https://openweathermap.org/api"
-    }
-  ],
-  "tools": [
-    {
-      "name": "get_weather",
-      "description": "Get current weather for a city"
-    }
-  ]
-}
+- Are both extensions loaded? Check `about:debugging` (Firefox) or `chrome://extensions` (Chrome)
+- Refresh the page after loading extensions
+- Make sure you loaded from `dist-firefox/` or `dist-chrome/`, not the source folder
+
+### "Bridge Disconnected"
+
+```bash
+cd bridge-rs && ./install.sh
+```
+Then restart your browser.
+
+For Chrome: verify the extension ID in the native messaging manifest matches your actual extension ID.
+
+### "No LLM Provider Found"
+
+```bash
+ollama serve
+curl http://localhost:11434/api/tags  # Should return models
 ```
 
-**server.js:**
-```javascript
-const TOOLS = [{
-  name: 'get_weather',
-  description: 'Get current weather for a city',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      city: { type: 'string', description: 'City name' }
-    },
-    required: ['city']
-  }
-}];
+### "No tools available"
 
-async function handleToolCall(toolName, args) {
-  if (toolName === 'get_weather') {
-    const apiKey = process.env.OPENWEATHER_API_KEY;
-    const url = `https://api.openweathermap.org/data/2.5/weather?q=${args.city}&appid=${apiKey}&units=metric`;
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    return `Weather in ${args.city}: ${data.weather[0].description}, ${data.main.temp}°C`;
-  }
-}
+The built-in `time-wasm` server should be available by default. Check the MCP Servers section in the Harbor sidebar.
 
-// ... rest of MCP boilerplate (see template)
+---
+
+## Next Steps
+
+| What You Want | Where to Go |
+|---------------|-------------|
+| Full API reference | [docs/WEB_AGENTS_API.md](docs/WEB_AGENTS_API.md) |
+| More examples | [spec/examples/](spec/examples/) |
+| Understand the architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Create MCP servers | [mcp-servers/AUTHORING_GUIDE.md](mcp-servers/AUTHORING_GUIDE.md) |
+| Contribute to Harbor | [CONTRIBUTING.md](CONTRIBUTING.md) |
+
+---
+
+## Development Workflow
+
+For active development, use watch mode:
+
+```bash
+# Terminal 1: Harbor extension
+cd extension && npm run dev
+
+# Terminal 2: Web Agents API extension  
+cd web-agents-api && npm run dev
+
+# Terminal 3: Demo server
+cd demo && npm start
 ```
 
----
-
-## JavaScript vs WASM
-
-| | JavaScript | WASM (Rust) |
-|---|---|---|
-| **Speed to build** | Fast — no compilation | Slower — needs `cargo build` |
-| **Best for** | API wrappers, prototypes | Production, security-critical |
-| **Ecosystem** | npm packages | Cargo crates |
-| **Security** | Good (Web Worker sandbox) | Excellent (WASI sandbox) |
-
-**Use JavaScript when:**
-- You're prototyping or at a hackathon
-- You're wrapping an HTTP API
-- You want to iterate quickly
-
-**Use WASM when:**
-- You need maximum security
-- You're building for production
-- Performance is critical
-
----
-
-## MCP Server Capabilities
-
-Your server can request these capabilities in `manifest.json`:
-
-| Capability | Use Case |
-|------------|----------|
-| `network.hosts` | Make HTTP requests to specific domains |
-| `secrets` | Store API keys securely |
-| `environment` | Non-secret configuration |
-| `oauth` | Google, GitHub, etc. authentication |
-
-All capabilities require user approval when the server is installed.
-
----
-
-## Full Documentation
-
-| Document | Description |
-|----------|-------------|
-| **[MCP Authoring Guide](mcp-servers/AUTHORING_GUIDE.md)** | Complete guide with all options |
-| **[JS Template](mcp-servers/templates/javascript/)** | Full working JavaScript template |
-| **[Rust Template](mcp-servers/templates/wasm-rust/)** | Full working WASM template |
-| **[Manifest Spec](docs/MCP_MANIFEST_SPEC.md)** | All manifest fields |
-| **[Example: Gmail](mcp-servers/examples/gmail/)** | Real-world OAuth example |
-
----
-
-## Quick Reference
-
-```javascript
-// Check availability
-if (window.agent) { /* Harbor installed */ }
-
-// Request permissions
-await window.agent.requestPermissions({
-  scopes: ['model:prompt', 'mcp:tools.list', 'mcp:tools.call'],
-  reason: 'Why you need it'
-});
-
-// Text generation
-const session = await window.ai.createTextSession({ systemPrompt: '...' });
-const response = await session.prompt('...');
-session.destroy();
-
-// Streaming
-for await (const event of session.promptStreaming('...')) {
-  if (event.type === 'token') { /* event.token */ }
-}
-
-// List tools
-const tools = await window.agent.tools.list();
-
-// Call tool
-const result = await window.agent.tools.call({ tool: 'server/tool', args: {} });
-
-// Agent run
-for await (const event of window.agent.run({ task: '...', maxToolCalls: 5 })) {
-  // event.type: 'tool_call' | 'tool_result' | 'token' | 'final' | 'error'
-}
-
-// Read page
-const page = await window.agent.browser.activeTab.readability();
-// { url, title, text }
-```
+After changes, reload the extensions:
+- Firefox: Click "Reload" in `about:debugging`
+- Chrome: Click the reload icon in `chrome://extensions`
