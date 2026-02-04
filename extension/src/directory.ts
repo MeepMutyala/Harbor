@@ -106,24 +106,6 @@ const BUNDLED_SERVERS: BundledServer[] = [
       ],
     },
   },
-  // Example remote server (from the bring-your-chatbot demo)
-  {
-    id: 'acme-shop-remote',
-    name: 'Acme Shop (Demo)',
-    description: 'Example remote MCP server from the bring-your-chatbot demo. Runs locally on port 3001. Search products, manage cart, and get recommendations.',
-    version: '1.0.0',
-    runtime: 'remote',
-    icon: '🛒',
-    tags: ['demo', 'remote', 'shop', 'sse'],
-    remoteUrl: 'http://localhost:3001/mcp',
-    remoteTransport: 'sse',
-    tools: [
-      { name: 'search_products', description: 'Search the product catalog' },
-      { name: 'get_product_details', description: 'Get details of a product' },
-      { name: 'add_to_cart', description: 'Add item to cart' },
-      { name: 'get_cart', description: 'View cart contents' },
-    ],
-  },
 ];
 
 const STORAGE_KEY = 'harbor_wasm_servers';
