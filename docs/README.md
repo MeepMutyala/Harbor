@@ -58,6 +58,7 @@
 |----------|-------------|
 | **[Quickstart Part 3](../QUICKSTART.md#part-3-create-your-own-tools)** | Create your first tool in 15 minutes |
 | **[MCP Authoring Guide](../mcp-servers/AUTHORING_GUIDE.md)** | Complete guide (JS and WASM) |
+| **[OAuth Guide](OAUTH_GUIDE.md)** | OAuth setup, integration, and troubleshooting |
 | [JS Template](../mcp-servers/templates/javascript/) | Copy-paste JavaScript starter |
 | [Rust/WASM Template](../mcp-servers/templates/wasm-rust/) | Copy-paste Rust starter |
 | [MCP Manifest Spec](MCP_MANIFEST_SPEC.md) | Full manifest reference |
@@ -93,6 +94,7 @@
 | Document | Description |
 |----------|-------------|
 | [User Guide](USER_GUIDE.md) | End-user installation and configuration |
+| [OAuth Guide](OAUTH_GUIDE.md) | OAuth setup, configuration, and troubleshooting |
 | [MCP Manifest Spec](MCP_MANIFEST_SPEC.md) | MCP server manifest format |
 | [MCP WASM Manifest](MCP_WASM_MANIFEST_SPEC.md) | WASM server manifest format |
 
@@ -138,6 +140,7 @@
 | Understand feature flags | [Web Agents API](WEB_AGENTS_API.md#feature-flags) |
 | **Create a JS MCP server** | [Quickstart Part 3](../QUICKSTART.md#part-3-create-your-own-tools) |
 | **Create a WASM MCP server** | [MCP Authoring Guide](../mcp-servers/AUTHORING_GUIDE.md#wasm-servers-rust) |
-| **Add OAuth to MCP server** | [MCP Authoring Guide](../mcp-servers/AUTHORING_GUIDE.md#oauth-integration) |
+| **Add OAuth to MCP server** | [OAuth Guide](OAUTH_GUIDE.md#for-mcp-server-authors) |
+| **Set up OAuth credentials** | [OAuth Guide](OAUTH_GUIDE.md#for-developers-setting-up-harbor) |
 | Read the permission model | [Explainer](../spec/explainer.md#permission-model) |
 | Build from source | [Contributing](../CONTRIBUTING.md#getting-started) |
