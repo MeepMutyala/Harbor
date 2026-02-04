@@ -24,7 +24,9 @@ import type {
   SessionSummary,
 } from './types';
 
-console.log('[Web Agents API] Extension starting...');
+const STARTUP_TIME = Date.now();
+const STARTUP_ID = Math.random().toString(36).slice(2, 8);
+console.log('[Web Agents API] Extension starting...', { startupId: STARTUP_ID, time: new Date().toISOString() });
 
 // =============================================================================
 // Browser Compatibility Layer
@@ -98,29 +100,140 @@ function generateSessionId(): string {
 // Track tabs spawned by each origin (origin -> Set<tabId>)
 const spawnedTabs = new Map<string, Set<number>>();
 
+// Persist spawnedTabs to storage for survival across background restarts
+async function persistSpawnedTabs(): Promise<void> {
+  const data: Record<string, number[]> = {};
+  for (const [origin, tabs] of spawnedTabs.entries()) {
+    data[origin] = Array.from(tabs);
+  }
+  await chrome.storage.local.set({ spawnedTabs: data });
+}
+
+// Restore spawnedTabs from storage on startup
+async function restoreSpawnedTabs(): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get('spawnedTabs');
+    if (result.spawnedTabs) {
+      const data = result.spawnedTabs as Record<string, number[]>;
+      for (const [origin, tabs] of Object.entries(data)) {
+        spawnedTabs.set(origin, new Set(tabs));
+      }
+      console.log('[Web Agents API] Restored spawnedTabs from storage:', {
+        startupId: STARTUP_ID,
+        tabs: getAllSpawnedTabs()
+      });
+      
+      // Verify tabs still exist
+      await verifyTrackedTabs();
+    }
+  } catch (error) {
+    console.log('[Web Agents API] Error restoring spawnedTabs:', error);
+  }
+}
+
+// Verify tracked tabs still exist (they might have been closed while background was inactive)
+async function verifyTrackedTabs(): Promise<void> {
+  for (const [origin, tabs] of spawnedTabs.entries()) {
+    for (const tabId of tabs) {
+      try {
+        await chrome.tabs.get(tabId);
+      } catch {
+        // Tab no longer exists, remove from tracking
+        tabs.delete(tabId);
+        console.log('[Web Agents API] Removed stale tab from tracking:', { tabId, origin, startupId: STARTUP_ID });
+      }
+    }
+    if (tabs.size === 0) {
+      spawnedTabs.delete(origin);
+    }
+  }
+  await persistSpawnedTabs();
+}
+
+// Initialize: restore tabs from storage
+restoreSpawnedTabs();
+
 function trackSpawnedTab(origin: string, tabId: number): void {
   if (!spawnedTabs.has(origin)) {
     spawnedTabs.set(origin, new Set());
   }
   spawnedTabs.get(origin)!.add(tabId);
+  console.log('[Web Agents API] Tracked spawned tab:', { origin, tabId, allTabs: getAllSpawnedTabs(), startupId: STARTUP_ID });
+  // Persist to storage for survival across background restarts
+  persistSpawnedTabs();
 }
 
 function untrackSpawnedTab(origin: string, tabId: number): boolean {
   const tabs = spawnedTabs.get(origin);
   if (tabs) {
-    return tabs.delete(tabId);
+    const result = tabs.delete(tabId);
+    console.log('[Web Agents API] Untracked spawned tab:', { origin, tabId, result, startupId: STARTUP_ID });
+    persistSpawnedTabs();
+    return result;
   }
   return false;
 }
 
 function isSpawnedTab(origin: string, tabId: number): boolean {
-  return spawnedTabs.get(origin)?.has(tabId) ?? false;
+  const result = spawnedTabs.get(origin)?.has(tabId) ?? false;
+  console.log('[Web Agents API] isSpawnedTab check:', { 
+    origin, 
+    tabId, 
+    result, 
+    allTabs: getAllSpawnedTabs(),
+    startupId: STARTUP_ID
+  });
+  return result;
+}
+
+function getAllSpawnedTabs(): Record<string, number[]> {
+  const result: Record<string, number[]> = {};
+  for (const [origin, tabs] of spawnedTabs.entries()) {
+    result[origin] = Array.from(tabs);
+  }
+  return result;
 }
 
 // Clean up spawned tabs when they are closed
-chrome.tabs.onRemoved.addListener((tabId) => {
-  for (const tabs of spawnedTabs.values()) {
-    tabs.delete(tabId);
+chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+  const wasTracked = Array.from(spawnedTabs.entries()).some(([, tabs]) => tabs.has(tabId));
+  console.log('[Web Agents API] Tab removed event:', { 
+    tabId, 
+    removeInfo,
+    wasTracked,
+    allTabsBefore: getAllSpawnedTabs(),
+    startupId: STARTUP_ID
+  });
+  
+  // IMPORTANT: Verify the tab is actually gone before removing from tracking
+  // Firefox sometimes fires onRemoved spuriously (e.g., during navigation or container switches)
+  if (wasTracked) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      // Tab still exists! Don't remove from tracking - this was a spurious event
+      console.log('[Web Agents API] Tab removed event fired but tab still exists, keeping in tracking:', { 
+        tabId, 
+        url: tab.url,
+        status: tab.status,
+        startupId: STARTUP_ID 
+      });
+      return;
+    } catch {
+      // Tab is truly gone, proceed with removal
+      console.log('[Web Agents API] Tab confirmed removed, proceeding with untrack:', { tabId, startupId: STARTUP_ID });
+    }
+  }
+  
+  let removed = false;
+  for (const [origin, tabs] of spawnedTabs.entries()) {
+    if (tabs.has(tabId)) {
+      tabs.delete(tabId);
+      removed = true;
+      console.log('[Web Agents API] Removed tab from tracking:', { tabId, origin, startupId: STARTUP_ID });
+    }
+  }
+  if (removed) {
+    persistSpawnedTabs();
   }
 });
 
@@ -511,8 +624,14 @@ async function handleAiCanCreateTextSession(ctx: RequestContext): HandlerRespons
 }
 
 async function handleAiCreateTextSession(ctx: RequestContext): HandlerResponse {
+  console.log('[Web Agents API] handleAiCreateTextSession called', {
+    origin: ctx.origin,
+    payload: ctx.payload,
+  });
+  
   // Check permission
   if (!await hasPermission(ctx.origin, 'model:prompt')) {
+    console.log('[Web Agents API] handleAiCreateTextSession: Permission denied for', ctx.origin);
     return {
       id: ctx.id,
       ok: false,
@@ -523,6 +642,12 @@ async function handleAiCreateTextSession(ctx: RequestContext): HandlerResponse {
   const options = (ctx.payload || {}) as Record<string, unknown>;
   const sessionId = generateSessionId();
   
+  console.log('[Web Agents API] handleAiCreateTextSession: Creating session', {
+    sessionId,
+    systemPromptLength: options.systemPrompt ? String(options.systemPrompt).length : 0,
+    hasTemperature: !!options.temperature,
+  });
+  
   textSessions.set(sessionId, {
     sessionId,
     origin: ctx.origin,
@@ -531,6 +656,7 @@ async function handleAiCreateTextSession(ctx: RequestContext): HandlerResponse {
     createdAt: Date.now(),
   });
 
+  console.log('[Web Agents API] handleAiCreateTextSession: Session created successfully', sessionId);
   return { id: ctx.id, ok: true, result: sessionId };
 }
 
@@ -1940,13 +2066,33 @@ async function handleSessionPromptStreaming(
 ): Promise<void> {
   const { sessionId, input } = ctx.payload as { sessionId: string; input: string };
   
+  console.log('[Web Agents API] handleSessionPromptStreaming called', {
+    sessionId,
+    inputLength: input?.length || 0,
+    inputPreview: input?.slice(0, 100),
+    origin: ctx.origin,
+  });
+  
   const session = textSessions.get(sessionId);
   if (!session) {
+    console.log('[Web Agents API] handleSessionPromptStreaming: Session not found', sessionId);
+    console.log('[Web Agents API] Available sessions:', Array.from(textSessions.keys()));
     sendEvent({ id: ctx.id, event: { type: 'error', error: { code: 'ERR_SESSION_NOT_FOUND', message: 'Session not found' } }, done: true });
     return;
   }
   
+  console.log('[Web Agents API] handleSessionPromptStreaming: Found session', {
+    sessionId,
+    sessionOrigin: session.origin,
+    requestOrigin: ctx.origin,
+    historyLength: session.history.length,
+  });
+  
   if (session.origin !== ctx.origin) {
+    console.log('[Web Agents API] handleSessionPromptStreaming: Origin mismatch', {
+      sessionOrigin: session.origin,
+      requestOrigin: ctx.origin,
+    });
     sendEvent({ id: ctx.id, event: { type: 'error', error: { code: 'ERR_PERMISSION_DENIED', message: 'Session belongs to different origin' } }, done: true });
     return;
   }
@@ -1962,6 +2108,12 @@ async function handleSessionPromptStreaming(
     }
     messages.push(...session.history);
     
+    console.log('[Web Agents API] handleSessionPromptStreaming: Calling harborStreamRequest', {
+      messageCount: messages.length,
+      model: session.options.model,
+      temperature: session.options.temperature,
+    });
+    
     // Stream from Harbor
     const { stream, cancel } = harborStreamRequest('llm.chatStream', {
       messages,
@@ -1970,17 +2122,26 @@ async function handleSessionPromptStreaming(
     });
 
     let fullContent = '';
+    let tokenCount = 0;
+    
+    console.log('[Web Agents API] handleSessionPromptStreaming: Starting to iterate stream');
     
     for await (const event of stream) {
       if (event.type === 'token' && event.token) {
         fullContent += event.token;
+        tokenCount++;
         sendEvent({ id: ctx.id, event: { type: 'token', token: event.token } });
       } else if (event.type === 'done') {
+        console.log('[Web Agents API] handleSessionPromptStreaming: Stream complete', {
+          tokenCount,
+          responseLength: fullContent.length,
+        });
         // Add assistant response to history
         session.history.push({ role: 'assistant', content: fullContent });
         sendEvent({ id: ctx.id, event: { type: 'done' }, done: true });
         break;
       } else if (event.type === 'error') {
+        console.log('[Web Agents API] handleSessionPromptStreaming: Stream error', event.error);
         sendEvent({ 
           id: ctx.id, 
           event: { type: 'error', error: { code: 'ERR_MODEL_FAILED', message: event.error?.message || 'Stream error' } }, 
@@ -1990,6 +2151,7 @@ async function handleSessionPromptStreaming(
       }
     }
   } catch (e) {
+    console.error('[Web Agents API] handleSessionPromptStreaming: Exception', e);
     sendEvent({
       id: ctx.id,
       event: { type: 'error', error: { code: 'ERR_MODEL_FAILED', message: e instanceof Error ? e.message : 'Streaming failed' } },
@@ -2489,6 +2651,13 @@ async function handleBrowserReadability(ctx: RequestContext): HandlerResponse {
  * Create a new tab.
  */
 async function handleTabsCreate(ctx: RequestContext): HandlerResponse {
+  console.log('[Web Agents API] handleTabsCreate called:', { 
+    origin: ctx.origin, 
+    cookieStoreId: ctx.cookieStoreId,
+    payload: ctx.payload,
+    startupId: STARTUP_ID
+  });
+  
   if (!await hasPermission(ctx.origin, 'browser:tabs.create')) {
     return {
       id: ctx.id,
@@ -2513,15 +2682,20 @@ async function handleTabsCreate(ctx: RequestContext): HandlerResponse {
       windowId: payload.windowId,
     };
     
-    // Pass cookieStoreId for Firefox container support, but skip "firefox-default"
-    // Firefox rejects "firefox-default" even with cookies permission, and it's the default anyway
-    // Only pass cookieStoreId for actual container tabs (e.g., "firefox-container-1")
-    if (ctx.cookieStoreId && ctx.cookieStoreId !== 'firefox-default') {
-      createOptions.cookieStoreId = ctx.cookieStoreId;
-      console.log('[Web Agents API] Creating tab in container:', ctx.cookieStoreId);
-    }
+    // ALWAYS create tabs in the default context (no container)
+    // Firefox containers cause issues with scripting.executeScript - tabs in different
+    // containers cannot be accessed properly even with host_permissions.
+    // By not passing cookieStoreId, tabs open in the default (non-container) context.
+    console.log('[Web Agents API] Creating tab in default context (ignoring parent cookieStoreId:', ctx.cookieStoreId, ')');
     
     const tab = await chrome.tabs.create(createOptions);
+    console.log('[Web Agents API] Tab created:', { 
+      tabId: tab.id, 
+      url: tab.url, 
+      status: tab.status,
+      cookieStoreId: (tab as chrome.tabs.Tab & { cookieStoreId?: string }).cookieStoreId,
+      startupId: STARTUP_ID
+    });
 
     if (!tab.id) {
       return { id: ctx.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'Failed to create tab' } };
@@ -2632,7 +2806,14 @@ async function handleTabsClose(ctx: RequestContext): HandlerResponse {
  * Get readability content from a spawned tab.
  */
 async function handleSpawnedTabReadability(ctx: RequestContext): HandlerResponse {
+  console.log('[Web Agents API] handleSpawnedTabReadability called:', { 
+    origin: ctx.origin, 
+    payload: ctx.payload,
+    startupId: STARTUP_ID
+  });
+  
   if (!await hasPermission(ctx.origin, 'browser:tabs.create')) {
+    console.log('[Web Agents API] handleSpawnedTabReadability - permission denied');
     return {
       id: ctx.id,
       ok: false,
@@ -2648,6 +2829,7 @@ async function handleSpawnedTabReadability(ctx: RequestContext): HandlerResponse
 
   // Only allow reading from tabs that this origin created
   if (!isSpawnedTab(ctx.origin, tabId)) {
+    console.log('[Web Agents API] handleSpawnedTabReadability - tab not spawned by this origin');
     return {
       id: ctx.id,
       ok: false,

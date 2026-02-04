@@ -26,7 +26,7 @@
   <link 
     rel="mcp-server" 
     href="http://localhost:3001/mcp"
-    title="Acme Shop Assistant"
+    title="Your AI Assistant - Connected to Acme Shop"
     data-description="Search products, manage cart, track orders"
     data-tools="search_products,get_product_details,add_to_cart,get_cart"
     data-transport="sse"
@@ -958,8 +958,8 @@
       <div class="chatbot-header-left">
         <div class="chatbot-header-icon">🛍️</div>
         <div>
-          <div class="chatbot-header-title">Acme Shop Assistant</div>
-          <div class="chatbot-header-subtitle">Powered by your AI</div>
+          <div class="chatbot-header-title">Your AI Assistant</div>
+          <div class="chatbot-header-subtitle">Connected to Acme Shop</div>
         </div>
       </div>
       <button class="chatbot-close" id="chatbot-close">×</button>
@@ -1207,7 +1207,7 @@
       try {
         const result = await window.agent.requestPermissions({
           scopes: ['model:prompt', 'model:tools', 'mcp:tools.list', 'mcp:tools.call'],
-          reason: 'Acme Shop Assistant needs AI access to help you find products'
+          reason: 'Connect your AI assistant to help you shop at Acme Shop'
         });
         return result.granted;
       } catch (err) {
@@ -1249,7 +1249,7 @@
       // Add welcome message
       if (messages.length === 0) {
         addAssistantMessage(
-          "Hi! I'm your Acme Shop assistant. I can help you find products, check availability, and manage your cart. What are you looking for today?"
+          "Connected to Acme Shop! I can see their product catalog and help you browse items, check availability, and manage your cart. What would you like to know about their products?"
         );
       }
       
@@ -1329,6 +1329,7 @@
     
     async function sendMessage() {
       const text = chatbotInput.value.trim();
+      console.log('[BYOC Debug] sendMessage called', { text, isProcessing, apiAvailable, hasSession: !!chatSession });
       if (!text || isProcessing) return;
       
       // Require Web Agents API
@@ -1339,6 +1340,7 @@
       
       // Initialize session if needed
       if (!chatSession) {
+        console.log('[BYOC Debug] No chat session, initializing...');
         const success = await initChatSession();
         if (!success) {
           addAssistantMessage("Unable to start AI assistant. Please check permissions.");
@@ -1356,11 +1358,20 @@
       try {
         // Use window.ai session for streaming response
         let responseText = '';
+        let tokenCount = 0;
+        
+        console.log('[BYOC Debug] Starting promptStreaming...', { sessionType: typeof chatSession });
         
         // Stream the response
         for await (const token of chatSession.promptStreaming(text)) {
           responseText += token;
+          tokenCount++;
+          if (tokenCount % 10 === 0) {
+            console.log('[BYOC Debug] Received tokens:', tokenCount, 'total length:', responseText.length);
+          }
         }
+        
+        console.log('[BYOC Debug] Streaming complete', { tokenCount, responseLength: responseText.length });
         
         removeTypingIndicator();
         
@@ -1390,6 +1401,12 @@
         addAssistantMessage(responseText, toolsUsed);
         
       } catch (err) {
+        console.error('[BYOC Debug] sendMessage error:', {
+          message: err?.message,
+          code: err?.code,
+          name: err?.name,
+          stack: err?.stack,
+        });
         console.error('[BYOC Demo] Error:', err);
         removeTypingIndicator();
         
@@ -1398,8 +1415,14 @@
           addAssistantMessage("Permission denied. Please allow text generation in the Web Agents API sidebar.");
         } else if (err.code === 'ERR_FEATURE_DISABLED') {
           addAssistantMessage("Text generation is disabled. Please enable it in the Web Agents API sidebar.");
+        } else if (err.code === 'ERR_SESSION_NOT_FOUND') {
+          console.log('[BYOC Debug] Session not found, resetting chatSession');
+          chatSession = null;
+          addAssistantMessage("Session expired. Please try sending your message again.");
+        } else if (err.code === 'ERR_MODEL_FAILED') {
+          addAssistantMessage(`AI model error: ${err.message || 'Unknown error'}. Please check your LLM configuration.`);
         } else {
-          addAssistantMessage("I'm sorry, I encountered an error. Please try again.");
+          addAssistantMessage(`Error: ${err.message || 'Unknown error'}. Please try again.`);
         }
         
         // Reset session on error so we can try again
@@ -1418,27 +1441,32 @@
     let chatSession = null;
     
     async function initChatSession() {
+      console.log('[BYOC Debug] initChatSession called');
+      console.log('[BYOC Debug] window.ai available:', !!window.ai);
+      console.log('[BYOC Debug] window.agent available:', !!window.agent);
+      
       if (!window.ai) {
         console.log('[Acme Shop] window.ai not available');
         return false;
       }
       
       try {
+        console.log('[BYOC Debug] Requesting permissions...');
         // Request permission for text generation
         const permResult = await window.agent.requestPermissions({
           scopes: ['model:prompt'],
-          reason: 'Acme Shop Assistant needs AI access to help you find products'
+          reason: 'Connect your AI assistant to help you shop at Acme Shop'
         });
+        
+        console.log('[BYOC Debug] Permission result:', permResult);
         
         if (!permResult.granted) {
           console.log('[Acme Shop] Permission denied');
           return false;
         }
         
-        // Create a text session with our system prompt
-        chatSession = await window.ai.createTextSession({
-          systemPrompt: `You are a helpful shopping assistant for Acme Shop.
-You help customers find products, answer questions about items, and manage their cart.
+        const systemPrompt = `You are the user's personal AI assistant, currently connected to Acme Shop.
+You can help them find products, answer questions about items, and manage their cart on this site.
 
 Available products in our catalog:
 ${Object.values(PRODUCTS).map(p => `- ${p.name} (ID: ${p.id}): $${p.price} - ${p.description} (${p.inStock ? 'In Stock' : 'Out of Stock'})`).join('\n')}
@@ -1450,12 +1478,24 @@ When customers ask about products:
 
 Current cart: ${cart.length === 0 ? 'Empty' : cart.map(p => p.name).join(', ')} (Total: $${cart.reduce((sum, p) => sum + p.price, 0).toFixed(2)})
 
-Keep responses concise and helpful.`,
+Keep responses concise and helpful.`;
+        
+        console.log('[BYOC Debug] Creating text session with prompt length:', systemPrompt.length);
+        
+        // Create a text session with our system prompt
+        chatSession = await window.ai.createTextSession({
+          systemPrompt,
         });
         
+        console.log('[BYOC Debug] Chat session created:', chatSession);
         console.log('[Acme Shop] Chat session created');
         return true;
       } catch (err) {
+        console.error('[BYOC Debug] Failed to create session - error details:', {
+          message: err?.message,
+          name: err?.name,
+          stack: err?.stack,
+        });
         console.error('[Acme Shop] Failed to create session:', err);
         return false;
       }

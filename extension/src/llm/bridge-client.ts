@@ -78,7 +78,14 @@ export async function* bridgeStreamRequest(
   method: string,
   params?: unknown,
 ): AsyncGenerator<StreamEvent> {
+  console.log('[Harbor:BridgeClient] bridgeStreamRequest called', {
+    method,
+    paramsKeys: params ? Object.keys(params as Record<string, unknown>) : [],
+    bridgeReady: isNativeBridgeReady(),
+  });
+  
   if (!isNativeBridgeReady()) {
+    console.error('[Harbor:BridgeClient] Bridge not ready for streaming');
     throw new Error('Bridge not connected. Ensure native bridge is installed and running.');
   }
 
@@ -87,11 +94,20 @@ export async function* bridgeStreamRequest(
   let resolveWaiting: ((event: StreamEvent | null) => void) | null = null;
   let done = false;
   let error: Error | null = null;
+  let tokenCount = 0;
 
+  console.log('[Harbor:BridgeClient] Starting rpcStreamRequest');
+  
   const { cancel, done: streamDone } = rpcStreamRequest(
     method,
     params,
     (event) => {
+      if (event.type === 'token') {
+        tokenCount++;
+      } else {
+        console.log('[Harbor:BridgeClient] Stream event:', event.type, 'tokenCount so far:', tokenCount);
+      }
+      
       if (resolveWaiting) {
         resolveWaiting(event);
         resolveWaiting = null;
@@ -104,6 +120,7 @@ export async function* bridgeStreamRequest(
   // Handle completion
   streamDone
     .then(() => {
+      console.log('[Harbor:BridgeClient] streamDone resolved', { tokenCount });
       done = true;
       if (resolveWaiting) {
         resolveWaiting(null);
@@ -111,6 +128,7 @@ export async function* bridgeStreamRequest(
       }
     })
     .catch((e) => {
+      console.error('[Harbor:BridgeClient] streamDone error:', e);
       error = e;
       done = true;
       if (resolveWaiting) {
@@ -126,6 +144,7 @@ export async function* bridgeStreamRequest(
         const event = eventQueue.shift()!;
         yield event;
         if (event.type === 'done' || event.type === 'error') {
+          console.log('[Harbor:BridgeClient] Yielded terminal event', { type: event.type, tokenCount });
           break;
         }
         continue;
@@ -134,8 +153,10 @@ export async function* bridgeStreamRequest(
       // Check if done
       if (done) {
         if (error) {
+          console.error('[Harbor:BridgeClient] Stream completed with error:', error);
           throw error;
         }
+        console.log('[Harbor:BridgeClient] Stream completed normally', { tokenCount });
         break;
       }
 
@@ -146,17 +167,21 @@ export async function* bridgeStreamRequest(
 
       if (event === null) {
         if (error) {
+          console.error('[Harbor:BridgeClient] Null event with error:', error);
           throw error;
         }
+        console.log('[Harbor:BridgeClient] Null event, stream ending', { tokenCount });
         break;
       }
 
       yield event;
       if (event.type === 'done' || event.type === 'error') {
+        console.log('[Harbor:BridgeClient] Yielded terminal event', { type: event.type, tokenCount });
         break;
       }
     }
   } finally {
+    console.log('[Harbor:BridgeClient] bridgeStreamRequest cleanup', { tokenCount });
     cancel();
   }
 }

@@ -341,7 +341,15 @@ export function harborStreamRequest(
   type: string,
   payload?: unknown,
 ): { stream: AsyncIterable<StreamEvent>; cancel: () => void } {
+  console.log('[Web Agents API:HarborClient] harborStreamRequest called', {
+    type,
+    harborExtensionId,
+    connectionState,
+    payloadKeys: payload ? Object.keys(payload as Record<string, unknown>) : [],
+  });
+  
   if (!harborExtensionId || connectionState !== 'connected') {
+    console.error('[Web Agents API:HarborClient] Harbor not connected', { harborExtensionId, connectionState });
     throw createError(ErrorCodes.HARBOR_NOT_FOUND, 'Harbor extension not found');
   }
 
@@ -352,15 +360,29 @@ export function harborStreamRequest(
   let error: Error | null = null;
   let port: chrome.runtime.Port | null = null;
 
+  console.log('[Web Agents API:HarborClient] Creating port connection', { requestId, harborExtensionId });
+
   // Create port connection for streaming
   try {
     port = chrome.runtime.connect(harborExtensionId!, { name: 'stream' });
+    console.log('[Web Agents API:HarborClient] Port connected successfully');
   } catch (e) {
+    console.error('[Web Agents API:HarborClient] Failed to connect port:', e);
     throw createError(ErrorCodes.HARBOR_NOT_FOUND, 'Failed to connect to Harbor');
   }
 
   port.onMessage.addListener((message: { type: string; requestId: string; event?: StreamEvent }) => {
-    if (message.requestId !== requestId) return;
+    console.log('[Web Agents API:HarborClient] Port message received', {
+      messageType: message.type,
+      messageRequestId: message.requestId,
+      eventType: message.event?.type,
+      hasToken: !!message.event?.token,
+    });
+    
+    if (message.requestId !== requestId) {
+      console.log('[Web Agents API:HarborClient] Ignoring message for different requestId');
+      return;
+    }
 
     if (message.type === 'stream' && message.event) {
       const event = message.event;
@@ -373,6 +395,10 @@ export function harborStreamRequest(
       }
 
       if (event.type === 'done' || event.type === 'error') {
+        console.log('[Web Agents API:HarborClient] Stream ended', {
+          eventType: event.type,
+          error: event.error,
+        });
         done = true;
         if (event.type === 'error' && event.error) {
           error = new Error(event.error.message);
@@ -382,6 +408,12 @@ export function harborStreamRequest(
   });
 
   port.onDisconnect.addListener(() => {
+    const lastError = chrome.runtime.lastError;
+    console.log('[Web Agents API:HarborClient] Port disconnected', {
+      lastError: lastError?.message,
+      done,
+      queueLength: eventQueue.length,
+    });
     done = true;
     if (resolveWaiting) {
       resolveWaiting(null);
@@ -390,6 +422,7 @@ export function harborStreamRequest(
   });
 
   // Send the request
+  console.log('[Web Agents API:HarborClient] Sending request via port', { type, requestId });
   port.postMessage({ type, payload, requestId });
 
   // Create async iterable
@@ -437,6 +470,7 @@ export function harborStreamRequest(
   };
 
   const cancel = () => {
+    console.log('[Web Agents API:HarborClient] Stream cancelled');
     done = true;
     if (port) {
       port.disconnect();

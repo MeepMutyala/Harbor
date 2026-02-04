@@ -695,6 +695,12 @@ async function handleStreamingChat(
   sender: { id?: string; url?: string; tab?: { id?: number } },
   port: ReturnType<typeof browserAPI.runtime.connect>,
 ): Promise<void> {
+  log('handleStreamingChat called', {
+    senderId: sender.id,
+    requestId: message.requestId,
+    payloadKeys: message.payload ? Object.keys(message.payload as Record<string, unknown>) : [],
+  });
+  
   const { payload, requestId } = message;
   const { messages, model, max_tokens, temperature, system } = (payload || {}) as {
     messages?: Array<{ role: string; content: string }>;
@@ -704,24 +710,43 @@ async function handleStreamingChat(
     system?: string;
   };
 
+  log('handleStreamingChat payload:', {
+    messageCount: messages?.length,
+    model,
+    max_tokens,
+    temperature,
+    hasSystem: !!system,
+  });
+
   if (!messages || messages.length === 0) {
+    log('handleStreamingChat: No messages provided');
     port.postMessage({ type: 'stream', requestId, event: { type: 'error', error: { message: 'Missing messages' } } });
     return;
   }
 
   if (!requestId) {
+    log('handleStreamingChat: No requestId provided');
     port.postMessage({ type: 'stream', requestId: '', event: { type: 'error', error: { message: 'Missing requestId for streaming' } } });
     return;
   }
 
   try {
+    log('handleStreamingChat: Starting bridgeStreamRequest');
+    let tokenCount = 0;
+    
     for await (const event of bridgeStreamRequest('llm.chat', { messages, model, max_tokens, temperature, system, stream: true })) {
+      if (event.type === 'token') {
+        tokenCount++;
+      }
       port.postMessage({ type: 'stream', requestId, event } as StreamChunk);
       if (event.type === 'done' || event.type === 'error') {
+        log('handleStreamingChat: Stream ended', { eventType: event.type, tokenCount, error: (event as { error?: { message: string } }).error });
         break;
       }
     }
+    log('handleStreamingChat: Stream complete', { tokenCount });
   } catch (e) {
+    log('handleStreamingChat: Exception', e);
     port.postMessage({
       type: 'stream',
       requestId,
@@ -798,17 +823,24 @@ export function initializeExtensionApi(): void {
 
   // Handle port connections for streaming
   browserAPI.runtime.onConnectExternal.addListener((port) => {
-    log('External port connection from:', port.sender?.id);
+    log('External port connection from:', port.sender?.id, 'port name:', port.name);
 
     port.onMessage.addListener((message: ExtensionApiRequest) => {
+      log('Port message received:', message.type, 'requestId:', message.requestId);
+      
       if (message.type === 'llm.chatStream') {
         handleStreamingChat(message, port.sender!, port);
       } else {
+        log('Non-streaming port message:', message.type);
         // Non-streaming requests via port
         routeExtensionApiMessage(message, port.sender!)
           .then((response) => port.postMessage({ type: 'response', ...response }))
           .catch((e) => port.postMessage({ type: 'response', ok: false, error: String(e) }));
       }
+    });
+    
+    port.onDisconnect.addListener(() => {
+      log('External port disconnected:', port.sender?.id);
     });
   });
 
