@@ -1406,7 +1406,7 @@ setupPanelToggle(quickActionsHeader, quickActionsToggle, quickActionsBody);
 // Open Directory button - opens the MCP server directory
 openDirectoryBtn.addEventListener('click', async () => {
   try {
-    const directoryUrl = browserAPI.runtime.getURL('dist/directory.html');
+    const directoryUrl = browserAPI.runtime.getURL('directory.html');
     console.log('[Sidebar] Opening directory at:', directoryUrl);
     await browserAPI.tabs.create({ url: directoryUrl });
   } catch (err) {
