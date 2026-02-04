@@ -95,7 +95,7 @@ import { bridgeRequest } from '../llm/bridge-client';
 import { isNativeBridgeReady } from '../llm/native-bridge';
 import { getRuntimeCapabilities, listAllProviders } from '../llm/provider-registry';
 
-const DEBUG = true;
+const DEBUG = false;
 
 function log(...args: unknown[]): void {
   if (DEBUG) {

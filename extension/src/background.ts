@@ -705,7 +705,7 @@ browserAPI.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // Permission Management Handlers
 // =============================================================================
 
-const WEB_AGENTS_API_EXTENSION_ID = 'web-agents-api@mozilla.org';
+const WEB_AGENTS_API_EXTENSION_ID = 'web-agents@krikorian.co';
 
 type ExternalPermissionStatusEntry = {
   origin: string;
