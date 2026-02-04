@@ -2,6 +2,9 @@
   "name": "harbor-wasm-extension",
   "version": "0.1.0",
   "private": true,
+  "description": "Harbor browser extension - Core platform for AI and MCP capabilities",
+  "author": "Raffi Krikorian <raffi.krikorian@gmail.com>",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

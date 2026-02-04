@@ -2,6 +2,8 @@
   "name": "web-agents-api",
   "version": "0.1.0",
   "description": "Web Agents API extension - Exposes AI capabilities to web pages via Harbor",
+  "author": "Raffi Krikorian <raffi.krikorian@gmail.com>",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

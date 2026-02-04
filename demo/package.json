@@ -1,8 +1,10 @@
 {
   "name": "web-agent-demos",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Demo applications for the Web Agent API",
+  "author": "Raffi Krikorian <raffi.krikorian@gmail.com>",
+  "license": "MIT",
   "scripts": {
     "start": "serve -l 8000",
     "serve": "serve -l 8000",
