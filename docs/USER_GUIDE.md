@@ -6,11 +6,18 @@ Welcome to Harbor! This guide will help you install, configure, and start using 
 
 Harbor is a browser extension that implements the **Web Agent API** — a proposed standard for bringing AI agent capabilities to web applications.
 
-**The Web Agent API** lets websites use AI models and tools (with your permission). Harbor works in Firefox, Chrome, and Safari.
+**The Web Agent API** lets websites use AI models and tools (with your permission).
+
+**Browser Support:**
+| Browser | Status |
+|---------|--------|
+| **Firefox** | ✅ Primary — recommended for development |
+| **Chrome** | ✅ Supported — also works with Edge, Brave, Arc |
+| **Safari** | ⚠️ Experimental — macOS only |
 
 **With Harbor, you can:**
 - Use AI-powered features on websites that support the Web Agent API
-- Run local AI models (like Ollama or llamafile) without sending data to the cloud
+- Run local AI models (like Ollama) without sending data to the cloud
 - Connect MCP servers to extend AI capabilities with tools (file access, GitHub, databases, etc.)
 - Control exactly which sites can access which capabilities
 
@@ -18,21 +25,18 @@ Harbor is a browser extension that implements the **Web Agent API** — a propos
 
 ## Requirements
 
-Before installing Harbor, make sure you have:
-
 | Requirement | Details |
 |-------------|---------|
-| **Browser** | Firefox 109+, Chrome 120+, or Safari 16+ (macOS) |
-| **LLM Provider** | Ollama or llamafile (optional, for AI features) |
-| **Rust** | For building from source (not needed for pkg install) |
-| **Node.js** | Version 18+ (for development/manual install only) |
-| **Xcode** | Required for Safari (macOS only) |
+| **Node.js 18+** | [nodejs.org](https://nodejs.org) — for building extensions |
+| **Rust** | [rustup.rs](https://rustup.rs) — for building the native bridge |
+| **Browser** | Firefox 109+ (recommended), Chrome 120+, or Safari 16+ (macOS) |
+| **Ollama** | [ollama.com](https://ollama.com) — local LLM provider |
+| **Xcode** | Required for Safari only (macOS) |
 
-### Setting up an LLM Provider
+### Setting up Ollama
 
-Harbor needs a local LLM to generate AI responses. Choose one:
+Harbor uses Ollama to run local AI models:
 
-**Option A: Ollama (Recommended)**
 ```bash
 # Install Ollama (macOS)
 brew install ollama
@@ -40,92 +44,69 @@ brew install ollama
 # Start Ollama
 ollama serve
 
-# Pull a model (e.g., llama2, mistral, or any model you prefer)
-ollama pull llama2
-```
-
-**Option B: llamafile**
-```bash
-# Download a llamafile from https://github.com/Mozilla-Ocho/llamafile
-# Make it executable and run:
-chmod +x ./your-model.llamafile
-./your-model.llamafile --server
+# Pull a model
+ollama pull llama3.2
 ```
 
 ---
 
 ## Installation
 
-### Option 1: macOS Installer (Recommended)
+Harbor consists of **two browser extensions** that work together:
+- **Harbor** — Core platform (MCP servers, native bridge, chat sidebar)
+- **Web Agents API** — Injects `window.ai` and `window.agent` into web pages
 
-1. **Download** the Harbor installer package (`Harbor-x.x.x.pkg`)
-2. **Double-click** the package to run the installer
-3. **Follow the prompts** — the installer will:
-   - Check that Firefox is installed
-   - Install the Harbor bridge to `/Library/Application Support/Harbor/`
-   - Configure Firefox to load the extension
-4. **Restart Firefox** after installation completes
-5. **Look for the Harbor icon** in the Firefox sidebar
-
-### Option 2: Safari Installation (macOS)
-
-Safari requires a macOS app that wraps the extension. Build it with:
+### Build from Source
 
 ```bash
-# Clone and build
+# 1. Clone the repository
 git clone --recurse-submodules https://github.com/anthropics/harbor.git
 cd harbor
 
-# Build Safari installer (quick dev build)
-cd installer/safari
-./build-installer.sh --fast
-
-# Open the app
-open build/Debug/Harbor.app
-```
-
-Then in Safari:
-1. Go to **Safari → Settings → Extensions**
-2. Enable both **Harbor** and **Web Agents API**
-3. For unsigned builds: **Safari → Develop → Allow Unsigned Extensions**
-
-For a distributable installer:
-```bash
-./build-installer.sh release              # Creates .pkg installer
-./build-installer.sh release --notarize   # Creates notarized .pkg
-```
-
-→ See [installer/safari/README.md](../installer/safari/README.md) for full details.
-
-### Option 3: Manual Installation (Developers)
-
-If you're building from source:
-
-```bash
-# 1. Clone the repository with submodules
-git clone --recurse-submodules https://github.com/anthropics/harbor.git
-cd harbor
-
-# 2. Build the extension
+# 2. Build Harbor extension
 cd extension
 npm install
-npm run build
+npm run build          # Firefox
+npm run build:chrome   # Chrome
 cd ..
 
-# 3. Build the Rust bridge
+# 3. Build Web Agents API extension
+cd web-agents-api
+npm install
+npm run build          # Firefox
+npm run build:chrome   # Chrome
+cd ..
+
+# 4. Build the native bridge
 cd bridge-rs
 cargo build --release
-cd ..
-
-# 4. Install the native messaging manifest
-cd bridge-rs
 ./install.sh
 cd ..
-
-# 5. Load the extension in your browser
-# Firefox: about:debugging#/runtime/this-firefox → Load Temporary Add-on → extension/dist/manifest.json
-# Chrome: chrome://extensions → Developer mode → Load unpacked → extension/dist/
 ```
+
+### Load Extensions in Your Browser
+
+**Firefox:**
+1. Go to `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on..."
+3. Select `extension/dist-firefox/manifest.json`
+4. Repeat for `web-agents-api/dist-firefox/manifest.json`
+
+**Chrome:**
+1. Go to `chrome://extensions`
+2. Enable "Developer mode"
+3. Click "Load unpacked" → select `extension/dist-chrome/`
+4. Repeat for `web-agents-api/dist-chrome/`
+5. **Important:** Update native messaging manifest with your extension ID — see [Chrome Setup](QUICKSTART_CHROME.md#step-5-configure-native-messaging)
+
+**Safari (Experimental):**
+See [Safari Setup](QUICKSTART_SAFARI.md) — requires Xcode and building a macOS app.
+
+### Detailed Setup Guides
+
+→ **[Firefox Setup](QUICKSTART_FIREFOX.md)** — Primary browser, recommended  
+→ **[Chrome Setup](QUICKSTART_CHROME.md)** — Requires extension ID configuration  
+→ **[Safari Setup](QUICKSTART_SAFARI.md)** — Experimental, macOS only
 
 ---
 
@@ -250,51 +231,50 @@ Some MCP servers require API keys (e.g., GitHub, Brave Search):
 
 ### "Bridge Disconnected"
 
-**Firefox/Chrome:**
+**Firefox:**
 
-1. **Check the bridge is installed**:
+1. **Check the native messaging manifest exists**:
    ```bash
-   ls -la "/Library/Application Support/Harbor/"
-   # Should show harbor-bridge binary
+   cat ~/Library/Application\ Support/Mozilla/NativeMessagingHosts/harbor_bridge.json
    ```
 
-2. **Check the native messaging manifest**:
-   ```bash
-   # Firefox
-   cat "/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge.json"
-   # Chrome
-   cat ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge.json
-   ```
-
-3. **Rebuild the bridge** (if manual install):
+2. **Reinstall the bridge**:
    ```bash
    cd bridge-rs
-   cargo build --release
    ./install.sh
    ```
 
-4. **Check Browser Console** (`Cmd+Shift+J` in Firefox, `Cmd+Option+J` in Chrome) for errors
+3. **Restart Firefox completely** (quit and reopen)
+
+4. **Check Browser Console** (`Cmd+Shift+J`) for errors
+
+**Chrome:**
+
+1. **Check the native messaging manifest**:
+   ```bash
+   cat ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json
+   ```
+
+2. **Verify the extension ID** in `allowed_origins` matches your Harbor extension ID from `chrome://extensions`
+
+3. **Reinstall the bridge** and update the manifest:
+   ```bash
+   cd bridge-rs
+   ./install.sh
+   # Then edit the manifest to add your extension ID
+   ```
+
+4. **Restart Chrome completely**
+
+→ See [Chrome Setup](QUICKSTART_CHROME.md#step-5-configure-native-messaging) for detailed extension ID instructions.
 
 **Safari:**
 
 1. **Make sure Harbor.app is running** (check the Dock)
 
-2. **Check harbor-bridge is in the app**:
-   ```bash
-   ls -la "installer/safari/build/Debug/Harbor.app/Contents/MacOS/"
-   # Should show: Harbor, harbor-bridge
-   ```
+2. **Rebuild the app in Xcode** — the bridge is bundled inside
 
-3. **Rebuild the app**:
-   ```bash
-   cd installer/safari
-   ./build-installer.sh --clean --fast
-   ```
-
-4. **Check Safari logs**:
-   ```bash
-   log stream --predicate 'subsystem == "org.harbor.extension"'
-   ```
+→ See [Safari Setup](QUICKSTART_SAFARI.md) for details.
 
 ### Safari: "Extension not enabled"
 
@@ -363,34 +343,34 @@ rm -rf ~/.harbor
 
 ## Uninstalling
 
-### macOS Firefox/Chrome (Installer)
+### Firefox/Chrome
 
-```bash
-# Remove Harbor files
-sudo rm -rf "/Library/Application Support/Harbor"
-sudo rm "/Library/Application Support/Mozilla/NativeMessagingHosts/harbor_bridge_host.json"
-sudo rm "/Library/Application Support/Mozilla/policies/policies.json"
+1. **Remove extensions:**
+   - Firefox: Go to `about:debugging#/runtime/this-firefox` → click "Remove" on each extension
+   - Chrome: Go to `chrome://extensions` → click "Remove" on each extension
 
-# Remove user data
-rm -rf ~/.harbor
-```
+2. **Remove native messaging:**
+   ```bash
+   # Firefox
+   rm ~/Library/Application\ Support/Mozilla/NativeMessagingHosts/harbor_bridge.json
+   
+   # Chrome
+   rm ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/harbor_bridge_host.json
+   ```
+
+3. **Remove user data:**
+   ```bash
+   rm -rf ~/.harbor
+   ```
 
 ### Safari
 
-1. Delete `/Applications/Harbor.app` (if installed via .pkg)
-2. Or delete `installer/safari/build/` (if built manually)
-3. The extensions are automatically removed when the app is deleted
-
-```bash
-# Remove user data
-rm -rf ~/.harbor
-```
-
-### Manual Installation (Firefox/Chrome)
-
-1. Go to `about:debugging#/runtime/this-firefox` (Firefox) or `chrome://extensions` (Chrome)
-2. Click "Remove" next to the Harbor extension
-3. Delete the harbor directory
+1. Delete the `installer/safari/build/` directory
+2. The extensions are automatically unregistered when the app is deleted
+3. Remove user data:
+   ```bash
+   rm -rf ~/.harbor
+   ```
 
 ---
 

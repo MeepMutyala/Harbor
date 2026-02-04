@@ -116,61 +116,48 @@ Harbor has a hybrid architecture with two execution paths:
 - **Firefox** 109+ or **Chrome** 120+
 - An LLM provider (Ollama or llamafile) - optional, for AI features
 
-### Installation Options
+### Development Setup
 
-#### Option A: macOS Package Installer (Recommended for Users)
-
-Build a distributable `.pkg` installer for your preferred browser:
-
-**Firefox:**
-```bash
-cd installer/firefox
-./build-pkg.sh
-sudo installer -pkg build/Harbor-Firefox-*.pkg -target /
-```
-
-**Chrome / Chromium browsers:**
-```bash
-cd installer/chrome
-./build-pkg.sh
-sudo installer -pkg build/Harbor-Chrome-*.pkg -target /
-
-# After loading the extension in developer mode, configure native messaging:
-/Library/Application\ Support/Harbor/configure-extension-id.sh
-```
-
-The Chrome installer supports: Google Chrome, Microsoft Edge, Brave, Arc, Vivaldi, and Chromium.
-
-See [Installer Documentation](../installer/README.md) for full details including signing and notarization.
-
-#### Option B: Development Setup
-
-For contributing to Harbor or local development:
+Harbor consists of two browser extensions that work together:
+- **Harbor** — Core platform (MCP servers, native bridge, chat)
+- **Web Agents API** — Injects `window.ai` and `window.agent` into web pages
 
 ```bash
 # 1. Clone with submodules
 git clone --recurse-submodules https://github.com/anthropics/harbor.git
 cd harbor
 
-# 2. Build the extension
+# 2. Build Harbor extension
 cd extension
-npm install && npm run build
+npm install
+npm run build          # Firefox
+npm run build:chrome   # Chrome
 cd ..
 
-# 3. Build the Rust bridge
+# 3. Build Web Agents API extension
+cd web-agents-api
+npm install
+npm run build          # Firefox
+npm run build:chrome   # Chrome
+cd ..
+
+# 4. Build the Rust bridge
 cd bridge-rs
 cargo build --release
-cd ..
-
-# 4. Install native messaging manifest
-cd bridge-rs
 ./install.sh
 cd ..
 
-# 5. Load extension in browser
-# Firefox: about:debugging → Load Temporary Add-on → extension/dist/manifest.json
-# Chrome: chrome://extensions → Developer mode → Load unpacked → extension/dist/
+# 5. Load both extensions in your browser
+# Firefox: about:debugging → Load Temporary Add-on
+#   - extension/dist-firefox/manifest.json
+#   - web-agents-api/dist-firefox/manifest.json
+# Chrome: chrome://extensions → Developer mode → Load unpacked
+#   - extension/dist-chrome/
+#   - web-agents-api/dist-chrome/
+#   - Then update native messaging with your extension ID
 ```
+
+→ See [Firefox Setup](QUICKSTART_FIREFOX.md) or [Chrome Setup](QUICKSTART_CHROME.md) for detailed instructions.
 
 ### Quick Test
 

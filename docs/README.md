@@ -37,7 +37,10 @@
 | Document | Description |
 |----------|-------------|
 | [README](../README.md) | Project overview and quick links |
-| [Quickstart](../QUICKSTART.md) | Install, run demos, build first app |
+| [Quickstart](../QUICKSTART.md) | Build, install, run demos, create your first app |
+| [Firefox Setup](QUICKSTART_FIREFOX.md) | Detailed Firefox setup (primary browser) |
+| [Chrome Setup](QUICKSTART_CHROME.md) | Detailed Chrome/Chromium setup |
+| [Safari Setup](QUICKSTART_SAFARI.md) | Safari setup (experimental) |
 
 ### For Developers (Building ON the API)
 
