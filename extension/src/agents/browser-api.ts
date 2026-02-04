@@ -34,9 +34,17 @@ const PRIVILEGED_PROTOCOLS = [
  * This ensures we only operate on the tab that made the request.
  */
 async function getRequestingTab(tabId: number): Promise<ReturnType<typeof browserAPI.tabs.get> extends Promise<infer T> ? T : never> {
+  console.log('[browser-api] getRequestingTab called for tabId:', tabId);
   const tab = await browserAPI.tabs.get(tabId);
+  console.log('[browser-api] getRequestingTab - tab retrieved:', { 
+    id: tab?.id, 
+    url: tab?.url, 
+    status: tab?.status,
+    title: tab?.title 
+  });
 
   if (!tab || !tab.url) {
+    console.log('[browser-api] getRequestingTab - tab not found or no URL');
     throw Object.assign(
       new Error('Tab not found or has no URL'),
       { code: 'ERR_INTERNAL' }
@@ -46,6 +54,7 @@ async function getRequestingTab(tabId: number): Promise<ReturnType<typeof browse
   // Check for privileged pages
   for (const protocol of PRIVILEGED_PROTOCOLS) {
     if (tab.url.startsWith(protocol)) {
+      console.log('[browser-api] getRequestingTab - privileged page detected:', protocol);
       throw Object.assign(
         new Error(`Cannot interact with privileged page: ${protocol}`),
         { code: 'ERR_PERMISSION_DENIED' }
@@ -61,25 +70,84 @@ async function getRequestingTab(tabId: number): Promise<ReturnType<typeof browse
 // =============================================================================
 
 /**
+ * Wait for a tab to finish loading (status becomes 'complete').
+ * @param tabId - The tab ID to wait for
+ * @param timeoutMs - Maximum time to wait (default 10 seconds)
+ */
+async function waitForTabLoad(tabId: number, timeoutMs: number = 10000): Promise<void> {
+  const tab = await browserAPI.tabs.get(tabId);
+  if (tab.status === 'complete') {
+    return;
+  }
+  
+  console.log('[browser-api] waitForTabLoad - tab', tabId, 'status is', tab.status, ', waiting for complete');
+  
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      browserAPI.tabs.onUpdated.removeListener(listener);
+      console.log('[browser-api] waitForTabLoad - timeout waiting for tab', tabId);
+      // Don't reject, just proceed - the tab might still be usable
+      resolve();
+    }, timeoutMs);
+    
+    const listener = (updatedTabId: number, changeInfo: { status?: string }) => {
+      if (updatedTabId === tabId && changeInfo.status === 'complete') {
+        clearTimeout(timeout);
+        browserAPI.tabs.onUpdated.removeListener(listener);
+        console.log('[browser-api] waitForTabLoad - tab', tabId, 'is now complete');
+        resolve();
+      }
+    };
+    
+    browserAPI.tabs.onUpdated.addListener(listener);
+  });
+}
+
+/**
  * Extract readable text content from the requesting tab.
  * 
  * @param tabId - The tab ID of the requesting page (from sender)
  */
 export async function getTabReadability(tabId: number): Promise<ActiveTabReadability> {
+  console.log('[browser-api] getTabReadability called for tabId:', tabId);
   const tab = await getRequestingTab(tabId);
+  console.log('[browser-api] getTabReadability - tab info:', { url: tab.url, title: tab.title, status: tab.status });
+
+  // Wait for the tab to finish loading if it's still loading
+  // This is especially important for spawned tabs that may still be loading
+  if (tab.status !== 'complete') {
+    console.log('[browser-api] getTabReadability - tab still loading, waiting...');
+    await waitForTabLoad(tabId);
+    // Re-fetch tab info after waiting
+    const updatedTab = await browserAPI.tabs.get(tabId);
+    console.log('[browser-api] getTabReadability - after wait, tab status:', updatedTab.status);
+  }
 
   // Execute content extraction script in the requesting tab
   try {
+    console.log('[browser-api] getTabReadability - executing script in tab:', tabId);
     const results = await browserAPI.scripting.executeScript({
       target: { tabId },
       func: extractReadableContent,
     });
+    console.log('[browser-api] getTabReadability - script executed, results:', JSON.stringify(results));
 
-    if (!results || results.length === 0 || !results[0].result) {
-      throw new Error('Failed to extract content');
+    if (!results || results.length === 0) {
+      throw new Error('Script execution returned no results');
     }
 
-    const { text, title } = results[0].result as { text: string; title: string };
+    // Check for execution errors (script threw an exception in page context)
+    const result = results[0];
+    if ('error' in result && result.error) {
+      console.log('[browser-api] getTabReadability - script error in page context:', result.error);
+      throw new Error(`Script error: ${(result.error as { message?: string }).message || 'Unknown script error'}`);
+    }
+
+    if (!result.result) {
+      throw new Error('Failed to extract content - no result returned');
+    }
+
+    const { text, title } = result.result as { text: string; title: string };
 
     return {
       url: tab.url!,
@@ -87,6 +155,7 @@ export async function getTabReadability(tabId: number): Promise<ActiveTabReadabi
       text: text.slice(0, MAX_TEXT_LENGTH),
     };
   } catch (error) {
+    console.log('[browser-api] getTabReadability - script execution error:', error);
     // Handle common errors
     if (error instanceof Error) {
       if (error.message.includes('Cannot access')) {
@@ -541,8 +610,57 @@ export async function takeScreenshot(tabId: number, options?: {
 /**
  * Content extraction function that runs in the page context.
  * This function is injected into the target page.
+ * 
+ * IMPORTANT: This function must be completely self-contained because it's
+ * serialized and executed in the page context. Any helper functions must
+ * be defined INSIDE this function, not as separate module-level functions.
  */
 function extractReadableContent(): { text: string; title: string } {
+  // Helper function to extract text from an element (must be defined inside)
+  function extractTextFromElement(element: HTMLElement): string {
+    const textParts: string[] = [];
+
+    function walk(node: Node): void {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent?.trim();
+        if (text) {
+          textParts.push(text);
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        const tagName = el.tagName.toLowerCase();
+
+        // Skip hidden elements
+        const style = window.getComputedStyle?.(el);
+        if (style?.display === 'none' || style?.visibility === 'hidden') {
+          return;
+        }
+
+        // Add newlines for block elements
+        const blockElements = [
+          'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          'li', 'br', 'hr', 'blockquote', 'pre', 'table', 'tr',
+        ];
+
+        if (blockElements.includes(tagName)) {
+          textParts.push('\n');
+        }
+
+        // Process children
+        for (const child of el.childNodes) {
+          walk(child);
+        }
+
+        if (blockElements.includes(tagName)) {
+          textParts.push('\n');
+        }
+      }
+    }
+
+    walk(element);
+    return textParts.join(' ');
+  }
+
   const title = document.title;
 
   // Remove unwanted elements
@@ -614,51 +732,4 @@ function extractReadableContent(): { text: string; title: string } {
     .trim();
 
   return { text, title };
-}
-
-/**
- * Extract text content from an element, preserving structure.
- */
-function extractTextFromElement(element: HTMLElement): string {
-  const textParts: string[] = [];
-
-  function walk(node: Node): void {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent?.trim();
-      if (text) {
-        textParts.push(text);
-      }
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const el = node as HTMLElement;
-      const tagName = el.tagName.toLowerCase();
-
-      // Skip hidden elements
-      const style = window.getComputedStyle?.(el);
-      if (style?.display === 'none' || style?.visibility === 'hidden') {
-        return;
-      }
-
-      // Add newlines for block elements
-      const blockElements = [
-        'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'li', 'br', 'hr', 'blockquote', 'pre', 'table', 'tr',
-      ];
-
-      if (blockElements.includes(tagName)) {
-        textParts.push('\n');
-      }
-
-      // Process children
-      for (const child of el.childNodes) {
-        walk(child);
-      }
-
-      if (blockElements.includes(tagName)) {
-        textParts.push('\n');
-      }
-    }
-  }
-
-  walk(element);
-  return textParts.join(' ');
 }

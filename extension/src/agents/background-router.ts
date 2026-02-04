@@ -1368,6 +1368,8 @@ async function handleTabsGet(ctx: RequestContext, sender: ResponseSender): Promi
 }
 
 async function handleTabsCreate(ctx: RequestContext, sender: ResponseSender): Promise<void> {
+  console.log('[Harbor Router] handleTabsCreate - origin:', ctx.origin, 'cookieStoreId:', ctx.cookieStoreId, 'payload:', ctx.payload);
+  
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1377,8 +1379,10 @@ async function handleTabsCreate(ctx: RequestContext, sender: ResponseSender): Pr
   try {
     // Pass cookieStoreId to ensure new tab opens in the same Firefox container as the parent
     const tab = await createTab(ctx.origin, { ...payload, cookieStoreId: ctx.cookieStoreId }, ctx.tabId);
+    console.log('[Harbor Router] handleTabsCreate - created tab:', tab.id, 'for origin:', ctx.origin);
     sender.sendResponse({ id: ctx.id, ok: true, result: tab });
   } catch (error) {
+    console.log('[Harbor Router] handleTabsCreate - error:', error);
     sender.sendResponse({
       id: ctx.id,
       ok: false,
@@ -1427,6 +1431,8 @@ async function handleTabsClose(ctx: RequestContext, sender: ResponseSender): Pro
 
 // Spawned tab operations (operations on tabs the origin created)
 async function handleSpawnedTabReadability(ctx: RequestContext, sender: ResponseSender): Promise<void> {
+  log('handleSpawnedTabReadability - origin:', ctx.origin, 'tabId:', ctx.tabId, 'payload:', ctx.payload);
+  
   if (!(await requirePermission(ctx, sender, 'browser:tabs.create'))) {
     return;
   }
@@ -1434,6 +1440,7 @@ async function handleSpawnedTabReadability(ctx: RequestContext, sender: Response
   const payload = ctx.payload as { tabId: number };
 
   if (!canOriginControlTab(ctx.origin, payload.tabId)) {
+    console.log('[Harbor Router] handleSpawnedTabReadability: canOriginControlTab failed for origin:', ctx.origin, 'tabId:', payload.tabId);
     sender.sendResponse({
       id: ctx.id,
       ok: false,
@@ -1449,11 +1456,12 @@ async function handleSpawnedTabReadability(ctx: RequestContext, sender: Response
     const result = await getTabReadability(payload.tabId);
     sender.sendResponse({ id: ctx.id, ok: true, result });
   } catch (error) {
+    console.log('[Harbor Router] handleSpawnedTabReadability: getTabReadability failed for tabId:', payload.tabId, 'error:', error);
     sender.sendResponse({
       id: ctx.id,
       ok: false,
       error: {
-        code: 'ERR_INTERNAL',
+        code: (error as { code?: string }).code || 'ERR_INTERNAL',
         message: error instanceof Error ? error.message : 'Failed to read tab',
       },
     });

@@ -89,7 +89,18 @@ export function registerSpawnedTab(
  */
 export function canOriginControlTab(origin: string, tabId: number): boolean {
   const info = spawnedTabs.get(tabId);
-  return info !== undefined && info.origin === origin;
+  const canControl = info !== undefined && info.origin === origin;
+  
+  // Always log for debugging (can be reduced later)
+  console.log('[TabManager] canOriginControlTab check:', {
+    tabId,
+    requestedOrigin: origin,
+    registeredInfo: info ? { origin: info.origin, url: info.url, createdAt: info.createdAt } : null,
+    canControl,
+    allRegisteredTabs: Array.from(spawnedTabs.entries()).map(([id, i]) => ({ id, origin: i.origin })),
+  });
+  
+  return canControl;
 }
 
 /**
@@ -107,7 +118,9 @@ export function unregisterTab(tabId: number): void {
   if (info) {
     spawnedTabs.delete(tabId);
     tabsByOrigin.get(info.origin)?.delete(tabId);
-    console.log('[TabManager] Unregistered tab:', tabId);
+    console.log('[TabManager] Unregistered tab:', tabId, 'origin:', info.origin, 'Remaining tabs:', Array.from(spawnedTabs.keys()));
+  } else {
+    console.log('[TabManager] Attempted to unregister unknown tab:', tabId);
   }
 }
 
@@ -180,6 +193,13 @@ export async function createTab(
   options: CreateTabOptions,
   parentTabId?: number,
 ): Promise<TabMetadata> {
+  console.log('[TabManager] createTab called:', {
+    origin,
+    url: options.url,
+    cookieStoreId: options.cookieStoreId,
+    parentTabId,
+  });
+  
   // Build create options, including cookieStoreId for Firefox container support
   const createOptions: chrome.tabs.CreateProperties & { cookieStoreId?: string } = {
     url: options.url,
@@ -188,18 +208,23 @@ export async function createTab(
     windowId: options.windowId,
   };
   
-  // Pass cookieStoreId for Firefox container support, but skip "firefox-default"
-  // Firefox rejects "firefox-default" even with cookies permission, and it's the default anyway
-  // Only pass cookieStoreId for actual container tabs (e.g., "firefox-container-1")
-  if (options.cookieStoreId && options.cookieStoreId !== 'firefox-default') {
-    createOptions.cookieStoreId = options.cookieStoreId;
-    console.log('[TabManager] Creating tab in container:', options.cookieStoreId);
-  }
+  // ALWAYS create tabs in the default context (no container)
+  // Firefox containers cause issues with scripting.executeScript - tabs in different
+  // containers cannot be accessed properly even with host_permissions.
+  // By not passing cookieStoreId, tabs open in the default (non-container) context.
+  console.log('[TabManager] Creating tab in default context (ignoring parent cookieStoreId:', options.cookieStoreId, ')');
   
   const tab = await browserAPI.tabs.create(createOptions);
+  console.log('[TabManager] Tab created:', { 
+    tabId: tab.id, 
+    actualUrl: tab.url, 
+    status: tab.status,
+    cookieStoreId: (tab as chrome.tabs.Tab & { cookieStoreId?: string }).cookieStoreId 
+  });
   
   // Register as spawned by this origin
   registerSpawnedTab(tab.id!, origin, options.url, parentTabId);
+  console.log('[TabManager] Tab registered. Current spawnedTabs:', Array.from(spawnedTabs.keys()));
   
   return {
     id: tab.id!,
