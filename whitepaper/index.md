@@ -149,7 +149,25 @@ we want thought partners.
 
 we're not trying to own this. we're trying to figure out what AI on your side looks like.
 
-[try the sketch →](../QUICKSTART.md) · [join the conversation →](https://github.com/anthropics/anthropic-tools/discussions) · [view the code →](https://github.com/anthropics/anthropic-tools)
+---
+
+## what you could build
+
+with this architecture, websites and users can build things that aren't possible today:
+
+**chat with any page.** a bookmarklet that injects a chat sidebar into any website. ask questions about the content. summarize articles. extract key points. your AI, your model, on their content.
+
+**email without an email AI.** a simple web app that connects to your email via MCP tools. search your inbox. draft replies. summarize threads. the app provides the interface; you provide the AI and credentials.
+
+**research that spans tabs.** an agent that searches google, opens multiple results, reads each page, and synthesizes findings into a report. multi-tab coordination, powered by your browser.
+
+**forms that fill themselves.** give an agent a task ("book a flight to NYC next tuesday") and watch it navigate forms, fill fields, click buttons. you stay in control; it handles the tedium.
+
+**websites that don't need AI infrastructure.** a news site exposes its archive as MCP tools. readers bring their own AI to search and analyze 20 years of coverage. the publisher pays nothing for inference.
+
+**multi-agent pipelines.** four agents collaborate: one orchestrates, one searches, one reads, one writes. they coordinate through the browser, not through a platform.
+
+these aren't hypotheticals. they're [working demos](demo/).
 
 ---
 
