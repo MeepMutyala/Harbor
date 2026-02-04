@@ -122,19 +122,19 @@ body {
 }
 
 .agent-icon.orchestrator {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, var(--demo-accent-primary), #e66000);
 }
 
 .agent-icon.searcher {
-  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  background: linear-gradient(135deg, #00ddff, #0090ed);
 }
 
 .agent-icon.reader {
-  background: linear-gradient(135deg, #10b981, #34d399);
+  background: linear-gradient(135deg, #30e60b, #00b347);
 }
 
 .agent-icon.writer {
-  background: linear-gradient(135deg, #f59e0b, #f97316);
+  background: linear-gradient(135deg, #ffbd4f, #ff9400);
 }
 
 .agent-icon.active {
@@ -326,23 +326,23 @@ body {
 }
 
 .activation-box.orchestrator {
-  border-color: #8b5cf6;
-  background: rgba(139, 92, 246, 0.1);
+  border-color: var(--demo-accent-primary);
+  background: rgba(255, 148, 0, 0.1);
 }
 
 .activation-box.searcher {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
+  border-color: #00ddff;
+  background: rgba(0, 221, 255, 0.1);
 }
 
 .activation-box.reader {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.1);
+  border-color: #30e60b;
+  background: rgba(48, 230, 11, 0.1);
 }
 
 .activation-box.writer {
-  border-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
+  border-color: #ffbd4f;
+  background: rgba(255, 189, 79, 0.1);
 }
 
 /* Status node */

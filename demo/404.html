@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page Not Found - Web Agent API Demos</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="shared/styles.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: var(--demo-space-6);
+      text-align: center;
+    }
+
+    .error-code {
+      font-size: 6rem;
+      font-weight: var(--demo-weight-bold);
+      line-height: 1;
+      margin-bottom: var(--demo-space-4);
+      background: linear-gradient(90deg, var(--demo-accent-primary), var(--demo-accent-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .error-title {
+      font-size: var(--demo-text-2xl);
+      font-weight: var(--demo-weight-bold);
+      color: var(--demo-text-primary);
+      margin-bottom: var(--demo-space-3);
+    }
+
+    .error-message {
+      font-size: var(--demo-text-base);
+      color: var(--demo-text-secondary);
+      max-width: 400px;
+      margin-bottom: var(--demo-space-8);
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--demo-space-2);
+      padding: var(--demo-space-3) var(--demo-space-6);
+      background: linear-gradient(90deg, var(--demo-accent-primary), var(--demo-accent-secondary));
+      color: white;
+      border: none;
+      border-radius: var(--demo-radius-md);
+      font-family: var(--demo-font-sans);
+      font-size: var(--demo-text-sm);
+      font-weight: var(--demo-weight-semibold);
+      text-decoration: none;
+      cursor: pointer;
+      transition: all var(--demo-transition-fast);
+    }
+
+    .back-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-2px);
+      box-shadow: var(--demo-shadow-glow);
+      color: white;
+    }
+  </style>
+</head>
+<body class="demo-bg-glow">
+  <div class="error-code">404</div>
+  <h1 class="error-title">Page Not Found</h1>
+  <p class="error-message">
+    The page you're looking for doesn't exist or has been moved. 
+    Check out our available demos instead.
+  </p>
+  <a href="./" class="back-btn">
+    &#8592; Back to Demos
+  </a>
+</body>
+</html>

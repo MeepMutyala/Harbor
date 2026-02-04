@@ -4,6 +4,10 @@ Example code showing how web pages can use the **Web Agent API** (`window.ai` an
 
 These demos require **Harbor**, an implementation of the Web Agent API.
 
+## Live Demo
+
+These demos are published via GitHub Pages at: **https://[your-org].github.io/harbor/demo/**
+
 ## Available Demos
 
 | Demo | Description | Path |

@@ -4,9 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Web Agent API Demos</title>
+  <meta name="description" content="Interactive demos for the Web Agent API - explore AI-powered browser capabilities with window.ai and window.agent">
+  
+  <!-- Open Graph / Social -->
+  <meta property="og:title" content="Web Agent API Demos">
+  <meta property="og:description" content="Interactive demos for the Web Agent API - explore AI-powered browser capabilities">
+  <meta property="og:type" content="website">
+  
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
   <link rel="stylesheet" href="shared/styles.css">
   <style>
     body {
@@ -18,24 +27,26 @@
     }
 
     .page-container {
-      max-width: 640px;
+      max-width: 720px;
       width: 100%;
     }
 
     .demos-grid {
       display: flex;
       flex-direction: column;
-      gap: var(--demo-space-4);
+      gap: var(--demo-space-3);
     }
 
-    .demo-card {
+    .demo-link {
       display: block;
       text-decoration: none;
       color: inherit;
     }
 
-    .demo-card .demo-card {
-      cursor: pointer;
+    .demo-link:hover .demo-card {
+      border-color: var(--demo-accent-primary);
+      box-shadow: 0 0 0 1px var(--demo-accent-primary), var(--demo-shadow-glow);
+      transform: translateY(-2px);
     }
 
     .demo-card-content {
@@ -47,8 +58,8 @@
     .demo-card-icon {
       width: 44px;
       height: 44px;
-      background: linear-gradient(135deg, var(--demo-accent-primary), var(--demo-accent-tertiary));
-      border-radius: var(--demo-radius-lg);
+      background: linear-gradient(135deg, var(--demo-accent-primary), var(--demo-accent-secondary));
+      border-radius: var(--demo-radius-md);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -62,13 +73,14 @@
     }
 
     .demo-card-title {
-      font-size: var(--demo-text-lg);
+      font-size: var(--demo-text-base);
       font-weight: var(--demo-weight-semibold);
       color: var(--demo-text-primary);
       margin-bottom: var(--demo-space-1);
       display: flex;
       align-items: center;
       gap: var(--demo-space-2);
+      flex-wrap: wrap;
     }
 
     .demo-card-description {
@@ -84,8 +96,8 @@
     .extension-note {
       margin-top: var(--demo-space-10);
       padding: var(--demo-space-5);
-      background: var(--demo-accent-glow);
-      border: 1px solid rgba(139, 92, 246, 0.2);
+      background: var(--demo-bg-surface);
+      border: 1px solid var(--demo-border-default);
       border-radius: var(--demo-radius-lg);
       font-size: var(--demo-text-sm);
       color: var(--demo-text-secondary);
@@ -97,45 +109,72 @@
     }
 
     .demo-section-title {
-      font-size: var(--demo-text-xl);
+      font-size: var(--demo-text-lg);
       font-weight: var(--demo-weight-semibold);
       color: var(--demo-text-primary);
       margin-top: var(--demo-space-10);
       margin-bottom: var(--demo-space-2);
+      display: flex;
+      align-items: center;
+      gap: var(--demo-space-2);
+    }
+
+    .demo-section-title::before {
+      content: '';
+      width: 4px;
+      height: 20px;
+      background: linear-gradient(180deg, var(--demo-accent-primary), var(--demo-accent-secondary));
+      border-radius: 2px;
     }
 
     .demo-section-desc {
       font-size: var(--demo-text-sm);
-      color: var(--demo-text-secondary);
+      color: var(--demo-text-muted);
       margin-bottom: var(--demo-space-4);
     }
 
-    .demo-card-disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
+    .footer-links {
+      margin-top: var(--demo-space-8);
+      display: flex;
+      justify-content: center;
+      gap: var(--demo-space-6);
+      font-size: var(--demo-text-sm);
+    }
+
+    .footer-links a {
+      color: var(--demo-text-muted);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: var(--demo-space-2);
+      transition: color var(--demo-transition-fast);
+    }
+
+    .footer-links a:hover {
+      color: var(--demo-accent-primary);
     }
   </style>
 </head>
 <body class="demo-bg-glow">
   <div class="page-container">
     <header class="demo-header">
-      <div class="demo-logo">⚓</div>
-      <h1 class="demo-title demo-text-gradient">Web Agent API Demos</h1>
+      <div class="demo-logo">&#9875;</div>
+      <h1 class="demo-title">Web Agent API <span class="demo-text-gradient">Demos</span></h1>
       <p class="demo-subtitle">
-        Example applications showing how to use the Web Agent API
+        Interactive examples showing how to use the Web Agent API
         (<code>window.ai</code> and <code>window.agent</code>) to add AI capabilities to any website.
       </p>
     </header>
 
-    <!-- Web Agents (Extension 1) -->
+    <!-- Web Agents -->
     <h2 class="demo-section-title">Web Agents</h2>
     <p class="demo-section-desc">Basic LLM and MCP server access demos</p>
 
     <div class="demos-grid">
-      <a href="web-agents/getting-started/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agents/getting-started/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">🚀</div>
+            <div class="demo-card-icon">&#128640;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">
                 Getting Started
@@ -150,10 +189,10 @@
         </div>
       </a>
 
-      <a href="web-agents/chat-poc/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agents/chat-poc/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">💬</div>
+            <div class="demo-card-icon">&#128172;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">
                 Chat Demo
@@ -168,10 +207,10 @@
         </div>
       </a>
 
-      <a href="web-agents/summarizer/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agents/summarizer/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">📄</div>
+            <div class="demo-card-icon">&#128196;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">Page Summarizer</div>
               <p class="demo-card-description">
@@ -183,10 +222,10 @@
         </div>
       </a>
 
-      <a href="web-agents/summarizer/chrome-compat.html" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agents/summarizer/chrome-compat.html" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">🔄</div>
+            <div class="demo-card-icon">&#128260;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">Chrome Compat Demo</div>
               <p class="demo-card-description">
@@ -198,10 +237,10 @@
         </div>
       </a>
 
-      <a href="web-agents/email-chat/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agents/email-chat/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">📧</div>
+            <div class="demo-card-icon">&#128231;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">
                 Email Chat
@@ -216,10 +255,10 @@
         </div>
       </a>
 
-      <a href="web-agents/bookmarklet/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agents/bookmarklet/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">🔖</div>
+            <div class="demo-card-icon">&#128278;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">Page Chat Bookmarklet</div>
               <p class="demo-card-description">
@@ -231,10 +270,10 @@
         </div>
       </a>
 
-      <a href="web-agents/bring-your-chatbot/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agents/bring-your-chatbot/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">🛍️</div>
+            <div class="demo-card-icon">&#128722;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">
                 Bring Your Own Chatbot
@@ -249,15 +288,15 @@
       </a>
     </div>
 
-    <!-- Web Agent Control (Extension 2) -->
+    <!-- Web Agent Control -->
     <h2 class="demo-section-title">Web Agent Control</h2>
     <p class="demo-section-desc">Active-tab interaction demos (click, fill, scroll, wait)</p>
 
     <div class="demos-grid">
-      <a href="web-agent-control/basic-actions/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agent-control/basic-actions/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">🧪</div>
+            <div class="demo-card-icon">&#129514;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">
                 Basic Actions
@@ -271,10 +310,10 @@
         </div>
       </a>
 
-      <a href="web-agent-control/multi-step-form/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agent-control/multi-step-form/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">🧭</div>
+            <div class="demo-card-icon">&#129517;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">Multi-step Form</div>
               <p class="demo-card-description">
@@ -285,10 +324,10 @@
         </div>
       </a>
 
-      <a href="web-agent-control/research-agent/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="web-agent-control/research-agent/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">🔬</div>
+            <div class="demo-card-icon">&#128300;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">
                 Research Agent
@@ -304,15 +343,15 @@
       </a>
     </div>
 
-    <!-- Multi Web Agent (Extension 3) -->
+    <!-- Multi Web Agent -->
     <h2 class="demo-section-title">Multi Web Agent</h2>
     <p class="demo-section-desc">Multi-agent coordination demos (A2A communication)</p>
 
     <div class="demos-grid">
-      <a href="multi-web-agent/research-writer/" class="demo-card">
-        <div class="demo-card demo-card-interactive">
+      <a href="multi-web-agent/research-writer/" class="demo-link">
+        <div class="demo-card">
           <div class="demo-card-content">
-            <div class="demo-card-icon">🔬</div>
+            <div class="demo-card-icon">&#128300;</div>
             <div class="demo-card-text">
               <div class="demo-card-title">
                 Research Pipeline
@@ -332,6 +371,15 @@
     <div class="extension-note">
       <strong>Note:</strong> These demos require a Web Agent API implementation (like Harbor) to be installed.
       The implementation provides the <code>window.ai</code> and <code>window.agent</code> APIs.
+    </div>
+
+    <div class="footer-links">
+      <a href="https://github.com/nicholasgriffintn/harbor">
+        <span>GitHub</span>
+      </a>
+      <a href="../docs/">
+        <span>Documentation</span>
+      </a>
     </div>
   </div>
 </body>
