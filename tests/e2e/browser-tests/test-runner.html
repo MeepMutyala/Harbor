@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Harbor E2E Test Runner</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+    }
+    h1 { margin-bottom: 20px; color: #4fc3f7; }
+    .test-suite { margin-bottom: 30px; }
+    .test-suite h2 { 
+      font-size: 16px; 
+      color: #aaa; 
+      margin-bottom: 10px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 5px;
+    }
+    .test {
+      padding: 8px 12px;
+      margin: 4px 0;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .test.pass { background: #1b5e20; }
+    .test.fail { background: #b71c1c; }
+    .test.pending { background: #333; }
+    .test.running { background: #0d47a1; }
+    .test-name { flex: 1; }
+    .test-time { font-size: 12px; color: #888; }
+    .status-icon { width: 20px; text-align: center; }
+    .summary {
+      margin-top: 20px;
+      padding: 15px;
+      background: #252540;
+      border-radius: 8px;
+    }
+    .summary.all-pass { border: 2px solid #4caf50; }
+    .summary.has-fail { border: 2px solid #f44336; }
+    .error-details {
+      margin-top: 5px;
+      padding: 8px;
+      background: #1a1a1a;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #ff8a80;
+      white-space: pre-wrap;
+    }
+    #progress {
+      margin-bottom: 20px;
+      padding: 10px;
+      background: #252540;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🚢 Harbor E2E Test Runner</h1>
+  
+  <div id="progress">Initializing tests...</div>
+  
+  <div id="results"></div>
+  
+  <div id="summary" class="summary" style="display: none;"></div>
+
+  <script type="module">
+    // Test framework
+    const results = [];
+    let currentSuite = null;
+    
+    function log(msg) {
+      console.log(`[E2E] ${msg}`);
+    }
+    
+    function updateProgress(msg) {
+      document.getElementById('progress').textContent = msg;
+    }
+    
+    function renderResults() {
+      const container = document.getElementById('results');
+      let html = '';
+      
+      const suites = {};
+      for (const r of results) {
+        if (!suites[r.suite]) suites[r.suite] = [];
+        suites[r.suite].push(r);
+      }
+      
+      for (const [suite, tests] of Object.entries(suites)) {
+        html += `<div class="test-suite"><h2>${suite}</h2>`;
+        for (const t of tests) {
+          const icon = t.status === 'pass' ? '✓' : t.status === 'fail' ? '✗' : t.status === 'running' ? '⏳' : '○';
+          html += `
+            <div class="test ${t.status}">
+              <span class="status-icon">${icon}</span>
+              <span class="test-name">${t.name}</span>
+              ${t.duration ? `<span class="test-time">${t.duration}ms</span>` : ''}
+            </div>
+            ${t.error ? `<div class="error-details">${t.error}</div>` : ''}
+          `;
+        }
+        html += '</div>';
+      }
+      
+      container.innerHTML = html;
+    }
+    
+    async function renderSummary() {
+      const passed = results.filter(r => r.status === 'pass').length;
+      const failed = results.filter(r => r.status === 'fail').length;
+      const total = results.length;
+      const failures = results.filter(r => r.status === 'fail').map(r => ({
+        suite: r.suite,
+        name: r.name,
+        error: r.error
+      }));
+      
+      const summary = document.getElementById('summary');
+      summary.style.display = 'block';
+      summary.className = `summary ${failed > 0 ? 'has-fail' : 'all-pass'}`;
+      summary.innerHTML = `
+        <strong>${failed === 0 ? '✓ All tests passed!' : `✗ ${failed} test(s) failed`}</strong><br>
+        ${passed} passed, ${failed} failed, ${total} total
+      `;
+      
+      // Log final results for CI capture
+      log(`RESULTS: ${passed} passed, ${failed} failed, ${total} total`);
+      if (failed === 0) {
+        log('STATUS: PASS');
+      } else {
+        log('STATUS: FAIL');
+      }
+      
+      // POST results back to test server
+      try {
+        await fetch('/__test_results__', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passed, failed, total, failures })
+        });
+        log('Results posted to test server');
+      } catch (err) {
+        log('Failed to post results to server: ' + err.message);
+      }
+    }
+    
+    async function test(suite, name, fn) {
+      const testResult = { suite, name, status: 'running', error: null, duration: null };
+      results.push(testResult);
+      renderResults();
+      
+      const start = Date.now();
+      try {
+        await fn();
+        testResult.status = 'pass';
+        testResult.duration = Date.now() - start;
+        log(`PASS: ${suite} > ${name} (${testResult.duration}ms)`);
+      } catch (err) {
+        testResult.status = 'fail';
+        testResult.duration = Date.now() - start;
+        testResult.error = err.message || String(err);
+        log(`FAIL: ${suite} > ${name} - ${testResult.error}`);
+      }
+      renderResults();
+    }
+    
+    function assert(condition, message) {
+      if (!condition) {
+        throw new Error(message || 'Assertion failed');
+      }
+    }
+    
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(message || `Expected ${expected} but got ${actual}`);
+      }
+    }
+    
+    // Wait for extensions to inject APIs
+    async function waitForAPIs(timeout = 10000) {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        if (typeof window.ai !== 'undefined' && typeof window.agent !== 'undefined') {
+          return true;
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      return false;
+    }
+    
+    // ============================================================
+    // TEST SUITES
+    // ============================================================
+    
+    async function runTests() {
+      log('Starting E2E tests...');
+      updateProgress('Waiting for extension APIs...');
+      
+      // Wait for APIs to be injected
+      const hasAPIs = await waitForAPIs(15000);
+      
+      if (!hasAPIs) {
+        await test('Setup', 'Extension APIs available', async () => {
+          throw new Error('window.ai and window.agent not found. Are the extensions installed?');
+        });
+        await renderSummary();
+        return;
+      }
+      
+      updateProgress('Running tests...');
+      
+      // ---- Extension Detection ----
+      await test('Extension Detection', 'window.ai is defined', async () => {
+        assert(typeof window.ai !== 'undefined', 'window.ai should be defined');
+      });
+      
+      await test('Extension Detection', 'window.agent is defined', async () => {
+        assert(typeof window.agent !== 'undefined', 'window.agent should be defined');
+      });
+      
+      await test('Extension Detection', 'window.ai has createTextSession', async () => {
+        assert(typeof window.ai.createTextSession === 'function', 
+          'window.ai.createTextSession should be a function');
+      });
+      
+      await test('Extension Detection', 'window.ai has providers', async () => {
+        assert(typeof window.ai.providers === 'object', 
+          'window.ai.providers should be an object');
+        assert(typeof window.ai.providers.list === 'function',
+          'window.ai.providers.list should be a function');
+      });
+      
+      await test('Extension Detection', 'window.agent has tools', async () => {
+        assert(typeof window.agent.tools === 'object',
+          'window.agent.tools should be an object');
+        assert(typeof window.agent.tools.list === 'function',
+          'window.agent.tools.list should be a function');
+      });
+      
+      await test('Extension Detection', 'window.agent has run', async () => {
+        assert(typeof window.agent.run === 'function',
+          'window.agent.run should be a function');
+      });
+      
+      await test('Extension Detection', 'window.agent has requestPermissions', async () => {
+        assert(typeof window.agent.requestPermissions === 'function',
+          'window.agent.requestPermissions should be a function');
+      });
+      
+      // ---- Provider API ----
+      await test('Provider API', 'can list providers (may need permission)', async () => {
+        try {
+          const providers = await window.ai.providers.list();
+          assert(Array.isArray(providers), 'providers.list() should return an array');
+          log(`Found ${providers.length} providers: ${providers.map(p => p.name || p.id).join(', ')}`);
+        } catch (err) {
+          // Permission denied is expected if not granted in test environment
+          if (err.message && (err.message.includes('ermission') || err.message.includes('denied'))) {
+            log('Permission required for providers.list() - this is expected without user grant');
+          } else {
+            throw err;
+          }
+        }
+      });
+      
+      // ---- Tools API ----
+      await test('Tools API', 'can list tools (may need permission)', async () => {
+        try {
+          const tools = await window.agent.tools.list();
+          assert(Array.isArray(tools), 'tools.list() should return an array');
+          log(`Found ${tools.length} tools`);
+        } catch (err) {
+          // Permission denied is expected if not granted in test environment
+          if (err.message && (err.message.includes('ermission') || err.message.includes('denied'))) {
+            log('Permission required for tools.list() - this is expected without user grant');
+          } else {
+            throw err;
+          }
+        }
+      });
+      
+      // ---- Session API ----
+      await test('Session API', 'can create text session (may need permission)', async () => {
+        try {
+          const session = await window.ai.createTextSession();
+          assert(session !== null, 'createTextSession should return a session');
+          assert(typeof session.prompt === 'function', 'session should have prompt method');
+          assert(typeof session.destroy === 'function', 'session should have destroy method');
+          await session.destroy();
+          log('Text session created and destroyed successfully');
+        } catch (err) {
+          // Permission denied or no LLM configured is expected in test environment
+          if (err.message && (
+            err.message.includes('ermission') || 
+            err.message.includes('denied') ||
+            err.message.includes('No model') || 
+            err.message.includes('provider')
+          )) {
+            log('Permission required or no LLM configured - this is expected in test environment');
+          } else {
+            throw err;
+          }
+        }
+      });
+      
+      // Finish
+      updateProgress('Tests complete!');
+      await renderSummary();
+    }
+    
+    // Run tests after a short delay to ensure page is fully loaded
+    setTimeout(runTests, 500);
+  </script>
+</body>
+</html>
