@@ -7,6 +7,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BINARY_NAME="harbor-bridge"
 
+# Parse arguments
+FIREFOX_ONLY=false
+SKIP_BUILD=false
+for arg in "$@"; do
+    case $arg in
+        --firefox-only)
+            FIREFOX_ONLY=true
+            ;;
+        --skip-build)
+            SKIP_BUILD=true
+            ;;
+    esac
+done
+
 echo "=== Harbor Bridge Installer ==="
 echo ""
 
@@ -27,20 +41,24 @@ case "$OS" in
         ;;
 esac
 
-# Build the release binary
-echo "Building harbor-bridge..."
-cd "$SCRIPT_DIR"
-cargo build --release
-
+# Build the release binary (unless --skip-build)
 BINARY_PATH="$SCRIPT_DIR/target/release/$BINARY_NAME"
 
-if [ ! -f "$BINARY_PATH" ]; then
-    echo "Error: Binary not found at $BINARY_PATH"
-    exit 1
+if [ "$SKIP_BUILD" = false ]; then
+    echo "Building harbor-bridge..."
+    cd "$SCRIPT_DIR"
+    cargo build --release
+    echo "Binary built: $BINARY_PATH"
+    echo ""
+else
+    echo "Skipping build (--skip-build)"
+    if [ ! -f "$BINARY_PATH" ]; then
+        echo "Error: Binary not found at $BINARY_PATH"
+        echo "Run without --skip-build to build the binary first."
+        exit 1
+    fi
+    echo ""
 fi
-
-echo "Binary built: $BINARY_PATH"
-echo ""
 
 # Create wrapper script that passes --native-messaging flag
 WRAPPER_PATH="$SCRIPT_DIR/target/release/harbor-bridge-native"
@@ -123,8 +141,10 @@ EOF
 # Install for Firefox
 install_firefox_manifest "$FIREFOX_MANIFEST_DIR"
 
-# Install for Chrome
-install_chrome_manifest "$CHROME_MANIFEST_DIR"
+# Install for Chrome (unless --firefox-only)
+if [ "$FIREFOX_ONLY" = false ]; then
+    install_chrome_manifest "$CHROME_MANIFEST_DIR"
+fi
 
 echo ""
 echo "=== Installation Complete ==="
@@ -140,14 +160,18 @@ if [ "$OS" = "Darwin" ]; then
 else
     echo "  ~/.cache/harbor-bridge.log"
 fi
-echo ""
-echo "=== Safari ==="
-echo ""
-echo "Safari requires a different setup - the extension must be bundled in a macOS app."
-echo "To build Harbor for Safari with native messaging support:"
-echo ""
-echo "  cd ../installer/safari"
-echo "  ./build.sh"
-echo ""
-echo "This will create an Xcode project (if needed), build harbor-bridge, and"
-echo "package everything into Harbor.app. See installer/safari/README.md for details."
+
+# Only show Safari instructions if not --firefox-only
+if [ "$FIREFOX_ONLY" = false ]; then
+    echo ""
+    echo "=== Safari ==="
+    echo ""
+    echo "Safari requires a different setup - the extension must be bundled in a macOS app."
+    echo "To build Harbor for Safari with native messaging support:"
+    echo ""
+    echo "  cd ../installer/safari"
+    echo "  ./build.sh"
+    echo ""
+    echo "This will create an Xcode project (if needed), build harbor-bridge, and"
+    echo "package everything into Harbor.app. See installer/safari/README.md for details."
+fi
